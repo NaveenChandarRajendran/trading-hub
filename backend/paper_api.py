@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
+from paper_charges import RATES as CHARGE_RATES
 from paper_engine import OPEN_STATES, OrderError, PaperEngine
 from store import IST
 
@@ -399,7 +400,8 @@ def register(app, svc):
 
     @app.get("/api/paper/account")
     def get_account():
-        return {"meta": svc.meta(), "account": svc.account, "funds": svc.funds(), "presets": list(CAPITAL_PRESETS)}
+        return {"meta": svc.meta(), "account": svc.account, "funds": svc.funds(), "presets": list(CAPITAL_PRESETS),
+                "chargeRates": CHARGE_RATES}
 
     @app.post("/api/paper/account")
     def set_capital(body: CapitalBody):

@@ -18,6 +18,10 @@ SEBI_RATE = 10 / 1e7        # Rs 10 per crore of turnover
 STAMP_BUY_RATE = 0.00003    # 0.003% of buy premium
 GST_RATE = 0.18             # on brokerage + transaction + SEBI
 
+# Sent to the frontend (GET /api/paper/account) so the order ticket estimates charges from these same rates.
+RATES = {"brokeragePerOrder": BROKERAGE_PER_ORDER, "sttSell": STT_SELL_RATE, "transaction": NSE_TXN_RATE,
+         "sebi": SEBI_RATE, "stampBuy": STAMP_BUY_RATE, "gst": GST_RATE}
+
 
 def r2(x):
     """Round money to the paisa, half up (avoids float artefacts such as round(0.225, 2))."""

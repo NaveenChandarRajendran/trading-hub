@@ -112,6 +112,7 @@ def test_account_defaults_and_capital(env):
     r = c.get("/api/paper/account").json()
     assert r["account"]["capital"] == 100000 and r["funds"]["available"] == 100000
     assert r["presets"] == [100000, 200000, 500000]
+    assert r["chargeRates"]["brokeragePerOrder"] == 20 and r["chargeRates"]["sttSell"] == 0.0015
     assert set(r["meta"]) >= {"asOf", "marketOpen", "tokenExpired", "lastError", "message"}
     assert c.post("/api/paper/account", json={"capital": 200000}).json()["funds"]["available"] == 200000
     assert c.post("/api/paper/account", json={"capital": 500}).status_code == 400
