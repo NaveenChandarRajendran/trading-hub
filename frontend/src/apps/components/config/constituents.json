@@ -1,0 +1,301 @@
+{
+ "BANKNIFTY": [
+  {
+   "name": "HDFC Bank",
+   "symbol": "HDFCBANK",
+   "weight": 18.61
+  },
+  {
+   "name": "ICICI Bank",
+   "symbol": "ICICIBANK",
+   "weight": 14.18
+  },
+  {
+   "name": "Kotak Mahindra Bank",
+   "symbol": "KOTAKBANK",
+   "weight": 10.2
+  },
+  {
+   "name": "Axis Bank",
+   "symbol": "AXISBANK",
+   "weight": 10.06
+  },
+  {
+   "name": "State Bank of India",
+   "symbol": "SBIN",
+   "weight": 9.93
+  },
+  {
+   "name": "Federal Bank",
+   "symbol": "FEDERALBNK",
+   "weight": 6.56
+  },
+  {
+   "name": "IndusInd Bank",
+   "symbol": "INDUSINDBK",
+   "weight": 4.97
+  },
+  {
+   "name": "AU Small Finance Bank",
+   "symbol": "AUBANK",
+   "weight": 4.85
+  },
+  {
+   "name": "IDFC First Bank",
+   "symbol": "IDFCFIRSTB",
+   "weight": 4.54
+  },
+  {
+   "name": "Bank of Baroda",
+   "symbol": "BANKBARODA",
+   "weight": 3.59
+  }
+ ],
+ "NIFTY": [
+  {
+   "name": "Reliance Industries",
+   "symbol": "RELIANCE",
+   "weight": 8.89
+  },
+  {
+   "name": "Bharti Airtel",
+   "symbol": "BHARTIARTL",
+   "weight": 6.45
+  },
+  {
+   "name": "HDFC Bank",
+   "symbol": "HDFCBANK",
+   "weight": 6.09
+  },
+  {
+   "name": "ICICI Bank",
+   "symbol": "ICICIBANK",
+   "weight": 5.44
+  },
+  {
+   "name": "Tata Consultancy Services",
+   "symbol": "TCS",
+   "weight": 4.84
+  },
+  {
+   "name": "State Bank of India",
+   "symbol": "SBIN",
+   "weight": 4.82
+  },
+  {
+   "name": "Bajaj Finance",
+   "symbol": "BAJFINANCE",
+   "weight": 3.32
+  },
+  {
+   "name": "Larsen & Toubro",
+   "symbol": "LT",
+   "weight": 2.71
+  },
+  {
+   "name": "Infosys",
+   "symbol": "INFY",
+   "weight": 2.56
+  },
+  {
+   "name": "Hindustan Unilever",
+   "symbol": "HINDUNILVR",
+   "weight": 2.42
+  },
+  {
+   "name": "Kotak Mahindra Bank",
+   "symbol": "KOTAKBANK",
+   "weight": 2.41
+  },
+  {
+   "name": "Sun Pharmaceutical",
+   "symbol": "SUNPHARMA",
+   "weight": 2.29
+  },
+  {
+   "name": "Adani Ports & SEZ",
+   "symbol": "ADANIPORTS",
+   "weight": 2.18
+  },
+  {
+   "name": "Axis Bank",
+   "symbol": "AXISBANK",
+   "weight": 2.17
+  },
+  {
+   "name": "Titan Company",
+   "symbol": "TITAN",
+   "weight": 2.14
+  },
+  {
+   "name": "HCL Technologies",
+   "symbol": "HCLTECH",
+   "weight": 2.03
+  },
+  {
+   "name": "Adani Enterprises",
+   "symbol": "ADANIENT",
+   "weight": 1.98
+  },
+  {
+   "name": "Mahindra & Mahindra",
+   "symbol": "M&M",
+   "weight": 1.97
+  },
+  {
+   "name": "Maruti Suzuki",
+   "symbol": "MARUTI",
+   "weight": 1.96
+  },
+  {
+   "name": "ITC",
+   "symbol": "ITC",
+   "weight": 1.79
+  },
+  {
+   "name": "UltraTech Cement",
+   "symbol": "ULTRACEMCO",
+   "weight": 1.75
+  },
+  {
+   "name": "Eternal",
+   "symbol": "ETERNAL",
+   "weight": 1.7
+  },
+  {
+   "name": "NTPC",
+   "symbol": "NTPC",
+   "weight": 1.67
+  },
+  {
+   "name": "JSW Steel",
+   "symbol": "JSWSTEEL",
+   "weight": 1.61
+  },
+  {
+   "name": "Bajaj Auto",
+   "symbol": "BAJAJ-AUTO",
+   "weight": 1.55
+  },
+  {
+   "name": "ONGC",
+   "symbol": "ONGC",
+   "weight": 1.52
+  },
+  {
+   "name": "Bajaj Finserv",
+   "symbol": "BAJAJFINSV",
+   "weight": 1.51
+  },
+  {
+   "name": "Bharat Electronics",
+   "symbol": "BEL",
+   "weight": 1.5
+  },
+  {
+   "name": "Coal India",
+   "symbol": "COALINDIA",
+   "weight": 1.39
+  },
+  {
+   "name": "Power Grid",
+   "symbol": "POWERGRID",
+   "weight": 1.27
+  },
+  {
+   "name": "Asian Paints",
+   "symbol": "ASIANPAINT",
+   "weight": 1.21
+  },
+  {
+   "name": "Shriram Finance",
+   "symbol": "SHRIRAMFIN",
+   "weight": 1.2
+  },
+  {
+   "name": "Tata Steel",
+   "symbol": "TATASTEEL",
+   "weight": 1.19
+  },
+  {
+   "name": "Hindalco",
+   "symbol": "HINDALCO",
+   "weight": 1.11
+  },
+  {
+   "name": "Eicher Motors",
+   "symbol": "EICHERMOT",
+   "weight": 1.08
+  },
+  {
+   "name": "Grasim",
+   "symbol": "GRASIM",
+   "weight": 1.08
+  },
+  {
+   "name": "InterGlobe Aviation",
+   "symbol": "INDIGO",
+   "weight": 0.98
+  },
+  {
+   "name": "Tech Mahindra",
+   "symbol": "TECHM",
+   "weight": 0.95
+  },
+  {
+   "name": "SBI Life Insurance",
+   "symbol": "SBILIFE",
+   "weight": 0.9
+  },
+  {
+   "name": "Trent",
+   "symbol": "TRENT",
+   "weight": 0.86
+  },
+  {
+   "name": "Jio Financial Services",
+   "symbol": "JIOFIN",
+   "weight": 0.78
+  },
+  {
+   "name": "BSE",
+   "symbol": "BSE",
+   "weight": 0.74
+  },
+  {
+   "name": "HDFC Life Insurance",
+   "symbol": "HDFCLIFE",
+   "weight": 0.65
+  },
+  {
+   "name": "Apollo Hospitals",
+   "symbol": "APOLLOHOSP",
+   "weight": 0.62
+  },
+  {
+   "name": "Cipla",
+   "symbol": "CIPLA",
+   "weight": 0.58
+  },
+  {
+   "name": "Tata Motors Passenger Vehicles",
+   "symbol": "TMPV",
+   "weight": 0.57
+  },
+  {
+   "name": "Dr Reddy's Laboratories",
+   "symbol": "DRREDDY",
+   "weight": 0.56
+  },
+  {
+   "name": "Tata Consumer Products",
+   "symbol": "TATACONSUM",
+   "weight": 0.53
+  },
+  {
+   "name": "Max Healthcare",
+   "symbol": "MAXHEALTH",
+   "weight": 0.45
+  }
+ ]
+}

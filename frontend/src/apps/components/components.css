@@ -1,0 +1,47 @@
+/* Index Components - self-contained styles. Uses your app's CSS variables when present (light/dark via data-theme). */
+.cp {
+  --cp-surface: var(--surface, #ffffff); --cp-bg: var(--bg, #f5f6f8); --cp-border: var(--border, #e3e5e8);
+  --cp-text: var(--text, #2b2f36); --cp-muted: var(--muted, #8a9099); --cp-accent: var(--accent, #387ed1);
+  --cp-gain: #1fc97b; --cp-loss: #f2615f; --cp-gain-text: #0e8a52; --cp-loss-text: #d23b39; --cp-flat: #eceff1;
+  display: flex; flex-direction: column; gap: 14px; color: var(--cp-text); font-variant-numeric: tabular-nums;
+}
+:root[data-theme='dark'] .cp { --cp-gain: #17a862; --cp-loss: #c9494a; --cp-gain-text: #4ade9a; --cp-loss-text: #ff7b7b; --cp-flat: #262b30; }
+.cp * { box-sizing: border-box; }
+.cp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; padding: 10px 14px; }
+.cp-seg { display: inline-flex; background: var(--cp-bg); padding: 3px; border-radius: 8px; gap: 2px; }
+.cp-seg button { border: 0; background: none; color: var(--cp-muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 500; }
+.cp-seg button.on { background: var(--cp-surface); color: var(--cp-accent); box-shadow: 0 0 0 1px var(--cp-border); }
+.cp-status { display: flex; align-items: center; gap: 8px; color: var(--cp-muted); font-size: 12px; }
+.cp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cp-muted); } .cp-dot.on { background: var(--cp-gain); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cp-gain) 25%, transparent); }
+.cp-actions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; color: var(--cp-muted); }
+.cp-actions label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.cp-btn { border: 1px solid var(--cp-accent); background: var(--cp-accent); color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 500; }
+.cp-btn:disabled { opacity: .6; cursor: default; }
+.cp-alert { background: color-mix(in srgb, var(--cp-loss) 14%, var(--cp-surface)); border: 1px solid color-mix(in srgb, var(--cp-loss) 45%, transparent); color: var(--cp-text); border-radius: 8px; padding: 10px 14px; }
+.cp-note { background: color-mix(in srgb, var(--cp-accent) 10%, var(--cp-surface)); border: 1px solid var(--cp-border); border-radius: 8px; padding: 8px 14px; color: var(--cp-muted); font-size: 12px; }
+.cp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.cp-stat { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.cp-stat span { color: var(--cp-muted); font-size: 12px; } .cp-stat b { font-size: 24px; font-weight: 600; }
+.cp .up { color: var(--cp-gain-text); } .cp .down { color: var(--cp-loss-text); }
+.cp-adv { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--cp-flat); }
+.cp-adv i { display: block; height: 100%; } .cp-adv .a { background: var(--cp-gain); } .cp-adv .d { background: var(--cp-loss); }
+.cp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.cp-bar .grow { flex: 1; } .cp-bar small { color: var(--cp-muted); }
+.cp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
+.cp-tile { --i: 0; border-radius: 8px; padding: 10px 12px; min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid transparent; transition: transform .1s; background: var(--cp-flat); }
+.cp-tile:hover { transform: translateY(-2px); border-color: var(--cp-border); }
+.cp-tile.gain { background: color-mix(in srgb, var(--cp-gain) calc(14% + var(--i) * 86%), var(--cp-flat)); }
+.cp-tile.loss { background: color-mix(in srgb, var(--cp-loss) calc(14% + var(--i) * 86%), var(--cp-flat)); }
+.cp-tile.empty { opacity: .55; }
+.cp-tile .top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.cp-tile .sym { font-weight: 700; font-size: 13px; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-tile .wt { font-size: 10px; opacity: .65; white-space: nowrap; }
+.cp-tile .bot { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; margin-top: 12px; }
+.cp-tile .ltp { font-size: 14px; } .cp-tile .chg { font-size: 13px; }
+.cp-table { width: 100%; border-collapse: collapse; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden; }
+.cp-table th, .cp-table td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--cp-border); }
+.cp-table th { color: var(--cp-muted); font-weight: 500; font-size: 12px; background: var(--cp-bg); }
+.cp-table th:nth-child(-n+2), .cp-table td:nth-child(-n+2) { text-align: left; }
+.cp-table td:first-child { color: var(--cp-muted); width: 36px; }
+.cp-foot { color: var(--cp-muted); font-size: 12px; margin: 0; }
+.cp-empty { text-align: center; color: var(--cp-muted); padding: 40px 0; background: var(--cp-surface); border: 1px dashed var(--cp-border); border-radius: 10px; }
