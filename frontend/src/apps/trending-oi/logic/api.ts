@@ -1,5 +1,8 @@
 // src/apps/trending-oi/logic/api.ts
 // Types + calls for the Python backend. The Dhan token never reaches the browser.
+import { ApiError, getJson } from '../../../shared/api';
+
+export { ApiError };
 
 export interface DayBreak {
   type: 'DHB' | 'DLB'; // day high break / day low break of the index
@@ -46,29 +49,6 @@ export interface ToiMeta {
 export interface ToiResponse {
   meta: ToiMeta;
   rows: ToiRow[];
-}
-
-export class ApiError extends Error {}
-
-async function getJson<T>(base: string, path: string, signal?: AbortSignal): Promise<T> {
-  const url = base.replace(/\/+$/, '') + path;
-  let res: Response;
-  try {
-    res = await fetch(url, { signal });
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e;
-    throw new ApiError(`Cannot reach the backend at ${base}. Is "python main.py" running?`);
-  }
-  if (!res.ok) {
-    let detail = '';
-    try {
-      detail = (await res.json())?.detail ?? '';
-    } catch {
-      /* body was not JSON */
-    }
-    throw new ApiError(detail || `Backend returned HTTP ${res.status}.`);
-  }
-  return (await res.json()) as T;
 }
 
 export async function fetchExpiries(base: string, symbol: string, signal?: AbortSignal): Promise<string[]> {

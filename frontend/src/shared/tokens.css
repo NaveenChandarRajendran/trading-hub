@@ -29,6 +29,10 @@
   /* option sides (tints only) */
   --call-soft: #fdf1ef;
   --put-soft: #eef8f1;
+  /* P&L heatmap (calendar): 1 = small, 4 = large win / loss */
+  --heat-empty: #eceff2;
+  --heat-up-1: #c7ecd5; --heat-up-2: #8fd4a9; --heat-up-3: #3fae6f; --heat-up-4: #137a43;
+  --heat-down-1: #f8d3d0; --heat-down-2: #f0a29c; --heat-down-3: #dd5c55; --heat-down-4: #a8302c;
 
   /* type scale */
   --font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -42,6 +46,7 @@
   --control-h: 30px; --row-h: 28px; --header-h: 32px;
   /* elevation: popovers and menus only */
   --shadow-pop: 0 4px 16px rgb(16 24 40 / 0.10), 0 1px 3px rgb(16 24 40 / 0.08);
+  --backdrop: rgb(16 24 40 / 0.32); /* behind modal dialogs */
   --focus-ring: 0 0 0 3px var(--accent-soft);
   color-scheme: light;
 }
@@ -67,6 +72,10 @@
   --warn-soft: #2e2615;
   --call-soft: #261a1a;
   --put-soft: #16231b;
+  --heat-empty: #23272d;
+  --heat-up-1: #173a26; --heat-up-2: #1f6a3e; --heat-up-3: #2e9a5b; --heat-up-4: #4fd08a;
+  --heat-down-1: #45201f; --heat-down-2: #7a2f2c; --heat-down-3: #b8433e; --heat-down-4: #f0706b;
   --shadow-pop: 0 6px 20px rgb(0 0 0 / 0.45);
+  --backdrop: rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }

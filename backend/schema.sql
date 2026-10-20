@@ -26,3 +26,66 @@ CREATE TABLE IF NOT EXISTS toi_snapshot (
     put_ltp_chg   double precision NOT NULL,
     PRIMARY KEY (symbol, expiry, ts)
 );
+
+-- Paper trading (simulation only). Prefixed pt_. Quantities in units (lots x lot size), money in rupees.
+CREATE TABLE IF NOT EXISTS pt_accounts (
+    id           serial           PRIMARY KEY,
+    capital      double precision NOT NULL,           -- starting virtual capital
+    created_at   timestamptz      NOT NULL DEFAULT now(),
+    archived_at  timestamptz                          -- set by "Reset account"; history stays queryable
+);
+
+CREATE TABLE IF NOT EXISTS pt_orders (
+    account_id      integer          NOT NULL REFERENCES pt_accounts(id),
+    id              text             NOT NULL,        -- PT20261021-0001
+    trade_date      date             NOT NULL,        -- IST trading day
+    security_id     bigint           NOT NULL,
+    side            text             NOT NULL,        -- BUY | SELL
+    order_type      text             NOT NULL,        -- MARKET | LIMIT | SL | SL-M
+    lots            integer          NOT NULL,
+    lot_size        integer          NOT NULL,
+    price           double precision,
+    trigger_price   double precision,
+    status          text             NOT NULL,        -- PENDING | TRIGGERED | FILLED | CANCELLED | REJECTED
+    avg_price       double precision,
+    slippage_capped boolean          NOT NULL DEFAULT false,
+    reason          text             NOT NULL DEFAULT '',
+    blocked         double precision NOT NULL DEFAULT 0,
+    created_at      timestamptz      NOT NULL,
+    updated_at      timestamptz      NOT NULL,
+    filled_at       timestamptz,
+    PRIMARY KEY (account_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS pt_trades (                -- one row per fill
+    account_id   integer          NOT NULL REFERENCES pt_accounts(id),
+    id           text             NOT NULL,           -- TR20261021-0001
+    order_id     text             NOT NULL,
+    trade_date   date             NOT NULL,
+    security_id  bigint           NOT NULL,
+    side         text             NOT NULL,
+    qty          integer          NOT NULL,
+    price        double precision NOT NULL,           -- average fill price
+    value        double precision NOT NULL,           -- price x qty
+    brokerage    double precision NOT NULL,
+    stt          double precision NOT NULL,
+    transaction  double precision NOT NULL,
+    sebi         double precision NOT NULL,
+    stamp        double precision NOT NULL,
+    gst          double precision NOT NULL,
+    traded_at    timestamptz      NOT NULL,
+    PRIMARY KEY (account_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS pt_positions (             -- day position per instrument, for the P&L report
+    account_id   integer          NOT NULL REFERENCES pt_accounts(id),
+    trade_date   date             NOT NULL,
+    security_id  bigint           NOT NULL,
+    lot_size     integer          NOT NULL,
+    buy_qty      integer          NOT NULL,
+    sell_qty     integer          NOT NULL,
+    avg_buy      double precision NOT NULL,
+    avg_sell     double precision NOT NULL,
+    realized     double precision NOT NULL,
+    PRIMARY KEY (account_id, trade_date, security_id)
+);
