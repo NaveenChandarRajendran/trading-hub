@@ -1,0 +1,82 @@
+/* Trading Hub shared component styles. Copy to frontend/src/shared/ui/ui.css (import once in main.tsx after tokens.css).
+   Uses tokens only. Apps add their own CSS only for layout specific to that app. */
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-4); }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.card-title { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.card-foot { margin: var(--sp-3) 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); }
+.toolbar-end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
+
+.field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-3); font-weight: 500; }
+.field select, .field input { height: var(--control-h); }
+select, input, textarea {
+  font: inherit; font-size: var(--fs-md); color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 0 var(--sp-2);
+  transition: border-color .12s, box-shadow .12s;
+}
+textarea { padding: var(--sp-2); font-family: var(--font-mono); font-size: var(--fs-sm); }
+select:hover, input:hover, textarea:hover { border-color: var(--border-strong); }
+select:focus, input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+.btn {
+  height: var(--control-h); padding: 0 var(--sp-3); border-radius: var(--r-md); cursor: pointer;
+  font: inherit; font-weight: 500; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; gap: var(--sp-1); transition: border-color .12s, background .12s;
+}
+.btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.icon { width: var(--control-h); padding: 0; justify-content: center; }
+
+.seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--r-md); height: var(--control-h); }
+.seg button { border: 0; background: none; color: var(--text-2); padding: 0 var(--sp-3); border-radius: var(--r-sm); cursor: pointer; font: inherit; font-weight: 500; }
+.seg button.on { background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--border); }
+
+.pill { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 1px var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; white-space: nowrap; }
+.pill.up { background: var(--up-soft); color: var(--up); }
+.pill.down { background: var(--down-soft); color: var(--down); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.neutral { background: var(--surface-2); color: var(--text-2); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--text-3); }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: var(--fs-sm); color: var(--text-3); }
+.stat-value { font-size: var(--fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-delta { font-size: var(--fs-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.dot.live { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+.dot.stale { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.dot.error { background: var(--down); box-shadow: 0 0 0 3px var(--down-soft); }
+
+.dots { display: inline-flex; gap: 3px; margin-left: var(--sp-1); }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); }
+.dots i.on.up { background: var(--up); } .dots i.on.down { background: var(--down); }
+
+.alert { border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); border: 1px solid transparent; }
+.alert.error { background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 30%, transparent); }
+.alert.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.alert.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+.empty { text-align: center; color: var(--text-3); padding: var(--sp-6) var(--sp-4); border: 1px dashed var(--border); border-radius: var(--r-lg); }
+
+.split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr); gap: var(--sp-4); }
+@media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+
+table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.t th, table.t td { height: var(--row-h); padding: 0 var(--sp-2); border-bottom: 1px solid var(--border); text-align: right; }
+table.t th:first-child, table.t td:first-child { text-align: left; }
+table.t th { height: var(--header-h); background: var(--surface-2); color: var(--text-3); font-weight: 500; font-size: var(--fs-sm); }
+table.t tr:hover td { background: var(--surface-2); }
+table.t tr.hl td { background: var(--accent-soft); }
