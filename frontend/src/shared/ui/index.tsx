@@ -24,3 +24,30 @@ export function Alert({ kind, children }: { kind: 'error' | 'warn' | 'info'; chi
 export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
+
+/** 2-5 mutually exclusive options (view, order type, interval). */
+export function Segmented<T extends string>({ options, value, onChange, label }: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  label?: string;
+}) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value}
+          className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Status dot + text, e.g. Live · 11:05:03 / Reconnecting / Market closed. */
+export function Status({ kind, children }: { kind: 'live' | 'stale' | 'error' | 'idle'; children: ReactNode }) {
+  return <span className="status"><span className={`dot ${kind === 'idle' ? '' : kind}`} />{children}</span>;
+}
+
+export { Heatmap } from './Heatmap';
+export type { HeatCell, HeatLevel } from './Heatmap';

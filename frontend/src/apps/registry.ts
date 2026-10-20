@@ -39,6 +39,13 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./trending-oi/TrendingOiApp')),
   },
   {
+    id: 'paper-trade',
+    name: 'Paper Trading',
+    path: '/paper-trade',
+    icon: '⇄',
+    component: lazy(() => import('./paper-trade/PaperTradeApp')),
+  },
+  {
     id: 'index-components',
     name: 'Index Components',
     path: '/index-components',
