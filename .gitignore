@@ -1,1 +1,11 @@
-".env*" 
+# Secrets: Dhan token, DB passwords. Never commit.
+.env
+.env.*
+
+# Python
+_pycache_/
+*.pyc
+.pytest_cache/
+
+# Backend runtime data: caches, snapshots, paper.json (see CLAUDE.md: data/ is never committed)
+backend/data/
