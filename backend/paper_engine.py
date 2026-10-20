@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, time
 
 from holidays import NSE_HOLIDAYS
-from paper_charges import order_charges, r2
+from paper_charges import Charges, order_charges, r2
 
 BUY, SELL = "BUY", "SELL"
 MARKET, LIMIT, SL, SLM = "MARKET", "LIMIT", "SL", "SL-M"
@@ -112,6 +112,13 @@ class Order:
             d[k] = d[k].isoformat() if d[k] else None
         return d
 
+    @classmethod
+    def from_dict(cls, d):
+        d = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        for k in ("created_at", "updated_at", "filled_at"):
+            d[k] = datetime.fromisoformat(d[k]) if d.get(k) else None
+        return cls(**d)
+
 
 @dataclass
 class Trade:
@@ -129,6 +136,12 @@ class Trade:
         return {"id": self.id, "order_id": self.order_id, "security_id": self.security_id, "side": self.side,
                 "qty": self.qty, "price": self.price, "value": self.value, "charges": self.charges.to_dict(),
                 "time": self.time.isoformat()}
+
+    @classmethod
+    def from_dict(cls, d):
+        c = {k: v for k, v in d["charges"].items() if k != "total"}
+        return cls(d["id"], d["order_id"], d["security_id"], d["side"], d["qty"], d["price"], d["value"],
+                   Charges(**c), datetime.fromisoformat(d["time"]))
 
 
 @dataclass
@@ -174,11 +187,15 @@ class Event:
 
 
 class PaperEngine:
-    def __init__(self, capital, holidays=NSE_HOLIDAYS):
+    """One trading day of one account. `capital` is the money available at the start of the day.
+    With `day` set, order / trade IDs carry the date (PT20261021-0001), so they stay unique across days."""
+
+    def __init__(self, capital, holidays=NSE_HOLIDAYS, day=None):
         if capital <= 0:
             raise ValueError("capital must be positive")
         self.capital = float(capital)
         self.holidays = holidays
+        self.day = day
         self.orders = {}      # id -> Order
         self.trades = []      # [Trade]
         self.positions = {}   # security_id -> Position
@@ -214,7 +231,27 @@ class PaperEngine:
 
     def _next_id(self, prefix):
         self._seq[prefix] += 1
-        return f"{prefix}{self._seq[prefix]:05d}"
+        n = self._seq[prefix]
+        return f"{prefix}{self.day:%Y%m%d}-{n:04d}" if self.day else f"{prefix}{n:05d}"
+
+    def restore(self, orders, trades):
+        """Rebuilds the day from stored order and trade dicts (backend restart). Positions are recomputed from
+        the trades, so they always agree with them."""
+        self.orders = {d["id"]: Order.from_dict(d) for d in orders}
+        self.trades = sorted((Trade.from_dict(d) for d in trades), key=lambda t: t.time)
+        self.positions = {}
+        for t in self.trades:
+            o = self.orders.get(t.order_id)
+            pos = self.positions.setdefault(t.security_id, Position(t.security_id, o.lot_size if o else 1))
+            if t.side == BUY:
+                pos.buy_qty, pos.buy_value = pos.buy_qty + t.qty, r2(pos.buy_value + t.value)
+            else:
+                pos.sell_qty, pos.sell_value = pos.sell_qty + t.qty, r2(pos.sell_value + t.value)
+        for prefix, ids in (("PT", list(self.orders)), ("TR", [t.id for t in self.trades])):
+            # "PT20261021-0007" or "PT00007" -> 7
+            self._seq[prefix] = max((int(i.rsplit("-", 1)[-1] if "-" in i else i[len(prefix):]) for i in ids), default=0)
+        squared = [o.created_at.date() for o in self.orders.values() if o.reason.startswith("Auto square-off")]
+        self.squared_off_on = squared[0] if squared else None
 
     def _pending_sell_qty(self, security_id, exclude=None):
         return sum(o.qty for o in self.orders.values()

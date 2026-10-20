@@ -126,6 +126,35 @@ def test_slm_sell_triggers_on_ltp_and_fills_at_market():
     assert o.status == FILLED and o.avg_price == pytest.approx(89.3333, abs=1e-4)
 
 
+def test_stop_triggers_exactly_at_the_trigger_ltp():
+    # Naveen: the stop-loss must trigger at exactly the LTP entered (LTP <= trigger for a sell stop)
+    e = engine()
+    bought(e)
+    o, _ = e.place_order(SID, SELL, 1, LOT, SLM, at("09:40"), trigger_price=90)
+    e.on_tick(SID, book(90.05, bids=[(90, 100)], asks=[(90.1, 100)]), at("09:41"))
+    assert o.status == PENDING
+    e.on_tick(SID, book(90, bids=[(89.95, 100)], asks=[(90.05, 100)]), at("09:42"))
+    assert (o.status, o.avg_price) == (FILLED, 89.95)
+
+
+def test_restore_rebuilds_the_day():
+    day = at("09:20").date()
+    e = PaperEngine(100_000, day=day)
+    e.on_tick(SID, book(100, bids=[(99.9, 500)], asks=[(100, 500)]), at("09:20"))
+    bought(e)
+    target, _ = e.place_order(SID, SELL, 1, LOT, LIMIT, at("09:40"), price=130)
+    assert target.id == "PT20261021-0002"
+
+    r = PaperEngine(100_000, day=day)
+    r.restore([o.to_dict() for o in e.orders.values()], [t.to_dict() for t in e.trades])
+    assert r.funds() == e.funds()
+    assert r.positions[SID].open_qty == 75 and r.orders[target.id].status == PENDING
+    r.on_tick(SID, book(130, bids=[(130, 100)], asks=[(130.05, 100)]), at("10:00"))
+    assert r.orders[target.id].status == FILLED
+    nxt, _ = r.place_order(SID, BUY, 1, LOT, LIMIT, at("10:01"), price=95)
+    assert nxt.id == "PT20261021-0003" and r.trades[-1].id == "TR20261021-0002"
+
+
 def test_sl_sell_triggers_then_rests_as_limit():
     e = engine()
     bought(e)
