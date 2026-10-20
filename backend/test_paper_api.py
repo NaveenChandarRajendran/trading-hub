@@ -52,6 +52,14 @@ class FakeInstruments:
     def get(self, sid):
         return INSTRUMENTS.get(int(sid))
 
+    def expiries(self, symbol, today=None):
+        return ["2026-10-27", "2026-11-03"] if symbol == "NIFTY" else ["2026-10-27"]
+
+    def chain(self, symbol, expiry):
+        if symbol != "NIFTY" or expiry != "2026-10-27":
+            return []
+        return [{"strike": 25100.0, "ce": INSTRUMENTS[CE], "pe": INSTRUMENTS[PE]}]
+
 
 class Clock:
     def __init__(self):
@@ -299,3 +307,20 @@ def test_token_endpoint_updates_feed(env):
     c = TestClient(create_app(Tracker(TokenClient(), data_dir=tmp, clock=clock), paper=svc))
     assert c.post("/api/token", json={"accessToken": "t" * 40}).json() == {"ok": True}
     assert feed.token == "t" * 40
+
+
+def test_chain_from_instrument_list(env):
+    c, *_ = env
+    r = c.get("/api/paper/chain?symbol=nifty").json()
+    assert (r["expiry"], r["expiries"], r["lotSize"]) == ("2026-10-27", ["2026-10-27", "2026-11-03"], 65)
+    assert r["spot"] == {"segment": "IDX_I", "securityId": 13}
+    assert r["rows"] == [{"strike": 25100.0, "ce": {"securityId": CE, "name": "NIFTY 27 OCT 25100 CALL"},
+                          "pe": {"securityId": PE, "name": "NIFTY 27 OCT 25100 PUT"}}]
+    assert c.get("/api/paper/chain?symbol=NIFTY&expiry=2026-11-03").status_code == 404
+    assert c.get("/api/paper/chain?symbol=FINNIFTY").status_code == 400
+
+
+def test_pnl_meta_lists_holidays(env):
+    c, *_ = env
+    meta = c.get("/api/paper/pnl?from=2026-10-01&to=2026-10-31").json()["meta"]
+    assert meta["holidays"] == ["2026-10-02", "2026-10-20"]

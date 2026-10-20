@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
 from paper_engine import OPEN_STATES, OrderError, PaperEngine
@@ -455,7 +456,29 @@ def register(app, svc):
         start = _day(from_day, "from") or (Date.fromisoformat(to_day) - timedelta(days=365)).isoformat()
         if start > to_day:
             raise HTTPException(400, "from must not be after to")
-        return {"meta": {**svc.meta(), "from": start, "to": to_day}, "rows": svc.pnl(start, to_day)}
+        holidays = sorted(d for d in svc.holidays if start <= d <= to_day)
+        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays}, "rows": svc.pnl(start, to_day)}
+
+    @app.get("/api/paper/chain")
+    def chain(symbol: str = "NIFTY", expiry: str = ""):
+        """Strikes with CE / PE security IDs and lot size, from Dhan's instrument list (no rate-limited REST call).
+        Live prices come over /ws/paper: subscribe to the strikes shown and to the index (spotSecurityId)."""
+        symbol = symbol.upper()
+        if symbol not in SPOT_IDS:
+            raise HTTPException(400, f"symbol must be one of {list(SPOT_IDS)}")
+        try:
+            expiries = svc.instruments.expiries(symbol, svc.clock().date().isoformat())
+            expiry = _day(expiry, "expiry") or (expiries[0] if expiries else "")
+            rows = svc.instruments.chain(symbol, expiry) if expiry else []
+        except Exception as e:
+            raise HTTPException(502, f"could not load Dhan instrument list: {e}")
+        if expiry and not rows:
+            raise HTTPException(404, f"no {symbol} options for expiry {expiry}")
+        slim = lambda leg: {"securityId": leg["securityId"], "name": leg["name"]} if leg else None  # noqa: E731
+        lot = next((r[k]["lotSize"] for r in rows for k in ("ce", "pe") if r[k]), None)
+        return {"meta": svc.meta(), "symbol": symbol, "expiry": expiry, "expiries": expiries, "lotSize": lot,
+                "spot": {"segment": "IDX_I", "securityId": SPOT_IDS[symbol]},
+                "rows": [{"strike": r["strike"], "ce": slim(r["ce"]), "pe": slim(r["pe"])} for r in rows]}
 
     @app.get("/api/paper/trades")
     def trades(date: str = ""):

@@ -132,18 +132,41 @@ class OptionInstruments:
         with open(self.cache_path, "w", encoding="utf-8") as f:
             json.dump({"day": self._day, "rows": rows}, f)
 
+    def _fresh(self, unknown_key=None):
+        """Downloads when there is no cache, the cache is from an earlier IST day, or an unknown ID was asked for
+        (at most once an hour). Call with self._lock held."""
+        stale = self._day != self._today()
+        unknown = (unknown_key is not None and unknown_key not in self._rows
+                   and time.time() - self._tried_unknown > RETRY_UNKNOWN_SECONDS)
+        if not self._rows or stale or unknown:
+            if unknown:
+                self._tried_unknown = time.time()
+            try:
+                self._download()
+            except Exception:
+                if not self._rows:
+                    raise
+
     def get(self, security_id):
         """Option details, or None if the ID is not a NIFTY / BANKNIFTY option."""
         key = str(int(security_id))
         with self._lock:
-            stale = self._day != self._today()
-            unknown = key not in self._rows and time.time() - self._tried_unknown > RETRY_UNKNOWN_SECONDS
-            if not self._rows or stale or unknown:
-                if unknown:
-                    self._tried_unknown = time.time()
-                try:
-                    self._download()
-                except Exception:
-                    if not self._rows:
-                        raise
+            self._fresh(key)
             return self._rows.get(key)
+
+    def expiries(self, symbol, today=None):
+        """Expiry dates ('YYYY-MM-DD') from today on, nearest first."""
+        today = today or self._today()
+        with self._lock:
+            self._fresh()
+            return sorted({r["expiry"] for r in self._rows.values() if r["symbol"] == symbol and r["expiry"] >= today})
+
+    def chain(self, symbol, expiry):
+        """[{"strike", "ce": {...} | None, "pe": {...} | None}] ascending, for one symbol and expiry."""
+        with self._lock:
+            self._fresh()
+            rows = {}
+            for r in self._rows.values():
+                if r["symbol"] == symbol and r["expiry"] == expiry:
+                    rows.setdefault(r["strike"], {"strike": r["strike"], "ce": None, "pe": None})[r["optionType"].lower()] = r
+            return [rows[k] for k in sorted(rows)]
