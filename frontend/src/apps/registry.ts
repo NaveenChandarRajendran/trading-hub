@@ -25,6 +25,13 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./sensibull-oi/SensibullOiApp')),
   },
   {
+    id: 'oi-support-resistance',
+    name: 'OI Support & Resistance',
+    path: '/oi-support-resistance',
+    icon: '⊟',
+    component: lazy(() => import('./oi-support-resistance/OiSupportResistanceApp')),
+  },
+  {
     id: 'trending-oi',
     name: 'Trending OI',
     path: '/trending-oi',

@@ -1,0 +1,83 @@
+/* Trading Hub shared component styles (from the trading-hub-feature skill's assets/ui.css).
+   Scoped under .ds so the older apps, whose index.css reuses some of these class names, are not restyled.
+   An app opts in by rendering inside <div className="ds">. Drop the scope once every app is migrated. */
+.ds .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-4); }
+.ds .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.ds .card-title { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.ds .card-foot { margin: var(--sp-3) 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+
+.ds .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); }
+.ds .toolbar-end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
+
+.ds .field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-3); font-weight: 500; }
+.ds .field select, .ds .field input { height: var(--control-h); }
+.ds select, .ds input, .ds textarea {
+  font: inherit; font-size: var(--fs-md); color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 0 var(--sp-2);
+  transition: border-color .12s, box-shadow .12s;
+}
+.ds textarea { padding: var(--sp-2); font-family: var(--font-mono); font-size: var(--fs-sm); }
+.ds select:hover, .ds input:hover, .ds textarea:hover { border-color: var(--border-strong); }
+.ds select:focus, .ds input:focus, .ds textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+.ds .btn {
+  text-decoration: none;
+  height: var(--control-h); padding: 0 var(--sp-3); border-radius: var(--r-md); cursor: pointer;
+  font: inherit; font-weight: 500; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; gap: var(--sp-1); transition: border-color .12s, background .12s;
+}
+.ds .btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ds .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ds .btn:disabled { opacity: .5; cursor: default; }
+.ds .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.ds .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.ds .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.ds .btn.ghost:hover { background: var(--surface-2); }
+.ds .btn.icon { width: var(--control-h); padding: 0; justify-content: center; }
+
+.ds .seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--r-md); height: var(--control-h); }
+.ds .seg button { border: 0; background: none; color: var(--text-2); padding: 0 var(--sp-3); border-radius: var(--r-sm); cursor: pointer; font: inherit; font-weight: 500; }
+.ds .seg button.on { background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--border); }
+
+.ds .pill { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 1px var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; white-space: nowrap; }
+.ds .pill.up { background: var(--up-soft); color: var(--up); }
+.ds .pill.down { background: var(--down-soft); color: var(--down); }
+.ds .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.ds .pill.neutral { background: var(--surface-2); color: var(--text-2); }
+.ds .pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+.ds .num { font-variant-numeric: tabular-nums; }
+.ds .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--text-3); }
+
+.ds .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
+.ds .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: 2px; }
+.ds .stat-label { font-size: var(--fs-sm); color: var(--text-3); }
+.ds .stat-value { font-size: var(--fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ds .stat-delta { font-size: var(--fs-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.ds .status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.ds .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.ds .dot.live { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+.ds .dot.stale { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.ds .dot.error { background: var(--down); box-shadow: 0 0 0 3px var(--down-soft); }
+
+.ds .dots { display: inline-flex; gap: 3px; margin-left: var(--sp-1); }
+.ds .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); }
+.ds .dots i.on.up { background: var(--up); } .dots i.on.down { background: var(--down); }
+
+.ds .alert { border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); border: 1px solid transparent; }
+.ds .alert.error { background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 30%, transparent); }
+.ds .alert.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.ds .alert.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+.ds .empty { text-align: center; color: var(--text-3); padding: var(--sp-6) var(--sp-4); border: 1px dashed var(--border); border-radius: var(--r-lg); }
+
+.ds .split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr); gap: var(--sp-4); }
+@media (max-width: 1000px) { .ds .split { grid-template-columns: 1fr; } }
+
+.ds table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ds table.t th, .ds table.t td { height: var(--row-h); padding: 0 var(--sp-2); border-bottom: 1px solid var(--border); text-align: right; }
+.ds table.t th:first-child, .ds table.t td:first-child { text-align: left; }
+.ds table.t th { height: var(--header-h); background: var(--surface-2); color: var(--text-3); font-weight: 500; font-size: var(--fs-sm); }
+.ds table.t tr:hover td { background: var(--surface-2); }
+.ds table.t tr.hl td { background: var(--accent-soft); }

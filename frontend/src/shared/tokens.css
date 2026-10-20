@@ -1,0 +1,72 @@
+/* Trading Hub design tokens: the ONLY place colors and scale values are defined.
+   Copy to frontend/src/shared/tokens.css and import in main.tsx before index.css.
+   Theme switches via <html data-theme="light|dark"> (src/shared/theme.tsx). */
+
+:root {
+  /* surfaces */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f5;
+  /* lines */
+  --border: #e4e7eb;
+  --border-strong: #cdd2d8;
+  /* text */
+  --text: #2b2f36;
+  --text-2: #4b525c;
+  --text-3: #8a919b;
+  /* accent (Kite blue) */
+  --accent: #387ed1;
+  --accent-hover: #2f6db8;
+  --accent-soft: #e8f1fb;
+  --on-accent: #ffffff;
+  /* meaning */
+  --up: #138a4e;
+  --up-soft: #e6f5ec;
+  --down: #d13f3f;
+  --down-soft: #fcebea;
+  --warn: #b7791f;
+  --warn-soft: #fdf3e1;
+  /* option sides (tints only) */
+  --call-soft: #fdf1ef;
+  --put-soft: #eef8f1;
+
+  /* type scale */
+  --font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 20px;
+  /* spacing (4px scale) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  /* radius */
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px;
+  /* density */
+  --control-h: 30px; --row-h: 28px; --header-h: 32px;
+  /* elevation: popovers and menus only */
+  --shadow-pop: 0 4px 16px rgb(16 24 40 / 0.10), 0 1px 3px rgb(16 24 40 / 0.08);
+  --focus-ring: 0 0 0 3px var(--accent-soft);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #111316;
+  --surface: #181b1f;
+  --surface-2: #20242a;
+  --border: #2a2f36;
+  --border-strong: #3a4049;
+  --text: #e3e6ea;
+  --text-2: #b5bbc3;
+  --text-3: #7f8792;
+  --accent: #5b9bf0;
+  --accent-hover: #74abf3;
+  --accent-soft: #1b2b40;
+  --on-accent: #0d1420;
+  --up: #3cc47c;
+  --up-soft: #15291f;
+  --down: #f0706b;
+  --down-soft: #321b1c;
+  --warn: #e0a84a;
+  --warn-soft: #2e2615;
+  --call-soft: #261a1a;
+  --put-soft: #16231b;
+  --shadow-pop: 0 6px 20px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
