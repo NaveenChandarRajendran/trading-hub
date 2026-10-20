@@ -14,6 +14,7 @@ Endpoints:
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
+    /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
 
 Storage: set DATABASE_URL (e.g. postgresql://USER:PASSWORD@localhost:5432/algo_trading) to keep every snapshot in
 Postgres. Without it the backend falls back to JSON files in ./data.
@@ -32,9 +33,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
+import paper_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
-from instruments import SecurityIds
-from store import IST, JsonStore, PgStore
+from dhan_feed import DhanFeed
+from instruments import OptionInstruments, SecurityIds
+from store import IST, JsonStore, PaperJsonStore, PaperPgStore, PgStore
 from tracker import Tracker
 
 ALLOWED_INTERVALS = (1, 3, 5, 10, 15, 30)
@@ -48,7 +51,8 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None):
+def create_app(tracker, track=(), security_ids=None, paper=None):
+    """paper: optional paper_api.PaperService; its routes and feed are added when given."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
     quote_lock = threading.Lock()
@@ -74,8 +78,12 @@ def create_app(tracker, track=(), security_ids=None):
     @asynccontextmanager
     async def lifespan(_app):
         tracker.start()
+        if paper:
+            paper.start()
         threading.Thread(target=start_default_tracking, daemon=True).start()
         yield
+        if paper:
+            paper.stop()
         tracker.stop()
 
     app = FastAPI(title="Trending OI", lifespan=lifespan)
@@ -204,6 +212,7 @@ def create_app(tracker, track=(), security_ids=None):
             "tokenExpired": tracker.client.token_expired,
             "hasCredentials": bool(tracker.client.client_id and tracker.client.token),
             "storage": tracker.store.kind,
+            "paper": {"storage": paper.store.kind, "feedConnected": paper.feed.status["connected"]} if paper else None,
         }
 
     @app.post("/api/token")
@@ -211,8 +220,12 @@ def create_app(tracker, track=(), security_ids=None):
         if len(body.accessToken.strip()) < 20:
             raise HTTPException(400, "that does not look like a Dhan access token")
         tracker.client.set_token(body.accessToken)
+        if paper:
+            paper.feed.set_token(body.accessToken)
         return {"ok": True}
 
+    if paper:
+        paper_api.register(app, paper)
     return app
 
 
@@ -236,12 +249,18 @@ def main():
         except Exception as e:  # do not silently fall back: the user expects Postgres
             sys.exit(f"Cannot connect to Postgres using DATABASE_URL: {e}")
         logging.getLogger("main").info("Storing snapshots in Postgres")
+        paper_store = PaperPgStore(store)
     else:
         store = JsonStore(a.data_dir)
         logging.getLogger("main").warning("DATABASE_URL is not set: using JSON files in %s (set it to use Postgres)", a.data_dir)
-    tracker = Tracker(DhanClient(), store=store, each_side=a.strikes, force=a.force)
+        paper_store = PaperJsonStore(a.data_dir)
+    client = DhanClient()
+    tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force)
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]
-    uvicorn.run(create_app(tracker, track), host=a.host, port=a.port, log_level="info")
+    paper = paper_api.PaperService(
+        paper_store, DhanFeed(client.client_id, client.token),
+        OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")))
+    uvicorn.run(create_app(tracker, track, paper=paper), host=a.host, port=a.port, log_level="info")
 
 
 if __name__ == "__main__":
