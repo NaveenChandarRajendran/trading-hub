@@ -1,0 +1,32 @@
+/* OI Support & Resistance: layout only. Colors and sizes come from tokens. */
+.osr { display: flex; flex-direction: column; gap: var(--sp-4); }
+.osr textarea { width: 100%; min-height: 110px; resize: vertical; }
+.osr .osr-url { flex: 1; min-width: 280px; }
+.osr .osr-url input { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.osr .osr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.osr .osr-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); margin-top: var(--sp-3); }
+.osr .osr-stack { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.osr .osr-stack:empty { display: none; }
+
+.osr .osr-settings { position: relative; }
+.osr .osr-pop {
+  position: absolute; right: 0; top: calc(100% + var(--sp-1)); z-index: 10; min-width: 220px;
+  display: flex; flex-direction: column; gap: var(--sp-3); box-shadow: var(--shadow-pop);
+}
+
+.osr .osr-asof { font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--sp-3); }
+.osr .osr-zones { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+@media (max-width: 900px) { .osr .osr-zones { grid-template-columns: 1fr; } }
+.osr .osr-res { border-left: 3px solid var(--down); }
+.osr .osr-sup { border-left: 3px solid var(--up); }
+.osr .osr-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.osr .osr-line p { margin: 0; }
+
+.osr .osr-scroll { overflow-x: auto; }
+.osr table.t td, .osr table.t th { white-space: nowrap; }
+.osr table.t tr.osr-group td { background: var(--surface-2); color: var(--text-2); font-weight: 600; font-size: var(--fs-sm); text-align: left; }
+.osr table.osr-cmp td { height: auto; padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+.osr .osr-was { display: block; font-size: var(--fs-xs); color: var(--text-3); }
+
+.osr details summary { cursor: pointer; color: var(--text-3); font-size: var(--fs-sm); margin-top: var(--sp-3); }
+.osr details ol { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }

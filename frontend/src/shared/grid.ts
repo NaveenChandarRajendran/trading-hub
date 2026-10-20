@@ -15,3 +15,7 @@ export const useGridTheme = () => (useTheme().mode === 'dark' ? dark : light);
 
 export const inr = (d = 0) => (v: number | null | undefined) =>
   v == null ? '' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/** Change with an explicit sign and a real minus: +1,250 / −830 / 0. */
+export const signed = (d = 0) => (v: number | null | undefined) =>
+  v == null ? '' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${inr(d)(Math.abs(v))}`;
