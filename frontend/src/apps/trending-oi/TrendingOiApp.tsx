@@ -3,8 +3,9 @@ import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, ICellRendererParams, ValueFormatterParams } from 'ag-grid-community';
 import { inr, useGridTheme } from '../../shared/grid';
 import { SYMBOLS } from '../option-strategy/config/expiries';
-import { DEFAULT_BACKEND, INTERVALS, REFRESH_MS } from './config/settings';
+import { AUTO_HEIGHT_MAX_ROWS, DEFAULT_BACKEND, GRID_MAX_HEIGHT, INTERVALS, REFRESH_MS } from './config/settings';
 import { ApiError, fetchExpiries, fetchTrendingOi, strengthDots, type ToiResponse, type ToiRow } from './logic/api';
+import './trending-oi.css';
 
 const LS_BACKEND = 'trending-oi.backend';
 type Cell = ICellRendererParams<ToiRow>;
@@ -41,39 +42,43 @@ function DirectionCell({ data }: Cell) {
   return <span className={`pill sm ${up ? 'bull' : 'bear'}`}>{up ? '↑' : '↓'} {inr(2)(data.directionPct)} %</span>;
 }
 
+/** Diff OI broke the day's high or low: soft-tint pill from the design system (cell carries `.ds`). */
 function DiffBreakCell({ value }: Cell) {
-  if (!value) return <span>-</span>;
-  return <span className={`pill sm ${value === 'HIGH' ? 'bull' : 'bear'}`}>Day {value === 'HIGH' ? 'High' : 'Low'} Break</span>;
+  if (!value) return <span className="toi-empty">-</span>;
+  const high = value === 'HIGH';
+  return <span className={`pill toi-pill wide ${high ? 'up' : 'down'}`}>Day {high ? 'High' : 'Low'} Break</span>;
 }
 
 function SentimentCell({ value }: Cell) {
-  return <span className={`pill ${value === 'Bullish' ? 'bull' : 'bear'}`}>{value}</span>;
+  return <span className={`pill toi-pill ${value === 'Bullish' ? 'up' : 'down'}`}>{value}</span>;
 }
 
 const left = { textAlign: 'left' } as const;
+// Design-system pills, centred in the cell (see trending-oi.css). `.ds` scopes the shared pill styles to these cells.
+const pillCell: ColDef<ToiRow> = { cellClass: ['ds', 'toi-center'], cellStyle: { textAlign: 'center' }, headerClass: 'toi-center-header' };
 
 const columns: ColDef<ToiRow>[] = [
-  { field: 'date', headerName: 'Date', width: 110, cellStyle: left, headerClass: '' },
-  { field: 'time', headerName: 'Time', width: 130, pinned: 'left', cellStyle: left, headerClass: '', cellRenderer: TimeCell },
-  { field: 'ltp', headerName: 'LTP', valueFormatter: num(2) },
-  { field: 'dayHLBreak', headerName: 'Day H/L Break', minWidth: 150, cellRenderer: SpotBreakCell },
-  { field: 'callChg', headerName: 'Chng. In Call OI', valueFormatter: num() },
-  { field: 'putChg', headerName: 'Chng. In Put OI', valueFormatter: num() },
-  { field: 'diffOi', headerName: 'Diff. in OI', valueFormatter: num(), cellClass: posNeg },
-  { field: 'strengthPct', headerName: 'Strength', minWidth: 130, cellRenderer: StrengthCell },
-  { field: 'directionPct', headerName: 'Direction of chng.', minWidth: 140, cellRenderer: DirectionCell },
-  { field: 'directionChg', headerName: 'Chng. In Direction', valueFormatter: num(), cellClass: posNeg },
-  { field: 'callLtpTotal', headerName: 'Total Call LTP', valueFormatter: num(2) },
-  { field: 'callLtpChg', headerName: 'Call LTP chng.', valueFormatter: num(2), cellClass: posNeg },
-  { field: 'cePeLtpChg', headerName: 'CE + PE LTP Chng.', valueFormatter: num(2), cellClass: posNeg },
-  { field: 'putLtpChg', headerName: 'Put LTP chng.', valueFormatter: num(2), cellClass: posNeg },
-  { field: 'putLtpTotal', headerName: 'Total Put LTP', valueFormatter: num(2) },
-  { field: 'netPcr', headerName: 'Net PCR', valueFormatter: (p) => (p.value == null ? '-' : inr(2)(p.value)) },
-  { field: 'dayHLDiffBreak', headerName: 'Day High/Low Diff. in OI', minWidth: 160, cellRenderer: DiffBreakCell },
-  { field: 'sentiment', headerName: 'Sentiment', cellRenderer: SentimentCell },
+  { field: 'date', headerName: 'Date', width: 105, cellStyle: left, headerClass: '' },
+  { field: 'time', headerName: 'Time', width: 120, pinned: 'left', cellStyle: left, headerClass: '', cellRenderer: TimeCell },
+  { field: 'ltp', headerName: 'LTP', headerTooltip: 'Index spot (LTP)', valueFormatter: num(2) },
+  { field: 'dayHLBreak', headerName: 'Day H/L Break', headerTooltip: "Index spot broke the day's high (D.H.B.) or low (D.L.B.) so far; the level is the old high / low", minWidth: 150, cellRenderer: SpotBreakCell },
+  { field: 'callChg', headerName: 'Chg Call OI', headerTooltip: "Change in call OI: sum of (CE OI − previous-day settled OI) over the fixed strikes (units)", valueFormatter: num() },
+  { field: 'putChg', headerName: 'Chg Put OI', headerTooltip: "Change in put OI: sum of (PE OI − previous-day settled OI) over the fixed strikes (units)", valueFormatter: num() },
+  { field: 'diffOi', headerName: 'Diff OI', headerTooltip: 'Diff. in OI = Chg Put OI − Chg Call OI', valueFormatter: num(), cellClass: posNeg },
+  { field: 'strengthPct', headerName: 'Strength', headerTooltip: 'Diff OI ÷ the larger of |Chg Call OI| and |Chg Put OI| × 100', minWidth: 130, cellRenderer: StrengthCell },
+  { field: 'directionPct', headerName: 'Dir Chg %', headerTooltip: "Direction of change: Chg Dir ÷ |previous row's Diff OI| × 100", minWidth: 130, cellRenderer: DirectionCell },
+  { field: 'directionChg', headerName: 'Chg Dir', headerTooltip: "Change in direction: Diff OI − previous row's Diff OI", valueFormatter: num(), cellClass: posNeg },
+  { field: 'callLtpTotal', headerName: 'Call LTP', headerTooltip: 'Total call LTP: sum of CE last prices over the fixed strikes', valueFormatter: num(2) },
+  { field: 'callLtpChg', headerName: 'Call LTP Chg', headerTooltip: 'Call LTP change: sum of (CE last price − previous close)', valueFormatter: num(2), cellClass: posNeg },
+  { field: 'cePeLtpChg', headerName: 'CE+PE LTP Chg', headerTooltip: 'Call LTP change + put LTP change', minWidth: 125, valueFormatter: num(2), cellClass: posNeg },
+  { field: 'putLtpChg', headerName: 'Put LTP Chg', headerTooltip: 'Put LTP change: sum of (PE last price − previous close)', valueFormatter: num(2), cellClass: posNeg },
+  { field: 'putLtpTotal', headerName: 'Put LTP', headerTooltip: 'Total put LTP: sum of PE last prices over the fixed strikes', valueFormatter: num(2) },
+  { field: 'netPcr', headerName: 'Net PCR', headerTooltip: 'Chg Put OI ÷ Chg Call OI', valueFormatter: (p) => (p.value == null ? '-' : inr(2)(p.value)) },
+  { field: 'dayHLDiffBreak', headerName: 'OI H/L Break', headerTooltip: "Day High/Low Diff. in OI: Diff OI broke the day's high or low so far", minWidth: 150, cellRenderer: DiffBreakCell, ...pillCell },
+  { field: 'sentiment', headerName: 'Sentiment', headerTooltip: 'Bullish if Diff OI > 0, otherwise Bearish', minWidth: 120, cellRenderer: SentimentCell, ...pillCell },
 ];
 
-const defaultColDef: ColDef = { resizable: true, flex: 1, minWidth: 115, wrapHeaderText: true, autoHeaderHeight: true, cellStyle: { textAlign: 'right' }, headerClass: 'ag-right-aligned-header' };
+const defaultColDef: ColDef = { resizable: true, flex: 1, minWidth: 105, cellStyle: { textAlign: 'right' }, headerClass: 'ag-right-aligned-header' };
 
 export default function TrendingOiApp() {
   const gridTheme = useGridTheme();
@@ -123,6 +128,7 @@ export default function TrendingOiApp() {
 
   const meta = data?.meta;
   const rows = data?.rows ?? [];
+  const autoHeight = rows.length <= AUTO_HEIGHT_MAX_ROWS;
 
   return (
     <>
@@ -174,8 +180,10 @@ export default function TrendingOiApp() {
           <h2 style={{ margin: 0 }}>{meta?.symbol ?? symbol} · Trending OI · {interval} min</h2>
           <button className="btn" onClick={() => gridRef.current?.api.exportDataAsCsv({ fileName: `${symbol}-${expiry}-trending-oi-${interval}m.csv` })} disabled={!rows.length}>Download CSV</button>
         </div>
-        <div style={{ height: 640 }}>
+        {/* Few rows: the grid grows with them (no empty area). Many rows: fixed height, scrolls. */}
+        <div style={{ height: autoHeight ? undefined : GRID_MAX_HEIGHT }}>
           <AgGridReact<ToiRow>
+            domLayout={autoHeight ? 'autoHeight' : 'normal'}
             ref={gridRef}
             theme={gridTheme}
             rowData={rows}

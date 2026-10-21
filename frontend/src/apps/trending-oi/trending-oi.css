@@ -1,0 +1,6 @@
+/* Trending OI grid: centred design-system pills. Colors come from tokens (shared .ds .pill styles). */
+.ag-cell.toi-center { display: flex; align-items: center; justify-content: center; padding: 0 var(--sp-2); }
+.toi-center-header .ag-header-cell-label { justify-content: center; }
+.ds .pill.toi-pill { justify-content: center; min-width: 64px; }
+.ds .pill.toi-pill.wide { min-width: 108px; }
+.toi-empty { color: var(--text-3); }

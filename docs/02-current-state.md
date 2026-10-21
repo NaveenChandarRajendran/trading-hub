@@ -12,7 +12,7 @@ _Last updated: 2026-10-21 (sidebar grouping + three live OI apps on `feature/liv
 | **OI & OI Change Live** (`oi-change-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | **Sensibull OI Change Live** (`sensibull-oi-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | **OI Support & Resistance Live** (`oi-support-resistance-live`) | backend `/api/option-chain` (Dhan) | Refresh button only; each refresh = one snapshot |
-| Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles |
+| Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles; grid polish 2026-10-21 (see below) |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
 ## Sidebar
@@ -93,6 +93,14 @@ Known limits / open:
   the spec says 0.1%: decision pending.
 - The instrument CSV (~26 MB) is downloaded twice a day (stock IDs and option list are separate caches).
 - Positions held when the backend is down at 15:15 are squared off at the next start, at the then-current price.
+
+## Trending OI grid (2026-10-21, `fix/live-ui-polish`)
+UI only, numbers unchanged. Sentiment and "OI H/L Break" (was "Day High/Low Diff. in OI"; renamed because "Day H/L Break"
+is already the index spot-break column) use soft design-system pills, centred (cells carry `.ds`, `trending-oi.css`).
+Headers are one line with the long form and formula in `headerTooltip`. Up to 20 rows the grid sizes to its rows
+(`domLayout autoHeight`), above that it is 640px and scrolls. The thin "column" after Time seen while scrolling sideways
+is the next column sliding under the pinned Time column, not a real column. Other grid pills (Strength, Dir Chg %,
+D.H.B./D.L.B., LIVE) still use the older solid styles.
 
 ## Design system
 `src/shared/tokens.css` (global) and `src/shared/ui/ui.css` + `src/shared/ui/index.tsx` (scoped to `.ds`),
