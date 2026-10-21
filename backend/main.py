@@ -11,6 +11,7 @@ Endpoints:
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
+    GET  /api/dashboard/summary?symbol=NIFTY&expiry=&stocks=HDFCBANK,...   (dashboard glance cards, see dashboard_api.py)
     GET  /api/quotes?symbols=HDFCBANK,ICICIBANK   (live prices of NSE stocks, for index components)
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
     GET  /api/status
@@ -36,6 +37,7 @@ from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
+import dashboard_api
 import paper_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
@@ -85,6 +87,32 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         exps = tracker.client.expiries(symbol)
         expiry_cache[symbol] = (time.time(), exps)
         return exps
+
+    def quotes_for_ids(security_ids):
+        """Live prices for NSE stocks. One Dhan call serves everybody asking within QUOTE_CACHE_SECONDS."""
+        key = tuple(sorted(set(security_ids)))
+        with quote_lock:
+            hit = quote_cache.get(key)
+            if hit and time.time() - hit[0] < QUOTE_CACHE_SECONDS:
+                return hit[1]
+            q = tracker.client.ohlc(key) if key else {}
+            quote_cache[key] = (time.time(), q)
+            return q
+
+    def cached_history(sym):
+        """Daily candles already fetched today, or None (never calls Dhan)."""
+        return history_cache.get((sym, datetime.now(IST).date().isoformat()))
+
+    def history_for(sym, security_id):
+        """Daily candles for one stock, cached per IST day: candles before today do not change during the day.
+        Failures are never cached, so they are retried. Raises TokenExpired / DhanError."""
+        today = datetime.now(IST).date()
+        key = (sym, today.isoformat())
+        hit = history_cache.get(key)
+        if hit is None:
+            hit = tracker.client.historical(security_id, (today - timedelta(days=HISTORY_DAYS)).isoformat(), today.isoformat())
+            history_cache[key] = hit
+        return hit
 
     def start_default_tracking():
         tracker.restore_today()  # resume whatever was tracked earlier today (backend restarted mid-session)
@@ -139,25 +167,12 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         return chain_response(symbol, expiry, entry, cached, lot_size(symbol, expiry), tracker.clock(),
                               tracker.market_open(), tracker.client.token_expired)
 
-    @app.get("/api/trending-oi")
-    def trending_oi(symbol: str = "NIFTY", expiry: str = "", interval: int = 5):
-        symbol = symbol.upper()
-        if symbol not in SCRIP:
-            raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
-        if interval not in ALLOWED_INTERVALS:
-            raise HTTPException(400, f"interval must be one of {list(ALLOWED_INTERVALS)}")
-        try:
-            if not expiry:
-                expiry = get_expiries(symbol)[0]
-            key = tracker.register(symbol, expiry)
-        except DhanError as e:
-            raise HTTPException(502, str(e))
-        except ValueError as e:
-            raise HTTPException(409, str(e))
-        except Exception as e:  # database unreachable while loading today's rows
-            logging.getLogger("main").exception("could not load today's rows")
-            raise HTTPException(503, f"Database unavailable: {e}")
-
+    def trending_oi_body(symbol, expiry, interval):
+        """Body of GET /api/trending-oi (also used by the dashboard). Raises DhanError (expiries / first fetch),
+        ValueError (too many expiries tracked) or another Exception (database unreachable)."""
+        if not expiry:
+            expiry = get_expiries(symbol)[0]
+        key = tracker.register(symbol, expiry)
         v = tracker.view(key)
         snaps = v["snaps"]
         chosen, live = select_for_interval(snaps, interval)
@@ -193,6 +208,23 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             "rows": rows,
         }
 
+    @app.get("/api/trending-oi")
+    def trending_oi(symbol: str = "NIFTY", expiry: str = "", interval: int = 5):
+        symbol = symbol.upper()
+        if symbol not in SCRIP:
+            raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
+        if interval not in ALLOWED_INTERVALS:
+            raise HTTPException(400, f"interval must be one of {list(ALLOWED_INTERVALS)}")
+        try:
+            return trending_oi_body(symbol, expiry, interval)
+        except DhanError as e:
+            raise HTTPException(502, str(e))
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        except Exception as e:  # database unreachable while loading today's rows
+            logging.getLogger("main").exception("could not load today's rows")
+            raise HTTPException(503, f"Database unavailable: {e}")
+
     @app.get("/api/quotes")
     def quotes(symbols: str = ""):
         """Live last prices for NSE stocks (index components): ?symbols=HDFCBANK,ICICIBANK,..."""
@@ -203,15 +235,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             ids, unknown = sec_ids.resolve(syms)
         except Exception as e:
             raise HTTPException(502, f"could not load Dhan instrument list: {e}")
-        key = tuple(sorted(set(ids.values())))
         try:
-            with quote_lock:  # one Dhan call serves everybody asking within QUOTE_CACHE_SECONDS
-                hit = quote_cache.get(key)
-                if hit and time.time() - hit[0] < QUOTE_CACHE_SECONDS:
-                    q = hit[1]
-                else:
-                    q = tracker.client.ohlc(key) if key else {}
-                    quote_cache[key] = (time.time(), q)
+            q = quotes_for_ids(ids.values())
         except TokenExpired as e:
             raise HTTPException(401, str(e))
         except DhanError as e:
@@ -230,17 +255,12 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             raise HTTPException(502, f"could not load Dhan instrument list: {e}")
         if sym not in ids:
             raise HTTPException(404, f"no Dhan security ID for {sym}")
-        today = datetime.now(IST).date()
-        key = (sym, today.isoformat())
-        hit = history_cache.get(key)  # candles before today do not change during the day
-        if hit is None:
-            try:
-                hit = tracker.client.historical(ids[sym], (today - timedelta(days=HISTORY_DAYS)).isoformat(), today.isoformat())
-            except TokenExpired as e:
-                raise HTTPException(401, str(e))
-            except DhanError as e:
-                raise HTTPException(502, str(e))
-            history_cache[key] = hit  # failures are never cached, so they are retried
+        try:
+            hit = history_for(sym, ids[sym])
+        except TokenExpired as e:
+            raise HTTPException(401, str(e))
+        except DhanError as e:
+            raise HTTPException(502, str(e))
         return {"symbol": sym, "id": ids[sym], **hit}
 
     @app.get("/api/status")
@@ -262,6 +282,10 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             paper.feed.set_token(body.accessToken)
         return {"ok": True}
 
+    dashboard_api.register(app, dashboard_api.DashboardDeps(
+        tracker=tracker, get_expiries=get_expiries, lot_size=lot_size, trending_oi_body=trending_oi_body,
+        resolve_ids=sec_ids.resolve, quotes_for_ids=quotes_for_ids, cached_history=cached_history, history_for=history_for,
+        near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
     if paper:
         paper_api.register(app, paper)
     return app

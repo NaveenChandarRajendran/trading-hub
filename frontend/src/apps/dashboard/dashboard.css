@@ -1,0 +1,55 @@
+/* Dashboard: layout only. Colors and sizes come from tokens. */
+.db { display: flex; flex-direction: column; gap: var(--sp-4); }
+.db .db-muted { color: var(--text-3); font-weight: 400; }
+
+/* chart left (~2/3), glance cards right (~1/3); stacked under 1200px */
+.db .db-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: var(--sp-4); align-items: start; }
+@media (max-width: 1200px) { .db .db-grid { grid-template-columns: 1fr; } }
+.db .db-chart-card { display: flex; flex-direction: column; min-width: 0; }
+.db .db-chart { height: 620px; min-height: 360px; } /* candles + the RSI pane (130px) */
+@media (max-height: 900px) { .db .db-chart { height: 480px; } }
+
+/* indicator toggles in the chart card head */
+.db .db-head-end { display: inline-flex; align-items: center; gap: var(--sp-3); }
+.db .db-toggles { display: inline-flex; gap: var(--sp-1); }
+.db .db-toggle {
+  height: 24px; padding: 0 var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--text-2); font: inherit; font-size: var(--fs-xs); font-weight: 500; cursor: pointer; transition: background-color 120ms, color 120ms;
+}
+.db .db-toggle:hover { background: var(--surface-2); }
+.db .db-toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.db .db-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* levels row under the chart */
+.db .db-levels { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-3); }
+.db .db-level-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.db .db-level { display: inline-flex; align-items: center; gap: var(--sp-1); font-weight: 600; }
+.db .db-level.up { color: var(--up); }
+.db .db-level.down { color: var(--down); }
+.db .db-level .copy-value { color: var(--text); font-weight: 500; }
+.db .db-copy { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.db .card-foot a { color: var(--text-2); }
+
+/* settings popover */
+.db .db-settings { position: relative; }
+.db .db-pop { position: absolute; right: 0; top: calc(100% + var(--sp-1)); z-index: 20; min-width: 240px; box-shadow: var(--shadow-pop); }
+
+/* glance cards (right column) */
+.db .db-side { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.db .db-consensus { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.db .db-consensus .up { color: var(--up); font-weight: 600; }
+.db .db-consensus .down { color: var(--down); font-weight: 600; }
+.db .db-glance { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
+.db .db-glance-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.db .db-glance-head .card-title { margin: 0; }
+.db .db-figs { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-5); margin: 0; }
+.db .db-figs dt { font-size: var(--fs-xs); color: var(--text-3); }
+.db .db-figs dd { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.db .db-figs dd.up { color: var(--up); }
+.db .db-figs dd.down { color: var(--down); }
+.db .db-glance-note { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
+.db .db-glance-note.err { color: var(--down); }
+.db .db-glance-foot { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-3); }
+.db .db-glance-foot .warn { color: var(--warn); }
+.db .db-glance-foot a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.db .db-glance-foot a:hover { text-decoration: underline; }

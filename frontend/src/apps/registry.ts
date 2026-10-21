@@ -1,9 +1,10 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'manual' | 'live';
+export type AppGroup = 'home' | 'manual' | 'live';
 
-/** Sidebar sections, in display order. */
+/** Sidebar sections, in display order. A section without a label has no header (always open). */
 export const GROUPS: { id: AppGroup; label: string }[] = [
+  { id: 'home', label: '' },
   { id: 'manual', label: 'Manual (Paste)' },
   { id: 'live', label: 'Live (Dhan)' },
 ];
@@ -18,7 +19,16 @@ export interface AppEntry {
 }
 
 // Add the next app here: one folder under src/apps + one entry below. `group` picks its sidebar section.
+// The first entry is the landing page (/).
 export const apps: AppEntry[] = [
+  {
+    id: 'dashboard',
+    group: 'home',
+    name: 'Dashboard',
+    path: '/dashboard',
+    icon: '◫',
+    component: lazy(() => import('./dashboard/DashboardApp')),
+  },
   {
     id: 'option-strategy',
     group: 'manual',

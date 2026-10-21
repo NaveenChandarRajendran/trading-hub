@@ -10,9 +10,11 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['Manual (Paste)', 'Live (Dhan)']);
-    expect(g[0].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis']);
-    expect(g[1].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'paper-trade']);
+    expect(g.map((x) => x.label)).toEqual(['', 'Manual (Paste)', 'Live (Dhan)']); // '' = top section, no header
+    expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard']);
+    expect(apps[0].id).toBe('dashboard'); // landing page
+    expect(g[1].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis']);
+    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'paper-trade']);
   });
 
   it('drops empty sections', () => {

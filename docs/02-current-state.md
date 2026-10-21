@@ -1,12 +1,13 @@
 # Current state
 
-_Last updated: 2026-10-21 (Premium Analysis on `feature/premium-analysis`)_
+_Last updated: 2026-10-22 (Dashboard on `feature/dashboard`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
 |---|---|---|
 | OI & OI Change (`option-strategy`) | pasted NSE option-chain-v3 JSON | Excel port; older styles (`index.css`) |
 | Sensibull OI (`sensibull-oi`) | pasted Sensibull response | older styles |
+| **Dashboard** (`dashboard`, landing page) | backend `/api/dashboard/*`, `/ws/paper` candles | top of the sidebar; design system |
 | **Premium Analysis** (`premium-analysis`) | two pasted NSE option-chain-v3 JSONs | Manual group; design system |
 | **OI Support & Resistance** (`oi-support-resistance`) | pasted NSE option-chain-v3 JSON | new 2026-10-20; first app on the design system |
 | **Paper Trading** (`paper-trade`) | backend `/api/paper/*`, `/ws/paper` (live Dhan feed) | simulation only; design system |
@@ -16,9 +17,48 @@ _Last updated: 2026-10-21 (Premium Analysis on `feature/premium-analysis`)_
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles; grid polish 2026-10-21 (see below) |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
+## Dashboard (branch `feature/dashboard`, ADR 0003)
+Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backend (`python main.py`) and open it.
+- Chart: TradingView Lightweight Charts `5.2.1` (exact pin, attribution logo + link kept). Candles from
+  `GET /api/dashboard/candles?symbol=&interval=1|3|5|15` (Dhan `/charts/intraday` 1-minute, today + previous trading
+  day, cached 60 s open / 15 min closed, aggregated to 09:15-aligned IST buckets in `backend/candles.py`). The live
+  1-minute candle comes as `{"type":"candle"}` on `/ws/paper` (paper feed's single Dhan connection, built from index
+  ticks by IST receive time). Colours read from the tokens and follow the theme without a reload.
+- S1–S3 / R1–R3 = OI Support & Resistance Live's `analyzeChain` + `topLevels` (range 500) on the summary's chain;
+  six price lines created once and updated in place (`logic/levelLines.ts`); the price scale includes all six.
+  The lines move at most once an hour (`LEVELS_REFRESH_SEC`, `takeNewLevels`); Refresh or a new index / expiry
+  redraws them at once. The cards keep the summary's 1-minute refresh; the OI S&R card measures the latest spot
+  against the chart's (hourly) S1 / R1. The levels row shows "Levels 10:05 IST · next 11:05".
+  Levels row under the chart with CopyValue + "Copy levels for chart". Chart: 620px (480px on short screens).
+- `GET /api/dashboard/summary?symbol=&expiry=&stocks=` (`backend/dashboard_api.py`): the cached chain, newest Trending
+  OI rows and component quotes + daily candles (previous closes warm up in a background thread → `warming`), each
+  section with its own status (ok / stale / warming / empty / token / error). Auto-refresh 1 min (Settings: 30 s–5 min).
+- Glance cards (`logic/cards.ts`), each with the app's own logic: Trending OI (latest sentiment), OI & OI Change
+  (final average vs spot), Sensibull (anticipated vs spot; Change in OI, 10 + 20, ±25), Index Components (index move
+  from components, ±0.05 neutral band; no verdict while previous closes load), OI S&R (spot vs S1 / R1, "Levels" tag,
+  no verdict). Consensus line counts verdicts only. Below 1200px the cards go under the chart.
+- Indicators (toggles in the chart header, remembered per browser; Volume and RSI on by default):
+  - RSI 14 (Wilder, = TradingView ta.rsi) in its own pane, 0-100 with dashed 80 / 20 lines.
+  - EMA 20 (= ta.ema, SMA seed) on the candles.
+  - Volume = the near-month index future's (NIFTY / BANKNIFTY OCT FUT ...; `instruments.near_future`, rolls the day
+    after expiry; stored apart from the options in `option_instruments.json`). Dhan does send volume for the index
+    itself (~293 M on 21-Oct, most likely constituent shares; last minutes stuck at one value), so the future's
+    contracts are used instead, as TradingView's NIFTY1!. History merged per minute in `/api/dashboard/candles`;
+    live minute from the feed's running day volume (`VolumeBuilder`, `"volume"` messages on `/ws/paper`).
+  - The page keeps 1-minute candles and groups them per interval itself (`logic/candles.ts aggregate`, same 09:15
+    buckets as `backend/candles.py`), so switching interval needs no request and live volume is never double counted.
+- Dhan's intraday toDate is exclusive by date: the candles request runs to the day after the last session
+  (before this, today's candles were missing from the history during market hours).
+- Tests: `backend/test_dashboard_api.py`, `backend/test_candles.py`, `backend/test_instruments.py`,
+  `src/apps/dashboard/logic/*.test.ts` (RSI checked by hand on the StockCharts closes: 70.46, 66.25).
+- Known limits: the live candle is untested against real ticks (built after market hours; check at 09:15). Dhan's
+  intraday data has no 09:15 candle for the index (first is 09:16), so the first bar of the day comes from the live
+  feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
+  Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
+
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
-"Manual (Paste)" and "Live (Dhan)". Both start open; closed sections are remembered in localStorage (`shell.groups`).
+a header-less top section (Dashboard), "Manual (Paste)" and "Live (Dhan)". The first registry entry is the landing page. Both start open; closed sections are remembered in localStorage (`shell.groups`).
 With the sidebar collapsed to icons, section headers become dividers. Helpers + tests: `src/shared/sidebarGroups.ts`.
 
 ## Live OI apps (branch `feature/live-oi-apps`)
