@@ -26,11 +26,11 @@ export default function App() {
         <div className="brand">{collapsed ? 'T' : 'Trading Hub'}</div>
         <nav>
           {sections.map((s) => {
-            // Icon-only sidebar: headers become dividers and every app stays reachable.
-            const open = collapsed || !closed.includes(s.id);
+            // Icon-only sidebar: headers become dividers and every app stays reachable. No label: no header, always open.
+            const open = collapsed || !s.label || !closed.includes(s.id);
             return (
               <div key={s.id} className="nav-group">
-                {collapsed ? (
+                {!s.label ? null : collapsed ? (
                   <div className="nav-divider" role="separator" title={s.label} />
                 ) : (
                   <button className="nav-group-head" onClick={() => toggleSection(s.id)} aria-expanded={open}>
