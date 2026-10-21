@@ -9,6 +9,7 @@ _Last updated: 2026-10-21 (sidebar grouping; live OI apps in progress on `featur
 | Sensibull OI (`sensibull-oi`) | pasted Sensibull response | older styles |
 | **OI Support & Resistance** (`oi-support-resistance`) | pasted NSE option-chain-v3 JSON | new 2026-10-20; first app on the design system |
 | **Paper Trading** (`paper-trade`) | backend `/api/paper/*`, `/ws/paper` (live Dhan feed) | simulation only; design system |
+| **OI & OI Change Live** (`oi-change-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
@@ -18,7 +19,14 @@ Grouped into collapsible sections from the `group` field in `src/apps/registry.t
 With the sidebar collapsed to icons, section headers become dividers. Helpers + tests: `src/shared/sidebarGroups.ts`.
 
 ## Live OI apps (branch `feature/live-oi-apps`, in progress)
-Live versions of the three paste apps, fed by Dhan through the backend. Built so far: the shared endpoint and adapter.
+Live versions of the three paste apps, fed by Dhan through the backend. Built so far: the shared endpoint and adapter,
+OI & OI Change Live.
+- Shared UI: `src/shared/live/useLiveChain.ts` (symbol/expiry/auto-refresh Off·15s·30s·1m·3m·5m, default 1m, saved per app;
+  paused while the tab is hidden, every 5 min while the market is closed; `manual` mode = Refresh button only),
+  `src/shared/live/liveStatus.ts` (Live / Stale after 2× interval / Market closed / Token expired / Paused, tested),
+  `src/shared/ui/LiveToolbar.tsx` (toolbar + error / token / stale alerts).
+- OI & OI Change Live (`src/apps/oi-change-live/`): `analyzeOptionChain` (moved out of `OptionStrategyApp`, results
+  unchanged and tested) on `toOptionChain`. OI in contracts. Grid opens scrolled to ATM.
 - `GET /api/option-chain?symbol=NIFTY&expiry=2026-10-27` (`backend/chain_cache.py`, ADR 0002): one cached chain per
   key (10 s open / 5 min closed), one fetch for concurrent requests, last good chain on failure (`meta.stale`).
   The Trending OI tracker fetches through it (always fresh), so its minute fetches also serve the live pages.

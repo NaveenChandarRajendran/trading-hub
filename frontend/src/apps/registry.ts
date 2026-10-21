@@ -52,6 +52,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./trending-oi/TrendingOiApp')),
   },
   {
+    id: 'oi-change-live',
+    group: 'live',
+    name: 'OI & OI Change Live',
+    path: '/oi-change-live',
+    icon: '▦',
+    component: lazy(() => import('./oi-change-live/OiChangeLiveApp')),
+  },
+  {
     id: 'index-components',
     group: 'live',
     name: 'Index Components',
