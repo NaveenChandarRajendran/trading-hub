@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-21 (sidebar grouping; live OI apps in progress on `feature/live-oi-apps`)_
+_Last updated: 2026-10-21 (sidebar grouping + three live OI apps on `feature/live-oi-apps`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -11,6 +11,7 @@ _Last updated: 2026-10-21 (sidebar grouping; live OI apps in progress on `featur
 | **Paper Trading** (`paper-trade`) | backend `/api/paper/*`, `/ws/paper` (live Dhan feed) | simulation only; design system |
 | **OI & OI Change Live** (`oi-change-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | **Sensibull OI Change Live** (`sensibull-oi-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
+| **OI Support & Resistance Live** (`oi-support-resistance-live`) | backend `/api/option-chain` (Dhan) | Refresh button only; each refresh = one snapshot |
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
@@ -19,9 +20,10 @@ Grouped into collapsible sections from the `group` field in `src/apps/registry.t
 "Manual (Paste)" and "Live (Dhan)". Both start open; closed sections are remembered in localStorage (`shell.groups`).
 With the sidebar collapsed to icons, section headers become dividers. Helpers + tests: `src/shared/sidebarGroups.ts`.
 
-## Live OI apps (branch `feature/live-oi-apps`, in progress)
-Live versions of the three paste apps, fed by Dhan through the backend. Built so far: the shared endpoint and adapter,
-OI & OI Change Live, Sensibull OI Change Live.
+## Live OI apps (branch `feature/live-oi-apps`)
+Live versions of the three paste apps, fed by Dhan through the backend (run `python main.py`, open the app under
+"Live (Dhan)"). The paste apps are unchanged: their rendered output was compared on main vs this branch with the same
+pastes (identical text).
 - Shared UI: `src/shared/live/useLiveChain.ts` (symbol/expiry/auto-refresh Off·15s·30s·1m·3m·5m, default 1m, saved per app;
   paused while the tab is hidden, every 5 min while the market is closed; `manual` mode = Refresh button only),
   `src/shared/live/liveStatus.ts` (Live / Stale after 2× interval / Market closed / Token expired / Paused, tested),
@@ -31,6 +33,13 @@ OI & OI Change Live, Sensibull OI Change Live.
 - Sensibull OI Change Live (`src/apps/sensibull-oi-live/`): `analyzeSnapshot` (moved out of `SensibullOiApp`, unchanged
   and tested) on `toSbSnapshot`, cut to ATM ± R (`logic/range.ts`; Range ±10/15/20/25 in the toolbar, default ±25 so all
   windows 5–25 exist). Value: Change in OI (default) or Closing OI. Ticked windows survive auto-refresh. Lakhs of units.
+- OI Support & Resistance Live (`src/apps/oi-support-resistance-live/`): no auto-refresh. Each Refresh click fetches
+  the chain and saves one snapshot (first of the day = baseline), stored like pastes under `oi-support-resistance-live.`
+  (earlier days dropped). Unchanged Dhan data (market closed / same cached chain) is not saved twice (`logic/saveRule.ts`).
+  Snapshot time = backend fetch time. Range / threshold / "Clear today's snapshots" in Settings. The page starts empty
+  after navigation: press Refresh (which saves a snapshot).
+  Shared with the paste app: `buildView` (moved from the component, tested), `OsrResult.tsx` (result screen moved out
+  unchanged; wording via `source`), `createStore(prefix)` in `storage.ts`.
 - Shell fix: the topbar title matched apps by path prefix, so `/sensibull-oi-live` showed "Sensibull OI"; now exact.
 - `GET /api/option-chain?symbol=NIFTY&expiry=2026-10-27` (`backend/chain_cache.py`, ADR 0002): one cached chain per
   key (10 s open / 5 min closed), one fetch for concurrent requests, last good chain on failure (`meta.stale`).

@@ -6,7 +6,8 @@ import { TOKEN_HELP, errorText, isTokenError } from '../live/liveStatus';
 import { REFRESH_OPTIONS, type LiveChain } from '../live/useLiveChain';
 import { Alert, Pill, Segmented, Status } from './index';
 
-export function LiveToolbar({ live, children }: { live: LiveChain; children?: ReactNode }) {
+/** onRefresh replaces the plain reload (OI S&R Live saves a snapshot on every click). */
+export function LiveToolbar({ live, children, onRefresh }: { live: LiveChain; children?: ReactNode; onRefresh?: () => void }) {
   const { status, data, error } = live;
   const meta = data?.meta;
   return (
@@ -34,7 +35,7 @@ export function LiveToolbar({ live, children }: { live: LiveChain; children?: Re
           <div className="toolbar-end">
             {status.closed && <Pill tone="neutral">Market closed</Pill>}
             <Status kind={status.kind}>{status.label}</Status>
-            <button className="btn" onClick={() => void live.refresh()} disabled={live.loading}>
+            <button className="btn" onClick={() => (onRefresh ? onRefresh() : void live.refresh())} disabled={live.loading}>
               {live.loading ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>

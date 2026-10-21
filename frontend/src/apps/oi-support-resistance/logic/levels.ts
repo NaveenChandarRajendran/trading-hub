@@ -205,3 +205,23 @@ export function levelsText(sn: Snapshot, time: string, levels: Record<Side, Leve
   const f = (side: Side) => levels[side].map((x, k) => `${side}${k + 1} ${x.strike} (${lakh(x.oi)})`).join(', ');
   return `${sn.symbol} ${sn.spot.toFixed(1)} at ${time} | Res ${f('R')} | Sup ${f('S')}`;
 }
+
+/** What the result screen shows for one analysed chain, given today's snapshots (baseline = first). */
+export function buildView(result: Analysis, snaps: Snapshot[], range: number) {
+  const cur = result.snapshot;
+  const levels = { R: topLevels(cur.rows, cur.spot, 'R', range), S: topLevels(cur.rows, cur.spot, 'S', range) };
+  const earlier = snaps.filter((s) => s.t !== cur.t);
+  const base = earlier[0];
+  const prev = earlier[earlier.length - 1];
+  return {
+    cur,
+    levels,
+    base,
+    prev,
+    shifts: base ? levelShifts(levels, base, prev, range) : [],
+    step: strikeStep(cur.rows),
+    timeline: snaps.length ? snaps : [cur],
+  };
+}
+
+export type LevelView = ReturnType<typeof buildView>;

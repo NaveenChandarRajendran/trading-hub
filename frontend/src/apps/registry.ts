@@ -68,6 +68,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./sensibull-oi-live/SensibullOiLiveApp')),
   },
   {
+    id: 'oi-support-resistance-live',
+    group: 'live',
+    name: 'OI Support & Resistance Live',
+    path: '/oi-support-resistance-live',
+    icon: '⊟',
+    component: lazy(() => import('./oi-support-resistance-live/OiSupportResistanceLiveApp')),
+  },
+  {
     id: 'index-components',
     group: 'live',
     name: 'Index Components',
