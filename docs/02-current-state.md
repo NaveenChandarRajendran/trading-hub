@@ -71,6 +71,16 @@ paste the JSON, Analyze.
   (planned as its own page).
 - Tests: `logic/levels.test.ts`, `logic/snapshots.test.ts` (Bank Nifty 16-Oct-2026 fixture).
 
+## Copy values (2026-10-21, `fix/live-ui-polish`)
+`src/shared/ui/CopyValue.tsx` shows a formatted number (22,900) with a copy button that copies the raw value
+(`rawNumber` in `src/shared/clipboard.ts`: "22900", "22985.40", ASCII "-"). Icons are inline SVGs in
+`src/shared/ui/icons.tsx`. The button shows on row / tile hover or keyboard focus (space always reserved), swaps to a
+check + "Copied" (or "Copy failed") for 1.5 s. `copyText` uses the Clipboard API, else a hidden textarea +
+execCommand (file:// pages). Used in OI S&R (paste and live): Strike column of both level tables, Spot and Max pain.
+"Copy levels for chart" also uses raw values now: spot was rounded to 1 decimal ("55844.0"), it is now "55844" /
+"22811.35". The red / green left edges on the Resistance / Support cards were removed (the green one read as a stray
+bar after the Resistance table).
+
 ## Paper Trading (branch `feature/paper-trade`, spec `docs/features/paper-trade.md`)
 SIMULATION ONLY: fills are computed by `backend/paper_engine.py` against the live Dhan feed; no order endpoint is called.
 Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec are built; step 5 (attached SL/target) is not.

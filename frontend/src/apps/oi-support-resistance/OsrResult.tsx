@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { copyText } from '../../shared/clipboard';
 import { inr, signed } from '../../shared/grid';
-import { Alert, EmptyState, Pill, Stat } from '../../shared/ui';
+import { Alert, CopyValue, EmptyState, Pill, Stat } from '../../shared/ui';
 import {
   TREND_LABEL, compareOi, lakh, levelTrend, levelsText, oiTone, trendTone, zoneOi,
   type Analysis, type Change, type Level, type LevelView, type Side, type StrikeOi,
@@ -30,7 +30,7 @@ function LevelTable({ side, levels, chg, spot, chgTitle }: { side: Side; levels:
           return (
             <tr key={x.strike}>
               <td><Pill tone={side === 'R' ? 'down' : 'up'}>{side}{k + 1}</Pill></td>
-              <td>{inr(0)(x.strike)}</td>
+              <td><CopyValue value={x.strike} /></td>
               <td>{inr(0)(x.oi)}</td>
               <td className={toneClass(oiTone(side, c))}>{signed(0)(c)}</td>
               <td>{inr(0)(Math.abs(d))} pts {x.strike >= spot ? 'above' : 'below'}</td>
@@ -87,9 +87,9 @@ export function OsrResult({ result, view, range, threshold, source }: {
               {view.cur.symbol} · Expiry {view.cur.expiry} · As of {view.cur.nse || hm(view.cur.t)} IST
             </div>
             <div className="stats">
-              <Stat label="Spot" value={inr(2)(view.cur.spot)} />
+              <Stat label="Spot" value={<CopyValue value={view.cur.spot} decimals={2} iconSide="end" />} />
               <Stat label="PCR (OI)" value={result.pcr != null ? inr(2)(result.pcr) : '–'} />
-              <Stat label="Max pain" value={result.maxPain != null ? inr(0)(result.maxPain) : '–'} />
+              <Stat label="Max pain" value={result.maxPain != null ? <CopyValue value={result.maxPain} iconSide="end" /> : '–'} />
               <Stat label="Days to expiry" value={result.daysToExpiry ?? '–'} />
             </div>
           </section>

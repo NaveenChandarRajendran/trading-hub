@@ -107,3 +107,22 @@
 /* Modal dialog (order ticket etc.) */
 .ds .modal-backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 50; }
 .ds .modal { width: min(420px, calc(100vw - 32px)); box-shadow: var(--shadow-pop); }
+
+/* Copy a raw value (src/shared/ui/CopyValue.tsx): the button's space is always reserved, it shows on hover / focus */
+.ds .copy-value { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.ds .copy-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity 120ms, background-color 120ms;
+}
+.ds .copy-btn:hover { color: var(--accent); background: var(--surface-2); }
+.ds tr:hover .copy-btn, .ds .stat:hover .copy-btn, .ds .copy-value:hover .copy-btn,
+.ds .copy-btn:focus-visible, .ds .copy-btn.ok, .ds .copy-btn.fail { opacity: 1; }
+.ds .copy-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ds .copy-btn.ok { color: var(--up); }
+.ds .copy-btn.fail { color: var(--down); }
+.ds .copy-tip {
+  position: absolute; bottom: calc(100% + var(--sp-1)); left: 50%; transform: translateX(-50%); z-index: 5;
+  padding: 2px var(--sp-2); border-radius: var(--r-sm); background: var(--text); color: var(--bg);
+  font-size: var(--fs-xs); font-weight: 500; line-height: 16px; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-pop);
+}

@@ -17,8 +17,6 @@
 .osr .osr-asof { font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--sp-3); }
 .osr .osr-zones { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
 @media (max-width: 900px) { .osr .osr-zones { grid-template-columns: 1fr; } }
-.osr .osr-res { border-left: 3px solid var(--down); }
-.osr .osr-sup { border-left: 3px solid var(--up); }
 .osr .osr-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .osr .osr-line p { margin: 0; }
 
