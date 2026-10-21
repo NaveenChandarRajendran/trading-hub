@@ -1,6 +1,5 @@
 // S1-S3 / R1-R3 as chart price lines that are created ONCE and then updated in place (no remove + redraw, so
 // nothing flickers when the levels change). Written against a tiny interface so it can be tested without a canvas.
-import { inr } from '../../../shared/grid';
 import type { Level, Side } from '../../oi-support-resistance/logic/levels';
 
 export interface LineSpec {
@@ -37,8 +36,6 @@ export function withAlpha(color: string, alpha: number): string {
   return c + Math.round(alpha * 255).toString(16).padStart(2, '0');
 }
 
-const fmt = (n: number) => inr(Number.isInteger(n) ? 0 : 2)(n);
-
 /** How one level line looks. A missing level keeps its line but hides it. */
 export function lineSpec(key: LevelKey, level: Level | undefined, colors: LevelColors, lastPrice = 0): LineSpec {
   const base = key[0] === 'R' ? colors.down : colors.up;
@@ -50,7 +47,7 @@ export function lineSpec(key: LevelKey, level: Level | undefined, colors: LevelC
     lineStyle: primary ? SOLID : DASHED,
     lineVisible: !!level,
     axisLabelVisible: !!level,
-    title: level ? `${key} ${fmt(level.strike)}` : key,
+    title: key, // just "R1"; the price scale shows the strike
   };
 }
 

@@ -45,12 +45,12 @@ describe('level lines', () => {
     const host = fakeHost();
     const lines = new LevelLines(host);
     lines.update(lv([23000, 23100, 23200], [22700, 22600, 22500]), colors);
-    expect(host.created.map((c) => c.spec.title)).toEqual(['R1 23,000', 'R2 23,100', 'R3 23,200', 'S1 22,700', 'S2 22,600', 'S3 22,500']);
+    expect(host.created.map((c) => c.spec.title)).toEqual(['R1', 'R2', 'R3', 'S1', 'S2', 'S3']);
 
     lines.update(lv([22950, 23000, 23100], [22800, 22700, 22600]), colors); // levels changed on refresh
     expect(host.created).toHaveLength(6); // nothing recreated
-    expect(host.created[0].applied.at(-1)).toMatchObject({ price: 22950, title: 'R1 22,950', lineVisible: true });
-    expect(host.created[3].applied.at(-1)).toMatchObject({ price: 22800, title: 'S1 22,800' });
+    expect(host.created[0].applied.at(-1)).toMatchObject({ price: 22950, title: 'R1', lineVisible: true });
+    expect(host.created[3].applied.at(-1)).toMatchObject({ price: 22800, title: 'S1' });
   });
 
   it('hides a missing level (keeps the line, keeps its last price) and shows it again later', () => {
