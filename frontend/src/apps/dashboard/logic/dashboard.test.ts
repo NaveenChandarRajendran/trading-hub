@@ -6,7 +6,7 @@ import { analyzeChain, buildView } from '../../oi-support-resistance/logic/level
 import niftyJson from '../../../shared/dhan/__fixtures__/nifty-2026-10-21.json';
 import { bucketStart, mergeLive, type Candle } from './candles';
 import { LevelLines, lineSpec, withAlpha, type LineSpec } from './levelLines';
-import { srLevels } from './levels';
+import { srLevels, takeNewLevels } from './levels';
 
 const resp = niftyJson as unknown as ChainResponse; // real NIFTY 27-Oct chain, 21-Oct-2026 after the close
 const colors = { up: '#138a4e', down: '#d13f3f' };
@@ -121,5 +121,25 @@ describe('live candles', () => {
       bars = mergeLive(bars, c(t('2026-10-21T11:00:00'), 100, h, l, cl), 1).bars;
     }
     expect(bars).toEqual([c(t('2026-10-21T11:00:00'), 100, 103, 98, 99)]);
+  });
+});
+
+describe('hourly S/R levels', () => {
+  const t0 = Date.parse('2026-10-22T10:05:00+05:30');
+  const basis = { key: 'NIFTY|2026-10-27', at: t0, chain: resp };
+
+  it('the first chain always draws the levels', () => {
+    expect(takeNewLevels(null, 'NIFTY|2026-10-27', t0, 3600)).toBe(true);
+  });
+
+  it('later summaries within the hour keep the same levels; after an hour they move', () => {
+    expect(takeNewLevels(basis, 'NIFTY|2026-10-27', t0 + 59 * 60_000, 3600)).toBe(false);
+    expect(takeNewLevels(basis, 'NIFTY|2026-10-27', t0 + 60 * 60_000, 3600)).toBe(true);
+  });
+
+  it('Refresh, or a new index / expiry, redraws at once', () => {
+    expect(takeNewLevels(basis, 'NIFTY|2026-10-27', t0 + 60_000, 3600, true)).toBe(true);
+    expect(takeNewLevels(basis, 'NIFTY|2026-11-03', t0 + 60_000, 3600)).toBe(true);
+    expect(takeNewLevels(basis, 'BANKNIFTY|2026-10-27', t0 + 60_000, 3600)).toBe(true);
   });
 });

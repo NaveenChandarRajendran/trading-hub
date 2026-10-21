@@ -7,7 +7,7 @@ import { Alert, CopyValue, EmptyState, Pill, Segmented, Status } from '../../sha
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
-import { INTERVALS, REFRESH_OPTIONS, SR_RANGE } from './config/settings';
+import { INTERVALS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, SR_RANGE } from './config/settings';
 import { buildCards, consensus } from './logic/cards';
 import { srLevels } from './logic/levels';
 import { Consensus, GlanceCard } from './GlanceCard';
@@ -19,14 +19,17 @@ import './dashboard.css';
 
 const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]] as const;
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 
 export default function DashboardApp() {
   const d = useDashboard();
   const [showSettings, setShowSettings] = useState(false);
   const [copied, setCopied] = useState('');
 
-  const chain = d.summary?.chain.data ?? null;
-  const sr = useMemo(() => (chain ? srLevels(chain, SR_RANGE) : null), [chain]);
+  const levelsChain = d.levelsBasis?.chain ?? null; // replaced at most hourly, see useDashboard
+  const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
+  const levelsAt = d.levelsBasis ? hhmm(d.levelsBasis.at) : '';
+  const levelsNext = d.levelsBasis ? hhmm(d.levelsBasis.at + LEVELS_REFRESH_SEC * 1000) : '';
   const cards = useMemo(
     () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? [], new Date(),
       d.summaryError != null ? 'Not available. See the message at the top.' : ''),
@@ -86,7 +89,7 @@ export default function DashboardApp() {
         <section className="card db-chart-card">
           <div className="card-head">
             <h3 className="card-title">{d.symbol} · {d.interval} min{d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h3>
-            {sr && <span className="db-muted num">Spot {inr(2)(sr.spot)}</span>}
+            {d.summary?.chain.data && <span className="db-muted num">Spot {inr(2)(d.summary.chain.data.meta.spot)}</span>}
           </div>
           {d.candlesError != null && d.summaryError == null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
           {!d.bars.length ? (
@@ -108,6 +111,9 @@ export default function DashboardApp() {
                   })}
                 </span>
                 <span className="db-copy">
+                  <span className="db-muted" title="Levels move at most once an hour; Refresh or a new index / expiry updates them at once">
+                    Levels {levelsAt} IST · next {levelsNext}
+                  </span>
                   {copied && <span className="db-muted">{copied}</span>}
                   <button className="btn" onClick={() => void copyLevels()}>Copy levels for chart</button>
                 </span>
@@ -119,7 +125,8 @@ export default function DashboardApp() {
             )}
           </div>
           <p className="card-foot">
-            S1–S3 / R1–R3: top put / call OI within {SR_RANGE} pts of spot, as in OI Support &amp; Resistance Live.
+            S1–S3 / R1–R3: top put / call OI within {SR_RANGE} pts of spot, as in OI Support &amp; Resistance Live,
+            updated hourly (Refresh updates them now).
             Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a>.
           </p>
         </section>

@@ -11,6 +11,7 @@ export const INTERVALS = [
 export const DEFAULT_INTERVAL = 5;
 export const REFRESH_OPTIONS = [30, 60, 120, 300] as const; // seconds; summary auto-refresh (Settings)
 export const DEFAULT_REFRESH_SEC = 60;
+export const LEVELS_REFRESH_SEC = 3600; // S/R lines move at most once an hour (Refresh / index / expiry change: at once)
 export const SR_RANGE = DEFAULT_RANGE; // points either side of spot for S1-S3 / R1-R3, same as OI Support & Resistance
 /** Index security IDs on the Dhan feed (segment IDX_I), as in backend/dhan_client.py SCRIP. */
 export const INDEX_IDS: Record<string, number> = { NIFTY: 13, BANKNIFTY: 25 };

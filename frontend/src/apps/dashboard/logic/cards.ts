@@ -91,22 +91,24 @@ export function sensibullCard(s: Summary['chain'] | undefined): CardModel {
   return c;
 }
 
-/** "85 pts above S1 · 15 below R1" */
-export function srPosition(sr: SrLevels): string {
+/** "85 pts above S1 · 15 below R1", for the given spot (default: the spot the levels were computed at). */
+export function srPosition(sr: SrLevels, spot = sr.spot): string {
   const s1 = sr.levels.S[0];
   const r1 = sr.levels.R[0];
-  const above = s1 ? `${inr(0)(Math.round(sr.spot - s1.strike))} pts above S1` : '';
-  const below = r1 ? `${inr(0)(Math.round(r1.strike - sr.spot))} ${s1 ? 'below' : 'pts below'} R1` : '';
+  const above = s1 ? `${inr(0)(Math.round(Math.abs(spot - s1.strike)))} pts ${spot >= s1.strike ? 'above' : 'below'} S1` : '';
+  const below = r1 ? `${inr(0)(Math.round(Math.abs(r1.strike - spot)))} ${s1 ? '' : 'pts '}${spot <= r1.strike ? 'below' : 'above'} R1` : '';
   return [above, below].filter(Boolean).join(' · ') || 'No S1 / R1 within range';
 }
 
+/** sr: the levels drawn on the chart (refreshed hourly); the position uses the latest spot from the summary's chain. */
 export function srCard(s: Summary['chain'] | undefined, sr: SrLevels | null): CardModel {
   const c = shell('sr', 'OI Support & Resistance Live', '/oi-support-resistance-live', s);
   c.tag = 'Levels';
   if (!usable(s)) return c;
   if (!sr) return { ...c, state: 'empty', message: 'No strikes near spot for this expiry.' };
+  const spot = (s!.data as ChainResponse).meta.spot || sr.spot;
   c.figures = [
-    { label: 'Spot', value: srPosition(sr) },
+    { label: 'Spot', value: srPosition(sr, spot) },
     { label: 'PCR', value: sr.analysis.pcr == null ? '—' : inr(2)(sr.analysis.pcr) },
   ];
   return c;

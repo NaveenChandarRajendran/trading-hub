@@ -59,6 +59,13 @@ describe('verdicts come from each app\'s own logic', () => {
     expect(srPosition({ ...sr, levels: { R: sr.levels.R, S: [] } })).toBe('189 pts below R1');
   });
 
+  it('OI S&R card: hourly levels (as drawn on the chart) measured from the latest spot', () => {
+    const later = { ...chain, data: { ...chainData, meta: { ...chainData.meta, spot: 22750 } } }; // spot fell, levels unchanged
+    expect(srCard(later, sr).figures[0].value).toBe('50 pts above S1 · 250 below R1');
+    expect(srPosition(sr, 22650)).toBe('50 pts below S1 · 350 below R1'); // broke below S1
+    expect(srPosition(sr, 23050)).toBe('350 pts above S1 · 50 above R1'); // broke above R1
+  });
+
   it('vsSpot', () => {
     expect([vsSpot(101, 100), vsSpot(99, 100), vsSpot(100, 100)]).toEqual(['Bullish', 'Bearish', 'Neutral']);
   });

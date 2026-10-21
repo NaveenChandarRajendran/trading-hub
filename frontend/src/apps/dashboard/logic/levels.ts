@@ -18,3 +18,15 @@ export function srLevels(resp: ChainResponse, range: number): SrLevels | null {
   const { rows, spot } = analysis.snapshot;
   return { spot, levels: { R: topLevels(rows, spot, 'R', range), S: topLevels(rows, spot, 'S', range) }, analysis };
 }
+
+/** The chain the S/R lines were last drawn from, and when. */
+export interface LevelsBasis {
+  key: string; // "NIFTY|2026-10-27": a new index or expiry redraws at once
+  at: number; // epoch ms
+  chain: ChainResponse;
+}
+
+/** Whether a newly arrived chain should replace the one the S/R lines are drawn from. */
+export function takeNewLevels(basis: LevelsBasis | null, key: string, now: number, everySec: number, forced = false): boolean {
+  return !basis || forced || basis.key !== key || now - basis.at >= everySec * 1000;
+}

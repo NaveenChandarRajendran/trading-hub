@@ -6,9 +6,10 @@ import { liveStatus } from '../../shared/live/liveStatus';
 import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
-import { DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
+import { DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
 import { fetchCandles, fetchSummary, type Summary } from './logic/api';
 import { mergeLive, type Candle } from './logic/candles';
+import { takeNewLevels, type LevelsBasis } from './logic/levels';
 
 const read = (k: string) => {
   try {
@@ -41,6 +42,10 @@ export function useDashboard() {
   const expiry = expiries.includes(expiryPick) ? expiryPick : expiries[0] ?? '';
 
   const [summary, setSummary] = useState<Summary | null>(null);
+  // S/R lines are drawn from this chain and replaced at most hourly (cards use every summary)
+  const [levelsBasis, setLevelsBasis] = useState<LevelsBasis | null>(null);
+  const levelsRef = useRef<LevelsBasis | null>(null);
+  const forceLevels = useRef(false);
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [bars, setBars] = useState<Candle[]>([]);
@@ -61,6 +66,8 @@ export function useDashboard() {
     const ac = new AbortController();
     setExpiries([]);
     setSummary(null);
+    levelsRef.current = null;
+    setLevelsBasis(null); // never show one index's levels on another
     fetchDhanExpiries(symbol, ac.signal).then(setExpiries).catch((e) => e.name !== 'AbortError' && setSummaryError(e));
     return () => ac.abort();
   }, [symbol]);
@@ -69,8 +76,16 @@ export function useDashboard() {
     if (!expiry) return;
     setLoading(true);
     try {
-      setSummary(await fetchSummary(symbol, expiry, stocksOf(symbol), signal));
+      const r = await fetchSummary(symbol, expiry, stocksOf(symbol), signal);
+      setSummary(r);
       setSummaryError(null);
+      const key = `${symbol}|${expiry}`;
+      const chainOk = r.chain.data && (r.chain.status === 'ok' || r.chain.status === 'stale');
+      if (chainOk && takeNewLevels(levelsRef.current, key, Date.now(), LEVELS_REFRESH_SEC, forceLevels.current)) {
+        levelsRef.current = { key, at: Date.now(), chain: r.chain.data! };
+        setLevelsBasis(levelsRef.current);
+        forceLevels.current = false;
+      }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setSummaryError(e);
     } finally {
@@ -141,13 +156,14 @@ export function useDashboard() {
   }, []);
 
   const refresh = () => {
+    forceLevels.current = true; // Refresh redraws the S/R lines at once
     void loadSummary();
     void loadCandles();
   };
 
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
-    summary, summaryError, loading, bars, liveBar, candlesError, feedState, refresh,
+    summary, summaryError, loading, levelsBasis, bars, liveBar, candlesError, feedState, refresh,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

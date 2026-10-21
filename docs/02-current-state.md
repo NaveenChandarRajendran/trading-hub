@@ -26,6 +26,9 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   ticks by IST receive time). Colours read from the tokens and follow the theme without a reload.
 - S1–S3 / R1–R3 = OI Support & Resistance Live's `analyzeChain` + `topLevels` (range 500) on the summary's chain;
   six price lines created once and updated in place (`logic/levelLines.ts`); the price scale includes all six.
+  The lines move at most once an hour (`LEVELS_REFRESH_SEC`, `takeNewLevels`); Refresh or a new index / expiry
+  redraws them at once. The cards keep the summary's 1-minute refresh; the OI S&R card measures the latest spot
+  against the chart's (hourly) S1 / R1. The levels row shows "Levels 10:05 IST · next 11:05".
   Levels row under the chart with CopyValue + "Copy levels for chart".
 - `GET /api/dashboard/summary?symbol=&expiry=&stocks=` (`backend/dashboard_api.py`): the cached chain, newest Trending
   OI rows and component quotes + daily candles (previous closes warm up in a background thread → `warming`), each
