@@ -19,7 +19,6 @@ live in the frontend (`logic/` modules, tested against reference tools). A secon
   stock list.
 - **Live candles** reuse the paper feed's single Dhan connection: index ticks become a 1-minute candle on the backend
   (`candles.py`, IST buckets from the backend's receive time) and go out as `candle` messages on `/ws/paper`.
-
 - **Volume** comes from the near-month index future (Dhan's index volume exists but means something else),
   merged into the index candles per minute; the page keeps 1-minute candles and aggregates them per interval.
 
