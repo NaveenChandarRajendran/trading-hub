@@ -29,7 +29,7 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   The lines move at most once an hour (`LEVELS_REFRESH_SEC`, `takeNewLevels`); Refresh or a new index / expiry
   redraws them at once. The cards keep the summary's 1-minute refresh; the OI S&R card measures the latest spot
   against the chart's (hourly) S1 / R1. The levels row shows "Levels 10:05 IST · next 11:05".
-  Levels row under the chart with CopyValue + "Copy levels for chart".
+  Levels row under the chart with CopyValue + "Copy levels for chart". Chart: 620px (480px on short screens).
 - `GET /api/dashboard/summary?symbol=&expiry=&stocks=` (`backend/dashboard_api.py`): the cached chain, newest Trending
   OI rows and component quotes + daily candles (previous closes warm up in a background thread → `warming`), each
   section with its own status (ok / stale / warming / empty / token / error). Auto-refresh 1 min (Settings: 30 s–5 min).
@@ -37,7 +37,20 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   (final average vs spot), Sensibull (anticipated vs spot; Change in OI, 10 + 20, ±25), Index Components (index move
   from components, ±0.05 neutral band; no verdict while previous closes load), OI S&R (spot vs S1 / R1, "Levels" tag,
   no verdict). Consensus line counts verdicts only. Below 1200px the cards go under the chart.
-- Tests: `backend/test_dashboard_api.py`, `backend/test_candles.py`, `src/apps/dashboard/logic/*.test.ts`.
+- Indicators (toggles in the chart header, remembered per browser; Volume and RSI on by default):
+  - RSI 14 (Wilder, = TradingView ta.rsi) in its own pane, 0-100 with dashed 80 / 20 lines.
+  - EMA 20 (= ta.ema, SMA seed) on the candles.
+  - Volume = the near-month index future's (NIFTY / BANKNIFTY OCT FUT ...; `instruments.near_future`, rolls the day
+    after expiry; stored apart from the options in `option_instruments.json`). Dhan does send volume for the index
+    itself (~293 M on 21-Oct, most likely constituent shares; last minutes stuck at one value), so the future's
+    contracts are used instead, as TradingView's NIFTY1!. History merged per minute in `/api/dashboard/candles`;
+    live minute from the feed's running day volume (`VolumeBuilder`, `"volume"` messages on `/ws/paper`).
+  - The page keeps 1-minute candles and groups them per interval itself (`logic/candles.ts aggregate`, same 09:15
+    buckets as `backend/candles.py`), so switching interval needs no request and live volume is never double counted.
+- Dhan's intraday toDate is exclusive by date: the candles request runs to the day after the last session
+  (before this, today's candles were missing from the history during market hours).
+- Tests: `backend/test_dashboard_api.py`, `backend/test_candles.py`, `backend/test_instruments.py`,
+  `src/apps/dashboard/logic/*.test.ts` (RSI checked by hand on the StockCharts closes: 70.46, 66.25).
 - Known limits: the live candle is untested against real ticks (built after market hours; check at 09:15). Dhan's
   intraday data has no 09:15 candle for the index (first is 09:16), so the first bar of the day comes from the live
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).

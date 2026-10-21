@@ -1,14 +1,15 @@
 // Dashboard state: toolbar choices, the summary (every refreshSec), the chart's candles and the live candle feed.
-// The summary and candles come over REST; the live 1-minute candle comes over the existing /ws/paper connection.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// The summary and 1-minute candles come over REST; the live index candle and the futures volume of the current
+// minute come over the existing /ws/paper connection. Candles are kept per minute and grouped per interval here.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchDhanExpiries } from '../../shared/dhan/api';
 import { liveStatus } from '../../shared/live/liveStatus';
 import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
 import { DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, type IndicatorToggles, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
-import { fetchCandles, fetchSummary, type Summary } from './logic/api';
-import { mergeLive, type Candle } from './logic/candles';
+import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
+import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
 import { takeNewLevels, type LevelsBasis } from './logic/levels';
 
 const read = (k: string) => {
@@ -61,14 +62,19 @@ export function useDashboard() {
   const forceLevels = useRef(false);
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
-  const [bars, setBars] = useState<Candle[]>([]);
-  const barsRef = useRef<Candle[]>([]);
-  const [liveBar, setLiveBar] = useState<Candle | null>(null);
+  const [minutes, setMinutes] = useState<Candle[]>([]); // 1-minute candles: history + live
+  const minutesRef = useRef<Candle[]>([]);
+  const pendingVolume = useRef(new Map<number, number>()); // futures volume that arrived before its index minute
+  const [volumeInfo, setVolumeInfo] = useState<CandlesResponse['meta']['volume']>(null);
+  const [volumeError, setVolumeError] = useState('');
   const [candlesError, setCandlesError] = useState<unknown>(null);
   const [feedState, setFeedState] = useState<ConnState>('connecting');
   const [now, setNow] = useState(() => Date.now());
-  const intervalRef = useRef(interval);
-  intervalRef.current = interval;
+  const putMinutes = (m: Candle[]) => {
+    minutesRef.current = m;
+    setMinutes(m);
+  };
+  const bars = useMemo(() => aggregate(minutes, interval), [minutes, interval]);
 
   const setSymbol = (s: string) => { write('symbol', s); setSymbolState(s); };
   const setInterval_ = (v: number) => { write('interval', String(v)); setIntervalState(v); };
@@ -107,16 +113,18 @@ export function useDashboard() {
     }
   }, [symbol, expiry]);
 
+  // always 1-minute: the interval is applied here, so switching it needs no request
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     try {
-      const r = await fetchCandles(symbol, interval, signal);
-      barsRef.current = r.candles;
-      setBars(r.candles);
+      const r = await fetchCandles(symbol, 1, signal);
+      putMinutes(r.candles);
+      setVolumeInfo(r.meta.volume);
+      setVolumeError(r.meta.volumeError);
       setCandlesError(null);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setCandlesError(e);
     }
-  }, [symbol, interval]);
+  }, [symbol]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -126,9 +134,9 @@ export function useDashboard() {
 
   useEffect(() => {
     const ac = new AbortController();
-    barsRef.current = [];
-    setBars([]);
-    setLiveBar(null);
+    putMinutes([]);
+    pendingVolume.current.clear();
+    setVolumeInfo(null);
     void loadCandles(ac.signal);
     return () => ac.abort();
   }, [loadCandles]);
@@ -144,24 +152,29 @@ export function useDashboard() {
     return () => window.clearInterval(id);
   }, [refreshSec, loadSummary, loadCandles, marketOpen]);
 
-  // live 1-minute candles for the chosen index over /ws/paper (the backend's single Dhan feed)
+  // live: the index's 1-minute candle and the near-month future's volume, over /ws/paper (the backend's single Dhan feed)
   const spotId = INDEX_IDS[symbol];
+  const futId = volumeInfo?.securityId ?? null;
   useEffect(() => {
     const feed = new PaperFeed(PAPER_WS, {
       onState: setFeedState,
       onTicks: () => {},
       onMessage: (m) => {
-        if (m.type !== 'candle' || m.data.securityId !== spotId) return;
-        const r = mergeLive(barsRef.current, m.data, intervalRef.current);
-        if (!r.bar) return;
-        barsRef.current = r.bars;
-        setLiveBar(r.bar);
+        if (m.type === 'candle' && m.data.securityId === spotId) {
+          const pending = pendingVolume.current.get(m.data.time);
+          pendingVolume.current.delete(m.data.time);
+          putMinutes(applyMinute(minutesRef.current, m.data, pending));
+        } else if (m.type === 'volume' && m.data.securityId === futId) {
+          const next = applyVolume(minutesRef.current, m.data);
+          if (next) putMinutes(next);
+          else pendingVolume.current.set(m.data.time, m.data.volume);
+        }
       },
     });
-    feed.setSubscriptions([keyOf('IDX_I', spotId)]);
+    feed.setSubscriptions(futId ? [keyOf('IDX_I', spotId), keyOf('NSE_FNO', futId)] : [keyOf('IDX_I', spotId)]);
     feed.connect();
     return () => feed.close();
-  }, [spotId]);
+  }, [spotId, futId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 5000);
@@ -177,7 +190,7 @@ export function useDashboard() {
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, levelsBasis, bars, liveBar, candlesError, feedState, refresh,
+    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

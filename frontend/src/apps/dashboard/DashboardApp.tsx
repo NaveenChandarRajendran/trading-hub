@@ -17,7 +17,7 @@ import { PriceChart } from './PriceChart';
 import { useDashboard } from './useDashboard';
 import './dashboard.css';
 
-const INDICATORS = [['rsi', `RSI ${RSI_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`]] as const;
+const INDICATORS = [['volume', 'Volume'], ['rsi', `RSI ${RSI_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`]] as const;
 const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]] as const;
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
@@ -95,6 +95,7 @@ export default function DashboardApp() {
               <span className="db-toggles" role="group" aria-label="Indicators">
                 {INDICATORS.map(([k, label]) => (
                   <button key={k} type="button" className={`db-toggle ${d.indicators[k] ? 'on' : ''}`} aria-pressed={d.indicators[k]}
+                    title={k === 'volume' ? `Volume of the near-month future${d.volumeInfo ? ` (${d.volumeInfo.name})` : ''}: an index has none` : undefined}
                     onClick={() => d.toggleIndicator(k)}>{label}</button>
                 ))}
               </span>
@@ -104,8 +105,8 @@ export default function DashboardApp() {
           {!d.bars.length ? (
             <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
           ) : (
-            <PriceChart bars={d.bars} liveBar={d.liveBar} levels={sr?.levels ?? null} resetKey={`${d.symbol}-${d.interval}`}
-              indicators={d.indicators} />
+            <PriceChart bars={d.bars} levels={sr?.levels ?? null} resetKey={`${d.symbol}-${d.interval}`}
+              indicators={d.indicators} volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} />
           )}
           <div className="db-levels">
             {sr ? (
@@ -137,6 +138,8 @@ export default function DashboardApp() {
           <p className="card-foot">
             S1–S3 / R1–R3: top put / call OI within {SR_RANGE} pts of spot, as in OI Support &amp; Resistance Live,
             updated hourly (Refresh updates them now).
+            {d.indicators.volume && (d.volumeInfo ? ` Volume: ${d.volumeInfo.name} (near-month future).` : '')}
+            {d.indicators.volume && d.volumeError && ` ${d.volumeError}`}{' '}
             Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a>.
           </p>
         </section>

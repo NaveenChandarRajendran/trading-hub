@@ -26,7 +26,11 @@ export interface Summary {
 }
 
 export interface CandlesResponse {
-  meta: { symbol: string; interval: number; sessions: string[]; asOf: string; marketOpen: boolean; tokenExpired: boolean; lastError: string; message: string };
+  meta: {
+    symbol: string; interval: number; sessions: string[]; asOf: string; marketOpen: boolean; tokenExpired: boolean; lastError: string; message: string;
+    volume: { securityId: number; name: string; expiry: string } | null; // the near-month future whose volume the candles carry
+    volumeError: string;
+  };
   candles: Candle[];
 }
 

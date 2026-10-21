@@ -20,6 +20,9 @@ live in the frontend (`logic/` modules, tested against reference tools). A secon
 - **Live candles** reuse the paper feed's single Dhan connection: index ticks become a 1-minute candle on the backend
   (`candles.py`, IST buckets from the backend's receive time) and go out as `candle` messages on `/ws/paper`.
 
+- **Volume** comes from the near-month index future (Dhan's index volume exists but means something else),
+  merged into the index candles per minute; the page keeps 1-minute candles and aggregates them per interval.
+
 ## Consequences
 - A card can never disagree with its app; a formula change in an app reaches the dashboard automatically.
 - The summary response carries the whole chain (~250 kB) once a minute. Fine on localhost; trim it if the backend

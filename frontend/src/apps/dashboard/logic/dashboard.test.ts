@@ -4,7 +4,7 @@ import { toOptionChain } from '../../../shared/dhan/chainAdapter';
 import { istMs } from '../../../shared/live/liveStatus';
 import { analyzeChain, buildView } from '../../oi-support-resistance/logic/levels';
 import niftyJson from '../../../shared/dhan/__fixtures__/nifty-2026-10-21.json';
-import { bucketStart, mergeLive, type Candle } from './candles';
+import { aggregate, applyMinute, applyVolume, bucketStart, type Candle } from './candles';
 import { LevelLines, lineSpec, withAlpha, type LineSpec } from './levelLines';
 import { srLevels, takeNewLevels } from './levels';
 
@@ -100,27 +100,36 @@ describe('live candles', () => {
     expect(bucketStart(t('2026-10-21T10:07:00'), 1)).toBe(t('2026-10-21T10:07:00'));
   });
 
-  it('a live minute inside the last 5-min bar widens it and moves its close; the open stays', () => {
-    const bars = [c(t('2026-10-21T09:15:00'), 100, 105, 99, 104)];
-    const r = mergeLive(bars, c(t('2026-10-21T09:17:00'), 104, 108, 101, 107), 5);
-    expect(r.bar).toEqual(c(t('2026-10-21T09:15:00'), 100, 108, 99, 107));
-    expect(r.bars).toHaveLength(1);
+  it('1-minute candles group into 3 / 5 / 15-min bars aligned to 09:15; volume adds up', () => {
+    const m = [
+      { ...c(t('2026-10-21T09:15:00'), 100, 105, 99, 104), volume: 650 },
+      { ...c(t('2026-10-21T09:16:00'), 104, 108, 101, 107), volume: 1300 },
+      { ...c(t('2026-10-21T09:17:00'), 107, 107, 98, 99) }, // no volume known for this minute
+      { ...c(t('2026-10-21T09:18:00'), 99, 100, 97, 98), volume: 325 },
+    ];
+    expect(aggregate(m, 3)).toEqual([
+      { ...c(t('2026-10-21T09:15:00'), 100, 108, 98, 99), volume: 1950 },
+      { ...c(t('2026-10-21T09:18:00'), 99, 100, 97, 98), volume: 325 },
+    ]);
+    expect(aggregate(m, 5)).toEqual([{ ...c(t('2026-10-21T09:15:00'), 100, 108, 97, 98), volume: 2275 }]);
+    expect(aggregate(m, 1)).toBe(m);
   });
 
-  it('a live minute past the last bar starts a new bar; an older one is ignored', () => {
-    const bars = [c(t('2026-10-21T09:15:00'), 100, 105, 99, 104)];
-    const next = mergeLive(bars, c(t('2026-10-21T09:20:00'), 104, 106, 103, 105), 5);
-    expect(next.bar).toEqual(c(t('2026-10-21T09:20:00'), 104, 106, 103, 105));
-    expect(next.bars).toHaveLength(2);
-    expect(mergeLive(next.bars, c(t('2026-10-21T09:16:00'), 1, 1, 1, 1), 5).bar).toBeNull();
+  it('the live minute replaces its candle and keeps its volume; a new minute is appended; an older one is ignored', () => {
+    let m: Candle[] = [{ ...c(t('2026-10-21T11:00:00'), 100, 101, 100, 100.5), volume: 650 }];
+    m = applyMinute(m, c(t('2026-10-21T11:00:00'), 100, 103, 98, 99));
+    expect(m).toEqual([{ ...c(t('2026-10-21T11:00:00'), 100, 103, 98, 99), volume: 650 }]);
+    m = applyMinute(m, c(t('2026-10-21T11:01:00'), 99, 99, 99, 99));
+    expect(m).toHaveLength(2);
+    expect(applyMinute(m, c(t('2026-10-21T10:59:00'), 1, 1, 1, 1))).toBe(m);
   });
 
-  it('repeated updates of the same live minute keep the extremes', () => {
-    let bars: Candle[] = [];
-    for (const [h, l, cl] of [[101, 100, 100.5], [103, 100, 102], [103, 98, 99]]) {
-      bars = mergeLive(bars, c(t('2026-10-21T11:00:00'), 100, h, l, cl), 1).bars;
-    }
-    expect(bars).toEqual([c(t('2026-10-21T11:00:00'), 100, 103, 98, 99)]);
+  it('live futures volume lands on its minute; before that minute exists it is kept for applyMinute', () => {
+    const m = [c(t('2026-10-21T11:00:00'), 100, 101, 99, 100)];
+    expect(applyVolume(m, { time: t('2026-10-21T11:00:00'), volume: 975 })![0].volume).toBe(975);
+    expect(applyVolume(m, { time: t('2026-10-21T11:01:00'), volume: 130 })).toBeNull(); // index minute not here yet
+    const next = applyMinute(m, c(t('2026-10-21T11:01:00'), 100, 100, 100, 100), 130); // ...arrives: pending volume used
+    expect(next[1].volume).toBe(130);
   });
 });
 

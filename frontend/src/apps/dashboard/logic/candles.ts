@@ -1,11 +1,13 @@
-// Live 1-minute candles (from /ws/paper) merged into the chart's N-minute candles. Buckets are IST and aligned to the
-// 09:15 open, exactly like backend/candles.py, so a live bar always lands in the same bucket as the history.
+// Chart candles. The dashboard keeps 1-minute candles (history + live) and groups them into the chosen interval here,
+// with IST buckets aligned to the 09:15 open exactly like backend/candles.py. Volume is the near-month index
+// future's (an index has none) and adds up when grouping.
 export interface Candle {
   time: number; // epoch seconds of the bucket start
   open: number;
   high: number;
   low: number;
   close: number;
+  volume?: number; // futures volume in this bucket
 }
 
 const IST_OFFSET = 19800; // seconds
@@ -19,18 +21,52 @@ export function bucketStart(epochSec: number, interval: number): number {
   return minuteStart - (((fromOpen % interval) + interval) % interval) * 60;
 }
 
-/**
- * Applies the live 1-minute candle to the N-minute series. Returns the bar to hand to series.update() (null when the
- * candle is older than the last bar) and the new series. The bucket's open is kept; high / low widen; close follows.
- */
-export function mergeLive(bars: Candle[], live: Candle, interval: number): { bar: Candle | null; bars: Candle[] } {
-  const time = bucketStart(live.time, interval);
-  const last = bars[bars.length - 1];
-  if (last && time < last.time) return { bar: null, bars };
-  if (last && time === last.time) {
-    const bar = { time, open: last.open, high: Math.max(last.high, live.high), low: Math.min(last.low, live.low), close: live.close };
-    return { bar, bars: [...bars.slice(0, -1), bar] };
+/** 1-minute candles (ascending) -> interval-minute candles. Volume adds up (missing counts as 0). */
+export function aggregate(minutes: Candle[], interval: number): Candle[] {
+  if (interval === 1) return minutes;
+  const out: Candle[] = [];
+  for (const m of minutes) {
+    const time = bucketStart(m.time, interval);
+    const last = out[out.length - 1];
+    if (last && last.time === time) {
+      last.high = Math.max(last.high, m.high);
+      last.low = Math.min(last.low, m.low);
+      last.close = m.close;
+      if (m.volume != null) last.volume = (last.volume ?? 0) + m.volume;
+    } else {
+      out.push({ time, open: m.open, high: m.high, low: m.low, close: m.close, ...(m.volume != null ? { volume: m.volume } : {}) });
+    }
   }
-  const bar = { time, open: live.open, high: live.high, low: live.low, close: live.close };
-  return { bar, bars: [...bars, bar] };
+  return out;
+}
+
+export interface LiveCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+/**
+ * The live 1-minute index candle (it updates many times within its minute). Replaces that minute's OHLC, keeping the
+ * volume already known for it, or appends a new minute; an older minute is ignored.
+ */
+export function applyMinute(minutes: Candle[], live: LiveCandle, pendingVolume?: number): Candle[] {
+  const last = minutes[minutes.length - 1];
+  if (last && live.time < last.time) return minutes;
+  const volume = last && last.time === live.time ? last.volume : pendingVolume;
+  const bar: Candle = { time: live.time, open: live.open, high: live.high, low: live.low, close: live.close, ...(volume != null ? { volume } : {}) };
+  return last && last.time === live.time ? [...minutes.slice(0, -1), bar] : [...minutes, bar];
+}
+
+/**
+ * The live futures volume for one minute (the minute's volume so far). Sets it on that minute's candle. Returns null
+ * when the index candle for that minute hasn't arrived yet, so the caller keeps it until applyMinute adds the minute.
+ */
+export function applyVolume(minutes: Candle[], v: { time: number; volume: number }): Candle[] | null {
+  for (let i = minutes.length - 1; i >= 0 && minutes[i].time >= v.time; i--) {
+    if (minutes[i].time === v.time) return [...minutes.slice(0, i), { ...minutes[i], volume: v.volume }, ...minutes.slice(i + 1)];
+  }
+  return null;
 }
