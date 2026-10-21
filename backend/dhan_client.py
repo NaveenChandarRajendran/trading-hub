@@ -107,6 +107,16 @@ class DhanClient:
             raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
         return {"timestamp": ts, "close": close}
 
+    def intraday(self, symbol, from_dt, to_dt, interval=1):
+        """1-minute (or 5/15/25/60) candles for an index: {"timestamp": [epoch s], "open": [...], ...}.
+        from_dt / to_dt are 'YYYY-MM-DD HH:MM:SS' (IST). Same data-API limit as historical()."""
+        body = {"securityId": str(SCRIP[symbol]), "exchangeSegment": SEGMENT, "instrument": "INDEX",
+                "interval": str(interval), "oi": False, "fromDate": from_dt, "toDate": to_dt}
+        payload = self._post("/charts/intraday", body, gap=HISTORY_GAP_SECONDS)
+        if not isinstance(payload, dict) or not isinstance(payload.get("timestamp"), list):
+            raise DhanError(f"unexpected intraday response: {str(payload)[:200]}")
+        return payload
+
 
 def parse_ohlc(payload):
     data = ((payload or {}).get("data") or {}).get("NSE_EQ") or {}

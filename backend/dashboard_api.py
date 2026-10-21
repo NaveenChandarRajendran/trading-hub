@@ -8,6 +8,9 @@ with the apps). Sections, each with its own status so one failure never breaks t
     components  live quotes + daily candles for the index stocks the page sends (weights stay in the frontend)
 status: "ok" | "stale" (served from cache after a failed refresh) | "warming" (daily candles still being fetched)
         | "empty" (nothing recorded yet) | "token" (Dhan token expired) | "error"
+
+GET /api/dashboard/candles: index candles for today and the previous trading session (Dhan intraday, 1-minute, cached),
+aggregated to 1 / 3 / 5 / 15 minutes. The live candle comes over /ws/paper ("candle" messages, see paper_api.py).
 """
 import logging
 import re
@@ -17,12 +20,15 @@ from typing import Callable
 
 from fastapi import HTTPException
 
+from candles import INTERVALS, aggregate, parse_intraday, recent_sessions
 from chain_cache import chain_response
 from dhan_client import SCRIP, DhanError, TokenExpired
 
 log = logging.getLogger("dashboard")
 TRENDING_INTERVAL = 5  # the Trending OI app's default; the card reads the newest row, which is the same at any interval
 MAX_STOCKS = 100
+CANDLE_TTL_OPEN = 60  # seconds: completed 1-minute candles; the live one comes from the feed
+CANDLE_TTL_CLOSED = 900
 
 
 @dataclass
@@ -148,6 +154,44 @@ def register(app, deps: DashboardDeps):
         if missing:
             return section("warming", data, f"Loading previous closes ({len(history)} of {len(ids)} stocks).", as_of)
         return section("ok", data, "", as_of)
+
+    candle_cache = {}  # (symbol, sessions) -> (fetched at, 1-minute candles)
+    candle_lock = threading.Lock()
+
+    @app.get("/api/dashboard/candles")
+    def candles(symbol: str = "NIFTY", interval: int = 5):
+        symbol = symbol.upper()
+        if symbol not in SCRIP:
+            raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
+        if interval not in INTERVALS:
+            raise HTTPException(400, f"interval must be one of {list(INTERVALS)}")
+        now = tracker.clock()
+        sessions = tuple(recent_sessions(now.date()))
+        key = (symbol, sessions)
+        ttl = CANDLE_TTL_OPEN if tracker.market_open() else CANDLE_TTL_CLOSED
+        last_error = ""
+        with candle_lock:  # one Dhan call serves every tab asking at the same time
+            hit = candle_cache.get(key)
+            if not hit or (now - hit[0]).total_seconds() >= ttl:
+                try:
+                    raw = tracker.client.intraday(symbol, f"{sessions[0]} 09:15:00", f"{sessions[-1]} 15:30:00")
+                    hit = candle_cache[key] = (now, parse_intraday(raw))
+                except DhanError as e:
+                    if not hit:
+                        raise HTTPException(401 if isinstance(e, TokenExpired) else 502,
+                                            f"{e} Send a new one with POST /api/token." if isinstance(e, TokenExpired) else str(e))
+                    last_error = str(e)  # keep showing the last candles
+        fetched, one_min = hit
+        token = tracker.client.token_expired
+        return {
+            "meta": {
+                "symbol": symbol, "interval": interval, "sessions": [d.isoformat() for d in sessions],
+                "asOf": fetched.strftime("%Y-%m-%d %H:%M:%S"), "marketOpen": tracker.market_open(),
+                "tokenExpired": token, "lastError": last_error,
+                "message": "Dhan token expired. Send a new one with POST /api/token." if token else "",
+            },
+            "candles": aggregate(one_min, interval),
+        }
 
     @app.get("/api/dashboard/summary")
     def summary(symbol: str = "NIFTY", expiry: str = "", stocks: str = ""):

@@ -7,7 +7,9 @@ store (Postgres or data/paper.json) and pushed to the open /ws/paper connections
 and the day roll-over, so stop-losses and the square-off work while the browser is closed (the backend must run).
 
 WebSocket /ws/paper
-  server -> client: {"type": "status"|"funds"|"order"|"trade"|"position"|"tick", "data": {...}}
+  server -> client: {"type": "status"|"funds"|"order"|"trade"|"position"|"tick"|"candle", "data": {...}}
+  "candle": the current 1-minute candle of a subscribed index (IDX_I), built from its ticks (candles.py), for the
+  Dashboard chart: {"segment", "securityId", "interval": 1, "time", "open", "high", "low", "close"}
                     plus one {"type": "snapshot", ...} right after connecting
   client -> server: {"type": "subscribe" | "unsubscribe", "instruments": [["NSE_FNO", 52175], ["IDX_I", 13]]}
 The backend always keeps open positions and pending orders subscribed, whatever the clients ask for.
@@ -21,6 +23,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from candles import CandleBuilder
 from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
@@ -34,6 +37,7 @@ DEFAULT_CAPITAL = 100_000
 CAPITAL_PRESETS = (100_000, 200_000, 500_000)
 MIN_CAPITAL, MAX_CAPITAL = 10_000, 10_00_00_000  # Rs 10k .. Rs 10 crore
 FNO = "NSE_FNO"
+IDX = "IDX_I"
 SESSION_CLOSE = (15, 30)
 CLIENT_QUEUE = 2000  # messages buffered per WebSocket client; ticks are dropped first when it is full
 
@@ -68,6 +72,7 @@ class PaperService:
         self._feed_status = None
         self._timer = None
         self._stopping = threading.Event()
+        self.candles = CandleBuilder()  # current 1-minute candle per subscribed index, for the Dashboard chart
         self.account = store.active_account() or store.create_account(DEFAULT_CAPITAL, clock())
         self.engine, self.day = None, None
         feed.on_packet = self.on_packet
@@ -254,6 +259,13 @@ class PaperService:
         for c in list(self.clients):
             if key in c.subs or (key[0] == FNO and key[1] in self.engine.positions):
                 c.push(msg)
+        if key[0] == IDX:
+            candle = self.candles.on_tick(key, pkt["ltp"], now)
+            if candle:
+                cmsg = {"type": "candle", "data": {"segment": key[0], "securityId": key[1], "interval": 1, **candle}}
+                for c in list(self.clients):
+                    if key in c.subs:
+                        c.push(cmsg)
 
     # ---------- commands ----------
     def place_order(self, security_id, side, lots, order_type, price=None, trigger_price=None):
