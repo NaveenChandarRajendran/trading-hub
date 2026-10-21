@@ -60,6 +60,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./oi-change-live/OiChangeLiveApp')),
   },
   {
+    id: 'sensibull-oi-live',
+    group: 'live',
+    name: 'Sensibull OI Change Live',
+    path: '/sensibull-oi-live',
+    icon: '◧',
+    component: lazy(() => import('./sensibull-oi-live/SensibullOiLiveApp')),
+  },
+  {
     id: 'index-components',
     group: 'live',
     name: 'Index Components',

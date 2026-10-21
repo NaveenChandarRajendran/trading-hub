@@ -12,7 +12,7 @@ describe('sidebar groups', () => {
     const g = groupApps();
     expect(g.map((x) => x.label)).toEqual(['Manual (Paste)', 'Live (Dhan)']);
     expect(g[0].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance']);
-    expect(g[1].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'index-components', 'paper-trade']);
+    expect(g[1].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'index-components', 'paper-trade']);
   });
 
   it('drops empty sections', () => {

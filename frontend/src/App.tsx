@@ -11,7 +11,8 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [closed, setClosed] = useState<string[]>(loadClosed);
   const { pathname } = useLocation();
-  const current = apps.find((a) => pathname.startsWith(a.path));
+  // Exact segment match: '/sensibull-oi-live' must not resolve to '/sensibull-oi'.
+  const current = apps.find((a) => pathname === a.path || pathname.startsWith(`${a.path}/`));
 
   const toggleSection = (id: string) => {
     const next = closed.includes(id) ? closed.filter((c) => c !== id) : [...closed, id];
