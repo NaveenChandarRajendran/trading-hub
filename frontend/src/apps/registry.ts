@@ -44,6 +44,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./oi-support-resistance/OiSupportResistanceApp')),
   },
   {
+    id: 'premium-analysis',
+    group: 'manual',
+    name: 'Premium Analysis',
+    path: '/premium-analysis',
+    icon: '◭',
+    component: lazy(() => import('./premium-analysis/PremiumAnalysisApp')),
+  },
+  {
     id: 'trending-oi',
     group: 'live',
     name: 'Trending OI',

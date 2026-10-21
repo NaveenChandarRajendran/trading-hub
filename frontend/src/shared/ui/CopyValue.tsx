@@ -1,6 +1,7 @@
 // A formatted number with a copy button that copies the RAW value (22,900 shows, "22900" is copied).
 // The button appears when the cell, table row or stat tile is hovered, or when it has keyboard focus. Its space is
-// always reserved, so nothing moves on hover. Render inside a `.ds` container.
+// always reserved, so nothing moves on hover. A click copies only: it doesn't reach the row's own click handler.
+// Render inside a `.ds` container.
 import { useEffect, useRef, useState } from 'react';
 import { copyText, rawNumber } from '../clipboard';
 import { inr } from '../grid';
@@ -27,7 +28,7 @@ export function CopyValue({ value, decimals = 0, display, iconSide = 'start' }: 
   };
 
   const button = (
-    <button type="button" className={`copy-btn ${state}`} onClick={() => void copy()} aria-label={`Copy ${raw}`} title={`Copy ${raw}`}>
+    <button type="button" className={`copy-btn ${state}`} onClick={(e) => { e.stopPropagation(); void copy(); }} aria-label={`Copy ${raw}`} title={`Copy ${raw}`}>
       {state === 'ok' ? <CheckIcon /> : <CopyIcon />}
       {state !== 'idle' && <span className="copy-tip" role="status">{state === 'ok' ? 'Copied' : 'Copy failed'}</span>}
     </button>
