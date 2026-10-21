@@ -14,23 +14,23 @@ const num = (d = 0) => (p: ValueFormatterParams<ToiRow>) => inr(d)(p.value);
 const posNeg = (p: { value?: number }) => ((p.value ?? 0) > 0 ? 'pos' : (p.value ?? 0) < 0 ? 'neg' : '');
 
 function TimeCell({ data, value }: Cell) {
-  return <span>{value}{data?.live && <span className="pill live">LIVE</span>}</span>;
+  return <span>{value}{data?.live && <span className="pill accent toi-live">LIVE</span>}</span>;
 }
 
 /** Index broke the day's high (green) or low (red) among the rows shown. */
 function SpotBreakCell({ data }: Cell) {
   const b = data?.dayHLBreak;
-  if (!b) return <span>-</span>;
-  return <span className={`pill sm ${b.type === 'DHB' ? 'bull' : 'bear'}`}>{b.type === 'DHB' ? 'D.H.B.' : 'D.L.B.'} ({inr(2)(b.level)})</span>;
+  if (!b) return <span className="toi-empty">-</span>;
+  return <span className={`pill ${b.type === 'DHB' ? 'up' : 'down'}`}>{b.type === 'DHB' ? 'D.H.B.' : 'D.L.B.'} ({inr(2)(b.level)})</span>;
 }
 
 function StrengthCell({ value }: Cell) {
   const pct = Number(value);
-  const kind = pct >= 0 ? 'bull' : 'bear';
+  const kind = pct >= 0 ? 'up' : 'down';
   const dots = strengthDots(pct);
   return (
     <span>
-      <span className={`pill sm ${kind}`}>{pct > 0 ? '+' : ''}{Math.round(pct)}%</span>
+      <span className={`pill ${kind}`}>{pct > 0 ? '+' : ''}{Math.round(pct)}%</span>
       <span className="dots">{[0, 1, 2].map((i) => <i key={i} className={i < dots ? `on ${kind}` : ''} />)}</span>
     </span>
   );
@@ -39,10 +39,10 @@ function StrengthCell({ value }: Cell) {
 function DirectionCell({ data }: Cell) {
   if (!data) return null;
   const up = data.directionChg >= 0;
-  return <span className={`pill sm ${up ? 'bull' : 'bear'}`}>{up ? '↑' : '↓'} {inr(2)(data.directionPct)} %</span>;
+  return <span className={`pill ${up ? 'up' : 'down'}`}>{up ? '↑' : '↓'} {inr(2)(data.directionPct)} %</span>;
 }
 
-/** Diff OI broke the day's high or low: soft-tint pill from the design system (cell carries `.ds`). */
+/** Diff OI broke the day's high or low. */
 function DiffBreakCell({ value }: Cell) {
   if (!value) return <span className="toi-empty">-</span>;
   const high = value === 'HIGH';
@@ -54,14 +54,14 @@ function SentimentCell({ value }: Cell) {
 }
 
 const left = { textAlign: 'left' } as const;
-// Design-system pills, centred in the cell (see trending-oi.css). `.ds` scopes the shared pill styles to these cells.
-const pillCell: ColDef<ToiRow> = { cellClass: ['ds', 'toi-center'], cellStyle: { textAlign: 'center' }, headerClass: 'toi-center-header' };
+// Label pills centred in the cell (see trending-oi.css). The grid sits in `.ds`, so every pill is the soft design-system pill.
+const pillCell: ColDef<ToiRow> = { cellClass: 'toi-center', cellStyle: { textAlign: 'center' }, headerClass: 'toi-center-header' };
 
 const columns: ColDef<ToiRow>[] = [
   { field: 'date', headerName: 'Date', width: 105, cellStyle: left, headerClass: '' },
   { field: 'time', headerName: 'Time', width: 120, pinned: 'left', cellStyle: left, headerClass: '', cellRenderer: TimeCell },
   { field: 'ltp', headerName: 'LTP', headerTooltip: 'Index spot (LTP)', valueFormatter: num(2) },
-  { field: 'dayHLBreak', headerName: 'Day H/L Break', headerTooltip: "Index spot broke the day's high (D.H.B.) or low (D.L.B.) so far; the level is the old high / low", minWidth: 150, cellRenderer: SpotBreakCell },
+  { field: 'dayHLBreak', headerName: 'Day H/L Break', headerTooltip: "Index spot broke the day's high (D.H.B.) or low (D.L.B.) so far; the level is the old high / low", minWidth: 150, cellRenderer: SpotBreakCell, ...pillCell },
   { field: 'callChg', headerName: 'Chg Call OI', headerTooltip: "Change in call OI: sum of (CE OI − previous-day settled OI) over the fixed strikes (units)", valueFormatter: num() },
   { field: 'putChg', headerName: 'Chg Put OI', headerTooltip: "Change in put OI: sum of (PE OI − previous-day settled OI) over the fixed strikes (units)", valueFormatter: num() },
   { field: 'diffOi', headerName: 'Diff OI', headerTooltip: 'Diff. in OI = Chg Put OI − Chg Call OI', valueFormatter: num(), cellClass: posNeg },
@@ -181,7 +181,7 @@ export default function TrendingOiApp() {
           <button className="btn" onClick={() => gridRef.current?.api.exportDataAsCsv({ fileName: `${symbol}-${expiry}-trending-oi-${interval}m.csv` })} disabled={!rows.length}>Download CSV</button>
         </div>
         {/* Few rows: the grid grows with them (no empty area). Many rows: fixed height, scrolls. */}
-        <div style={{ height: autoHeight ? undefined : GRID_MAX_HEIGHT }}>
+        <div className="ds" style={{ height: autoHeight ? undefined : GRID_MAX_HEIGHT }}>
           <AgGridReact<ToiRow>
             domLayout={autoHeight ? 'autoHeight' : 'normal'}
             ref={gridRef}

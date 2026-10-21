@@ -99,8 +99,8 @@ UI only, numbers unchanged. Sentiment and "OI H/L Break" (was "Day High/Low Diff
 is already the index spot-break column) use soft design-system pills, centred (cells carry `.ds`, `trending-oi.css`).
 Headers are one line with the long form and formula in `headerTooltip`. Up to 20 rows the grid sizes to its rows
 (`domLayout autoHeight`), above that it is 640px and scrolls. The thin "column" after Time seen while scrolling sideways
-is the next column sliding under the pinned Time column, not a real column. Other grid pills (Strength, Dir Chg %,
-D.H.B./D.L.B., LIVE) still use the older solid styles.
+is the next column sliding under the pinned Time column, not a real column. The grid container carries `.ds`, so every
+pill in it (Strength, Dir Chg %, D.H.B./D.L.B., LIVE, Sentiment, OI H/L Break) is the soft design-system pill.
 
 ## Design system
 `src/shared/tokens.css` (global) and `src/shared/ui/ui.css` + `src/shared/ui/index.tsx` (scoped to `.ds`),
