@@ -135,7 +135,11 @@ describe('through the day', () => {
   });
   it('copy text lists every level', () => {
     expect(levelsText(a.snapshot, '15:40', { R: topLevels(rows, spot, 'R', 500), S: [] })).toBe(
-      'BANKNIFTY 55844.0 at 15:40 | Res R1 55900 (0.06L), R2 56000 (0.41L), R3 56200 (0.05L) | Sup ',
+      'BANKNIFTY 55844 at 15:40 | Res R1 55900 (0.06L), R2 56000 (0.41L), R3 56200 (0.05L) | Sup ',
+    );
+    // raw values only: decimals kept to 2 places, never Indian grouping
+    expect(levelsText({ ...a.snapshot, spot: 22811.35 }, '17:10', { R: [{ strike: 23000, oi: 251027 }], S: [{ strike: 22700, oi: 110593 }] })).toBe(
+      'BANKNIFTY 22811.35 at 17:10 | Res R1 23000 (2.51L) | Sup S1 22700 (1.11L)',
     );
   });
 });

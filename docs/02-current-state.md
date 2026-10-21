@@ -12,7 +12,7 @@ _Last updated: 2026-10-21 (sidebar grouping + three live OI apps on `feature/liv
 | **OI & OI Change Live** (`oi-change-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | **Sensibull OI Change Live** (`sensibull-oi-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
 | **OI Support & Resistance Live** (`oi-support-resistance-live`) | backend `/api/option-chain` (Dhan) | Refresh button only; each refresh = one snapshot |
-| Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles |
+| Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles; grid polish 2026-10-21 (see below) |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
 ## Sidebar
@@ -71,6 +71,16 @@ paste the JSON, Analyze.
   (planned as its own page).
 - Tests: `logic/levels.test.ts`, `logic/snapshots.test.ts` (Bank Nifty 16-Oct-2026 fixture).
 
+## Copy values (2026-10-21, `fix/live-ui-polish`)
+`src/shared/ui/CopyValue.tsx` shows a formatted number (22,900) with a copy button that copies the raw value
+(`rawNumber` in `src/shared/clipboard.ts`: "22900", "22985.40", ASCII "-"). Icons are inline SVGs in
+`src/shared/ui/icons.tsx`. The button shows on row / tile hover or keyboard focus (space always reserved), swaps to a
+check + "Copied" (or "Copy failed") for 1.5 s. `copyText` uses the Clipboard API, else a hidden textarea +
+execCommand (file:// pages). Used in OI S&R (paste and live): Strike column of both level tables, Spot and Max pain.
+"Copy levels for chart" also uses raw values now: spot was rounded to 1 decimal ("55844.0"), it is now "55844" /
+"22811.35". The red / green left edges on the Resistance / Support cards were removed (the green one read as a stray
+bar after the Resistance table).
+
 ## Paper Trading (branch `feature/paper-trade`, spec `docs/features/paper-trade.md`)
 SIMULATION ONLY: fills are computed by `backend/paper_engine.py` against the live Dhan feed; no order endpoint is called.
 Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec are built; step 5 (attached SL/target) is not.
@@ -86,6 +96,12 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
 - Tests: `test_paper_engine.py`, `test_paper_charges.py`, `test_dhan_feed.py`, `test_paper_api.py`, `test_paper_store.py`,
   `test_instruments.py`; frontend `paper-trade/logic/*.test.ts`. Postgres store tests need `TEST_DATABASE_URL`.
 
+- Option chain UI (2026-10-21, `fix/live-ui-polish`): CALLS / Strike / PUTS group header row (call / put header tints
+  toned down), ITM cells shaded with the new `--itm-soft` token (calls below spot, puts above; the ATM row keeps its
+  highlight), a live spot line with a "NIFTY 22,957.05" pill between the two strikes around spot (`logic/chain.ts`
+  `itm`, `spotGapAfter`, tested), and an ITM legend in the card head. Stat tiles wrap long text (`ui.css`).
+  At ~1280px the chain card is narrower than the table, so it scrolls sideways (unchanged from before).
+
 Known limits / open:
 - Never run against the live Dhan feed yet: record frames with `backend/capture_feed.py` on a trading day
   (enables `test_captured_frames`) and check Dhan's LTT time zone.
@@ -93,6 +109,14 @@ Known limits / open:
   the spec says 0.1%: decision pending.
 - The instrument CSV (~26 MB) is downloaded twice a day (stock IDs and option list are separate caches).
 - Positions held when the backend is down at 15:15 are squared off at the next start, at the then-current price.
+
+## Trending OI grid (2026-10-21, `fix/live-ui-polish`)
+UI only, numbers unchanged. Sentiment and "OI H/L Break" (was "Day High/Low Diff. in OI"; renamed because "Day H/L Break"
+is already the index spot-break column) use soft design-system pills, centred (cells carry `.ds`, `trending-oi.css`).
+Headers are one line with the long form and formula in `headerTooltip`. Up to 20 rows the grid sizes to its rows
+(`domLayout autoHeight`), above that it is 640px and scrolls. The thin "column" after Time seen while scrolling sideways
+is the next column sliding under the pinned Time column, not a real column. The grid container carries `.ds`, so every
+pill in it (Strength, Dir Chg %, D.H.B./D.L.B., LIVE, Sentiment, OI H/L Break) is the soft design-system pill.
 
 ## Design system
 `src/shared/tokens.css` (global) and `src/shared/ui/ui.css` + `src/shared/ui/index.tsx` (scoped to `.ds`),

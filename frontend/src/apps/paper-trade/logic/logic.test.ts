@@ -138,4 +138,20 @@ describe('chain window', () => {
     expect(changePct(110, 100)).toBe(10);
     expect(changePct(110, 0)).toBeNull();
   });
+
+  it('ITM: calls below spot, puts above, neither at spot', async () => {
+    const { itm } = await import('./chain');
+    expect(itm(22900, 22957.05)).toEqual({ ce: true, pe: false });
+    expect(itm(23000, 22957.05)).toEqual({ ce: false, pe: true });
+    expect(itm(22950, 22950)).toEqual({ ce: false, pe: false });
+  });
+
+  it('spot line goes after the last strike at or below spot', async () => {
+    const { spotGapAfter } = await import('./chain');
+    expect(spotGapAfter(rows, 25110)).toBe(2); // between 25,100 and 25,150
+    expect(spotGapAfter(rows, 25100)).toBe(2); // spot on a strike: line just below it
+    expect(spotGapAfter(rows, 24990)).toBe(-1); // below the rows shown
+    expect(spotGapAfter(rows, 25200)).toBe(-1); // on the last strike: nothing below to draw against
+    expect(spotGapAfter(rows, null)).toBe(-1);
+  });
 });
