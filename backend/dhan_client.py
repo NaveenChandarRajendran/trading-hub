@@ -81,9 +81,12 @@ class DhanClient:
 
     def option_chain(self, symbol, expiry):
         """Returns {"spot": float, "oc": {strike(float): {"ce": {...}|None, "pe": {...}|None}}}."""
+        return parse_chain(self.option_chain_raw(symbol, expiry))
+
+    def option_chain_raw(self, symbol, expiry):
+        """Dhan's /optionchain response as sent (capture_chain.py saves it as a test fixture)."""
         body = {"UnderlyingScrip": SCRIP[symbol], "UnderlyingSeg": SEGMENT, "Expiry": expiry}
-        payload = self._post("/optionchain", body)
-        return parse_chain(payload)
+        return self._post("/optionchain", body)
 
     def ohlc(self, security_ids):
         """Live prices for NSE equities: {"1333": {"ltp": 711.65}, ...}.

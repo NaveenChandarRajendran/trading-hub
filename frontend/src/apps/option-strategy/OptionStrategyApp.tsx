@@ -4,7 +4,7 @@ import type { ColDef, ColGroupDef, ValueFormatterParams } from 'ag-grid-communit
 import { inr, useGridTheme } from '../../shared/grid';
 import { SYMBOLS, buildOptionChainUrl, upcomingExpiries } from './config/expiries';
 import { ChainParseError, parseOptionChain, type OptionChain } from './logic/optionChain';
-import { buildMainTable, buildSummary, buildWindowAverages, getVerdict, type MainRow } from './logic/oiCalculation';
+import { analyzeOptionChain, type MainRow } from './logic/oiCalculation';
 
 const pinned = (p: ValueFormatterParams) => !!p.node?.rowPinned;
 const num = (d = 0): ColDef<MainRow>['valueFormatter'] => (p) => inr(d)(p.value);
@@ -61,13 +61,7 @@ export default function OptionStrategyApp() {
   const [error, setError] = useState('');
   const [chain, setChain] = useState<OptionChain | null>(null);
 
-  const calc = useMemo(() => {
-    if (!chain) return null;
-    const { rows, totals } = buildMainTable(chain);
-    const summary = buildSummary(totals, chain.underlying);
-    const win = buildWindowAverages(rows, chain.underlying);
-    return { rows, totals, summary, win, verdict: getVerdict(win.overallAverage, chain.underlying) };
-  }, [chain]);
+  const calc = useMemo(() => (chain ? analyzeOptionChain(chain) : null), [chain]);
 
   const calculate = () => {
     try {
