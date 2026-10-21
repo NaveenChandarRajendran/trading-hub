@@ -6,8 +6,19 @@
 .db .db-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: var(--sp-4); align-items: start; }
 @media (max-width: 1200px) { .db .db-grid { grid-template-columns: 1fr; } }
 .db .db-chart-card { display: flex; flex-direction: column; min-width: 0; }
-.db .db-chart { height: 560px; min-height: 360px; }
-@media (max-height: 900px) { .db .db-chart { height: 440px; } }
+.db .db-chart { height: 620px; min-height: 360px; } /* candles + the RSI pane (130px) */
+@media (max-height: 900px) { .db .db-chart { height: 480px; } }
+
+/* indicator toggles in the chart card head */
+.db .db-head-end { display: inline-flex; align-items: center; gap: var(--sp-3); }
+.db .db-toggles { display: inline-flex; gap: var(--sp-1); }
+.db .db-toggle {
+  height: 24px; padding: 0 var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--text-2); font: inherit; font-size: var(--fs-xs); font-weight: 500; cursor: pointer; transition: background-color 120ms, color 120ms;
+}
+.db .db-toggle:hover { background: var(--surface-2); }
+.db .db-toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.db .db-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* levels row under the chart */
 .db .db-levels { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-3); }

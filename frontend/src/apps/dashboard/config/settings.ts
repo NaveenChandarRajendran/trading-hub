@@ -15,3 +15,15 @@ export const LEVELS_REFRESH_SEC = 3600; // S/R lines move at most once an hour (
 export const SR_RANGE = DEFAULT_RANGE; // points either side of spot for S1-S3 / R1-R3, same as OI Support & Resistance
 /** Index security IDs on the Dhan feed (segment IDX_I), as in backend/dhan_client.py SCRIP. */
 export const INDEX_IDS: Record<string, number> = { NIFTY: 13, BANKNIFTY: 25 };
+
+// Chart indicators (approved 2026-10-22). Toggles are remembered per browser.
+export const RSI_PERIOD = 14;
+export const RSI_LEVELS = [80, 20] as const; // overbought / oversold guide lines
+export const EMA_PERIOD = 20;
+export const RSI_PANE_PX = 130;
+export interface IndicatorToggles {
+  rsi: boolean;
+  ema: boolean;
+  volume: boolean;
+}
+export const DEFAULT_INDICATORS: IndicatorToggles = { rsi: true, ema: false, volume: true };

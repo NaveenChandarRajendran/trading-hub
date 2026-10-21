@@ -6,7 +6,7 @@ import { liveStatus } from '../../shared/live/liveStatus';
 import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
-import { DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
+import { DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, type IndicatorToggles, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
 import { fetchCandles, fetchSummary, type Summary } from './logic/api';
 import { mergeLive, type Candle } from './logic/candles';
 import { takeNewLevels, type LevelsBasis } from './logic/levels';
@@ -37,6 +37,19 @@ export function useDashboard() {
     const v = Number(read('refresh'));
     return (REFRESH_OPTIONS as readonly number[]).includes(v) ? v : DEFAULT_REFRESH_SEC;
   });
+  const [indicators, setIndicatorsState] = useState<IndicatorToggles>(() => {
+    try {
+      return { ...DEFAULT_INDICATORS, ...JSON.parse(read('indicators') ?? '{}') };
+    } catch {
+      return DEFAULT_INDICATORS;
+    }
+  });
+  const toggleIndicator = (k: keyof IndicatorToggles) =>
+    setIndicatorsState((p) => {
+      const next = { ...p, [k]: !p[k] };
+      write('indicators', JSON.stringify(next));
+      return next;
+    });
   const [expiries, setExpiries] = useState<string[]>([]);
   const [expiryPick, setExpiry] = useState('');
   const expiry = expiries.includes(expiryPick) ? expiryPick : expiries[0] ?? '';
@@ -163,6 +176,7 @@ export function useDashboard() {
 
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
+    indicators, toggleIndicator,
     summary, summaryError, loading, levelsBasis, bars, liveBar, candlesError, feedState, refresh,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };

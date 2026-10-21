@@ -7,7 +7,7 @@ import { Alert, CopyValue, EmptyState, Pill, Segmented, Status } from '../../sha
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
-import { INTERVALS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, SR_RANGE } from './config/settings';
+import { EMA_PERIOD, INTERVALS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE } from './config/settings';
 import { buildCards, consensus } from './logic/cards';
 import { srLevels } from './logic/levels';
 import { Consensus, GlanceCard } from './GlanceCard';
@@ -17,6 +17,7 @@ import { PriceChart } from './PriceChart';
 import { useDashboard } from './useDashboard';
 import './dashboard.css';
 
+const INDICATORS = [['rsi', `RSI ${RSI_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`]] as const;
 const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]] as const;
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
@@ -89,13 +90,22 @@ export default function DashboardApp() {
         <section className="card db-chart-card">
           <div className="card-head">
             <h3 className="card-title">{d.symbol} · {d.interval} min{d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h3>
-            {d.summary?.chain.data && <span className="db-muted num">Spot {inr(2)(d.summary.chain.data.meta.spot)}</span>}
+            <span className="db-head-end">
+              {d.summary?.chain.data && <span className="db-muted num">Spot {inr(2)(d.summary.chain.data.meta.spot)}</span>}
+              <span className="db-toggles" role="group" aria-label="Indicators">
+                {INDICATORS.map(([k, label]) => (
+                  <button key={k} type="button" className={`db-toggle ${d.indicators[k] ? 'on' : ''}`} aria-pressed={d.indicators[k]}
+                    onClick={() => d.toggleIndicator(k)}>{label}</button>
+                ))}
+              </span>
+            </span>
           </div>
           {d.candlesError != null && d.summaryError == null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
           {!d.bars.length ? (
             <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
           ) : (
-            <PriceChart bars={d.bars} liveBar={d.liveBar} levels={sr?.levels ?? null} resetKey={`${d.symbol}-${d.interval}`} />
+            <PriceChart bars={d.bars} liveBar={d.liveBar} levels={sr?.levels ?? null} resetKey={`${d.symbol}-${d.interval}`}
+              indicators={d.indicators} />
           )}
           <div className="db-levels">
             {sr ? (
