@@ -10,17 +10,19 @@ status: "ok" | "stale" (served from cache after a failed refresh) | "warming" (d
         | "empty" (nothing recorded yet) | "token" (Dhan token expired) | "error"
 
 GET /api/dashboard/candles: index candles for today and the previous trading session (Dhan intraday, 1-minute, cached),
-aggregated to 1 / 3 / 5 / 15 minutes. The live candle comes over /ws/paper ("candle" messages, see paper_api.py).
+aggregated to 1 / 3 / 5 / 15 minutes, with the near-month index future's volume per candle (an index has none).
+The live candle and volume come over /ws/paper ("candle" / "volume" messages, see paper_api.py).
 """
 import logging
 import re
 import threading
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Callable
 
 from fastapi import HTTPException
 
-from candles import INTERVALS, aggregate, parse_intraday, recent_sessions
+from candles import INTERVALS, aggregate, merge_volume, parse_intraday, recent_sessions
 from chain_cache import chain_response
 from dhan_client import SCRIP, DhanError, TokenExpired
 
@@ -41,6 +43,7 @@ class DashboardDeps:
     quotes_for_ids: Callable[[list], dict]  # ids -> {"1333": {"ltp": ...}}
     cached_history: Callable[[str], dict | None]
     history_for: Callable[[str, int], dict]
+    near_future: Callable[[str], dict | None]  # near-month index future (volume for the chart), or None
 
 
 def section(status, data=None, error="", as_of=None):
@@ -155,8 +158,28 @@ def register(app, deps: DashboardDeps):
             return section("warming", data, f"Loading previous closes ({len(history)} of {len(ids)} stocks).", as_of)
         return section("ok", data, "", as_of)
 
-    candle_cache = {}  # (symbol, sessions) -> (fetched at, 1-minute candles)
+    candle_cache = {}  # (symbol, sessions) -> (fetched at, 1-minute candles with volume, future, volume error)
     candle_lock = threading.Lock()
+
+    def fetch_candles(symbol, sessions):
+        """Index 1-minute candles + the near-month future's volume. A volume failure never hides the candles."""
+        # Dhan's intraday toDate is exclusive by date (checked 22-Oct-2026: 21-Oct 09:15 -> 21-Oct 15:30 returned
+        # nothing, -> 22-Oct returned 21-Oct's 374 candles), so ask up to the day after the last session.
+        frm, to = f"{sessions[0]} 09:15:00", f"{sessions[-1] + timedelta(days=1)} 09:15:00"
+        one_min = parse_intraday(tracker.client.intraday(symbol, frm, to))
+        fut, volume_error = None, ""
+        try:
+            fut = deps.near_future(symbol)
+            if fut is None:
+                volume_error = "No index future found in Dhan's instrument list."
+            else:
+                fut_candles = parse_intraday(tracker.client.intraday(symbol, frm, to, future_id=fut["securityId"]))
+                one_min = merge_volume(one_min, fut_candles)
+        except TokenExpired:
+            raise
+        except Exception as e:  # DhanError or the instrument list: candles without volume
+            volume_error = f"Futures volume unavailable: {e}"
+        return one_min, fut, volume_error
 
     @app.get("/api/dashboard/candles")
     def candles(symbol: str = "NIFTY", interval: int = 5):
@@ -170,18 +193,18 @@ def register(app, deps: DashboardDeps):
         key = (symbol, sessions)
         ttl = CANDLE_TTL_OPEN if tracker.market_open() else CANDLE_TTL_CLOSED
         last_error = ""
-        with candle_lock:  # one Dhan call serves every tab asking at the same time
+        with candle_lock:  # one set of Dhan calls serves every tab asking at the same time
             hit = candle_cache.get(key)
             if not hit or (now - hit[0]).total_seconds() >= ttl:
                 try:
-                    raw = tracker.client.intraday(symbol, f"{sessions[0]} 09:15:00", f"{sessions[-1]} 15:30:00")
-                    hit = candle_cache[key] = (now, parse_intraday(raw))
+                    hit = candle_cache[key] = (now, *fetch_candles(symbol, sessions))
                 except DhanError as e:
                     if not hit:
-                        raise HTTPException(401 if isinstance(e, TokenExpired) else 502,
-                                            f"{e} Send a new one with POST /api/token." if isinstance(e, TokenExpired) else str(e))
+                        if isinstance(e, TokenExpired):
+                            raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
+                        raise HTTPException(502, str(e))
                     last_error = str(e)  # keep showing the last candles
-        fetched, one_min = hit
+        fetched, one_min, fut, volume_error = hit
         token = tracker.client.token_expired
         return {
             "meta": {
@@ -189,6 +212,9 @@ def register(app, deps: DashboardDeps):
                 "asOf": fetched.strftime("%Y-%m-%d %H:%M:%S"), "marketOpen": tracker.market_open(),
                 "tokenExpired": token, "lastError": last_error,
                 "message": "Dhan token expired. Send a new one with POST /api/token." if token else "",
+                # volume = this future's (an index has none); the page subscribes to it for the live minute
+                "volume": {"securityId": fut["securityId"], "name": fut["name"], "expiry": fut["expiry"]} if fut else None,
+                "volumeError": volume_error,
             },
             "candles": aggregate(one_min, interval),
         }

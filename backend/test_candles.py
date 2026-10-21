@@ -8,11 +8,12 @@ from datetime import date, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from candles import CandleBuilder, aggregate, bucket_start, epoch, parse_intraday, recent_sessions
+from candles import (CandleBuilder, VolumeBuilder, aggregate, bucket_start, epoch, merge_volume, parse_intraday,
+                     recent_sessions)
 from dhan_client import DhanError, TokenExpired
 from main import create_app
 from store import IST, PaperJsonStore
-from test_paper_api import FakeFeed, FakeInstruments
+from test_paper_api import FUT, FakeFeed, FakeInstruments, full
 from paper_api import PaperService
 from tracker import Tracker
 
@@ -133,7 +134,8 @@ def candle_app(now="2026-10-21 09:19:10"):
 def test_candles_endpoint_today_and_previous_session():
     fake, clock, c = candle_app()
     body = c.get("/api/dashboard/candles?symbol=nifty&interval=3").json()
-    assert fake.args == ("NIFTY", "2026-10-19 09:15:00", "2026-10-21 15:30:00", 1)  # 20th skipped (holiday)
+    # 20th skipped (holiday); Dhan's end date is exclusive, so up to the day after the last session
+    assert fake.args == ("NIFTY", "2026-10-19 09:15:00", "2026-10-22 09:15:00", 1)
     m = body["meta"]
     assert m["sessions"] == ["2026-10-19", "2026-10-21"] and m["interval"] == 3 and m["marketOpen"] and m["lastError"] == ""
     assert [hm(x["time"]) for x in body["candles"]] == ["2026-10-19 15:27", "2026-10-21 09:15", "2026-10-21 09:18"]
@@ -168,7 +170,7 @@ def test_candles_endpoint_market_closed_shows_the_last_two_sessions():
     fake, clock, c = candle_app("2026-10-24 11:00:00")  # Saturday
     body = c.get("/api/dashboard/candles?symbol=NIFTY&interval=5").json()
     assert body["meta"]["marketOpen"] is False and body["meta"]["sessions"] == ["2026-10-22", "2026-10-23"]
-    assert fake.args[1:3] == ("2026-10-22 09:15:00", "2026-10-23 15:30:00")
+    assert fake.args[1:3] == ("2026-10-22 09:15:00", "2026-10-24 09:15:00")
 
 
 # ---------- live candle over /ws/paper ----------
@@ -196,5 +198,100 @@ def test_index_ticks_push_the_live_candle_to_subscribed_clients():
             svc.on_packet({"kind": "ticker", "segment": "IDX_I", "security_id": 13, "ltp": 22961.0})
             assert ws.receive_json()["type"] == "tick"
             assert ws.receive_json()["data"]["high"] == 22961.0  # same minute, updated in place
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------- futures volume ----------
+def test_volume_builder_turns_the_running_day_volume_into_per_minute_volume():
+    v, key = VolumeBuilder(), ("NSE_FNO", 52162)
+    assert v.on_volume(key, 1000, ist("2026-10-21 09:14:59")) is None  # pre-open
+    first = v.on_volume(key, 5_000_000, ist("2026-10-21 11:00:10"))  # first sighting mid-day: starts from 0
+    assert first == {"time": epoch(ist("2026-10-21 11:00:00")), "volume": 0}
+    assert v.on_volume(key, 5_000_650, ist("2026-10-21 11:00:40"))["volume"] == 650
+    nxt = v.on_volume(key, 5_001_000, ist("2026-10-21 11:01:00"))  # new minute: counts from the previous total
+    assert nxt == {"time": epoch(ist("2026-10-21 11:01:00")), "volume": 350}
+    assert v.on_volume(key, 1300, ist("2026-10-22 09:15:05"))["volume"] == 0  # new day: starts again from 0
+    assert v.on_volume(key, 1950, ist("2026-10-22 09:15:30"))["volume"] == 650
+    assert v.on_volume(key, None, ist("2026-10-22 09:16:00")) is None
+
+
+def test_volume_is_summed_when_aggregating_and_merged_by_minute():
+    idx = one_min("2026-10-21", [("09:15", 10), ("09:16", 12), ("09:17", 11), ("09:18", 20)])
+    fut_rows = one_min("2026-10-21", [("09:15", 1), ("09:16", 1), ("09:18", 1)])
+    fut = [{**c, "volume": v} for c, v in zip(fut_rows, (650, 1300, 325))]
+    merged = merge_volume(idx, fut)
+    assert [c["volume"] for c in merged] == [650, 1300, 0, 325]  # 09:17 missing in the future: 0
+    assert [c["volume"] for c in aggregate(merged, 3)] == [1950, 325]
+    t = int(ist("2026-10-21 09:15:00").timestamp())
+    one = {"timestamp": [t], "open": [1], "high": [1], "low": [1], "close": [1], "volume": [650]}
+    assert parse_intraday(one)[0]["volume"] == 650.0
+
+
+class FutClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.fut_calls, self.fut_error = [], None
+
+    def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None):
+        if future_id is None:
+            return super().intraday(symbol, from_dt, to_dt, interval)
+        self.fut_calls.append(future_id)
+        if self.fut_error:
+            raise self.fut_error
+        rows = one_min("2026-10-21", [("09:15", 1), ("09:16", 1), ("09:17", 1), ("09:18", 1)])
+        return {"timestamp": [r["time"] for r in rows], "open": [1] * 4, "high": [1] * 4, "low": [1] * 4,
+                "close": [1] * 4, "volume": [650, 1300, 975, 325]}
+
+
+def fut_app():
+    fake, clock = FutClient(), Clock(ist("2026-10-21 09:19:10"))
+    tr = Tracker(fake, data_dir=tempfile.mkdtemp(), clock=clock)
+    return fake, TestClient(create_app(tr, instruments=FakeInstruments()))
+
+
+def test_candles_carry_the_near_month_future_volume():
+    fake, c = fut_app()
+    body = c.get("/api/dashboard/candles?symbol=NIFTY&interval=3").json()
+    assert body["meta"]["volume"] == {"securityId": FUT, "name": "NIFTY OCT FUT", "expiry": "2026-10-27"}
+    assert body["meta"]["volumeError"] == "" and fake.fut_calls == [FUT]
+    by_time = {hm(x["time"]): x.get("volume") for x in body["candles"]}
+    assert by_time["2026-10-21 09:15"] == 650 + 1300 + 975 and by_time["2026-10-21 09:18"] == 325
+    assert by_time["2026-10-19 15:27"] == 0  # the future sent nothing for that day
+    c.get("/api/dashboard/candles?symbol=NIFTY&interval=1")
+    assert fake.fut_calls == [FUT]  # cached together with the index candles
+
+
+def test_a_volume_failure_keeps_the_candles():
+    fake, c = fut_app()
+    fake.fut_error = DhanError("Dhan HTTP 500")
+    body = c.get("/api/dashboard/candles?symbol=NIFTY&interval=5").json()
+    assert body["candles"] and "Futures volume unavailable" in body["meta"]["volumeError"]
+    assert body["meta"]["volume"] == {"securityId": FUT, "name": "NIFTY OCT FUT", "expiry": "2026-10-27"}
+
+
+def test_future_ticks_push_the_live_minute_volume():
+    tmp = tempfile.mkdtemp()
+    try:
+        clock, feed = Clock(ist("2026-10-21 11:00:10")), FakeFeed()
+        svc = PaperService(PaperJsonStore(tmp), feed, FakeInstruments(), clock=clock)
+        c = TestClient(create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=svc))
+        with c.websocket_connect("/ws/paper") as ws:
+            assert ws.receive_json()["type"] == "snapshot"
+            ws.send_json({"type": "subscribe", "instruments": [["NSE_FNO", FUT]]})
+            end = _time.monotonic() + 2
+            while ("NSE_FNO", FUT) not in feed.subs:
+                assert _time.monotonic() < end
+                _time.sleep(0.005)
+            pkt = full(FUT, 22850, 22849.5, 22850.5)
+            svc.on_packet({**pkt, "volume": 5_000_000})
+            assert ws.receive_json()["type"] == "tick"
+            minute = epoch(ist("2026-10-21 11:00:00"))
+            assert ws.receive_json() == {"type": "volume",
+                                         "data": {"segment": "NSE_FNO", "securityId": FUT, "time": minute, "volume": 0}}
+            clock.t = ist("2026-10-21 11:00:40")
+            svc.on_packet({**pkt, "volume": 5_000_650})
+            assert ws.receive_json()["type"] == "tick"
+            assert ws.receive_json()["data"]["volume"] == 650
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

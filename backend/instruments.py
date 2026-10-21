@@ -103,9 +103,29 @@ def parse_index_options(text, underlyings=OPTION_UNDERLYINGS):
     return out
 
 
+def parse_index_futures(text, underlyings=OPTION_UNDERLYINGS):
+    """NSE index futures from the same CSV: [{"securityId": 52162, "symbol": "NIFTY", "expiry": "2026-10-27",
+    "lotSize": 65, "name": "NIFTY OCT FUT"}] (the Dashboard shows their volume, an index has none)."""
+    out = []
+    for row in csv.DictReader(io.StringIO(text)):
+        if row.get("SEM_EXM_EXCH_ID") != "NSE" or row.get("SEM_INSTRUMENT_NAME") != "FUTIDX":
+            continue
+        symbol = (row.get("SEM_TRADING_SYMBOL") or "").split("-")[0]
+        if symbol not in underlyings:
+            continue
+        try:
+            out.append({"securityId": int(row["SEM_SMST_SECURITY_ID"]), "symbol": symbol,
+                        "expiry": row["SEM_EXPIRY_DATE"][:10], "lotSize": int(float(row["SEM_LOT_UNITS"])),
+                        "name": row.get("SEM_CUSTOM_SYMBOL") or row["SEM_TRADING_SYMBOL"]})
+        except (KeyError, ValueError):
+            continue
+    return sorted(out, key=lambda f: (f["symbol"], f["expiry"]))
+
+
 class OptionInstruments:
-    """Security ID -> option details (lot size, name, expiry). Downloaded once per IST day and cached in
-    data/option_instruments.json; if Dhan is unreachable the last cache is used."""
+    """Security ID -> option details (lot size, name, expiry), plus the index futures (kept apart from the options so
+    the option chain never sees them). Downloaded once per IST day and cached in data/option_instruments.json; if Dhan
+    is unreachable the last cache is used."""
 
     def __init__(self, cache_path="data/option_instruments.json", session=None, url=CSV_URL, today=None):
         self.cache_path = cache_path
@@ -114,10 +134,12 @@ class OptionInstruments:
         self._today = today or (lambda: time.strftime("%Y-%m-%d", time.gmtime(time.time() + 19800)))  # IST date
         self._lock = threading.Lock()
         self._rows, self._day, self._tried_unknown = {}, "", 0.0
+        self._futures = []
         try:
             with open(cache_path, encoding="utf-8") as f:
                 d = json.load(f)
             self._rows, self._day = d["rows"], d["day"]
+            self._futures = d.get("futures", [])  # caches written before futures were kept have none
         except (OSError, ValueError, KeyError):
             pass
 
@@ -127,10 +149,10 @@ class OptionInstruments:
         rows = parse_index_options(r.text)
         if not rows:
             raise ValueError("instrument file had no NIFTY / BANKNIFTY options")
-        self._rows, self._day = rows, self._today()
+        self._rows, self._day, self._futures = rows, self._today(), parse_index_futures(r.text)
         os.makedirs(os.path.dirname(self.cache_path) or ".", exist_ok=True)
         with open(self.cache_path, "w", encoding="utf-8") as f:
-            json.dump({"day": self._day, "rows": rows}, f)
+            json.dump({"day": self._day, "rows": rows, "futures": self._futures}, f)
 
     def _fresh(self, unknown_key=None):
         """Downloads when there is no cache, the cache is from an earlier IST day, or an unknown ID was asked for
@@ -146,6 +168,27 @@ class OptionInstruments:
             except Exception:
                 if not self._rows:
                     raise
+
+    def near_future(self, symbol, today=None):
+        """The nearest index future that hasn't expired: expiry on or after today, so it rolls the day after expiry.
+        None if the instrument list has none."""
+        today = today or self._today()
+        with self._lock:
+            missing = not self._futures and time.time() - self._tried_unknown > RETRY_UNKNOWN_SECONDS
+            if missing:  # an older cache without futures: fetch once (at most hourly)
+                self._tried_unknown = time.time()
+                try:
+                    self._download()
+                except Exception:
+                    pass
+            else:
+                self._fresh()
+            live = [f for f in self._futures if f["symbol"] == symbol and f["expiry"] >= today]
+            return min(live, key=lambda f: f["expiry"]) if live else None
+
+    def future_ids(self):
+        """Security IDs of the cached index futures (never downloads: called for every feed packet)."""
+        return {f["securityId"] for f in self._futures}
 
     def get(self, security_id):
         """Option details, or None if the ID is not a NIFTY / BANKNIFTY option."""

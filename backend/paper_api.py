@@ -10,6 +10,8 @@ WebSocket /ws/paper
   server -> client: {"type": "status"|"funds"|"order"|"trade"|"position"|"tick"|"candle", "data": {...}}
   "candle": the current 1-minute candle of a subscribed index (IDX_I), built from its ticks (candles.py), for the
   Dashboard chart: {"segment", "securityId", "interval": 1, "time", "open", "high", "low", "close"}
+  "volume": the current minute's volume of a subscribed index future (the chart's volume bars):
+  {"segment", "securityId", "time", "volume"}
                     plus one {"type": "snapshot", ...} right after connecting
   client -> server: {"type": "subscribe" | "unsubscribe", "instruments": [["NSE_FNO", 52175], ["IDX_I", 13]]}
 The backend always keeps open positions and pending orders subscribed, whatever the clients ask for.
@@ -23,7 +25,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from candles import CandleBuilder
+from candles import CandleBuilder, VolumeBuilder
 from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
@@ -73,6 +75,7 @@ class PaperService:
         self._timer = None
         self._stopping = threading.Event()
         self.candles = CandleBuilder()  # current 1-minute candle per subscribed index, for the Dashboard chart
+        self.volumes = VolumeBuilder()  # current minute's volume per subscribed index future, same chart
         self.account = store.active_account() or store.create_account(DEFAULT_CAPITAL, clock())
         self.engine, self.day = None, None
         feed.on_packet = self.on_packet
@@ -259,6 +262,13 @@ class PaperService:
         for c in list(self.clients):
             if key in c.subs or (key[0] == FNO and key[1] in self.engine.positions):
                 c.push(msg)
+        if key[0] == FNO and pkt["kind"] == "full" and key[1] in self.instruments.future_ids():
+            vol = self.volumes.on_volume(key, pkt.get("volume"), now)
+            if vol:
+                vmsg = {"type": "volume", "data": {"segment": key[0], "securityId": key[1], **vol}}
+                for c in list(self.clients):
+                    if key in c.subs:
+                        c.push(vmsg)
         if key[0] == IDX:
             candle = self.candles.on_tick(key, pkt["ltp"], now)
             if candle:

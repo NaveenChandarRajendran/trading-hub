@@ -284,7 +284,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
 
     dashboard_api.register(app, dashboard_api.DashboardDeps(
         tracker=tracker, get_expiries=get_expiries, lot_size=lot_size, trending_oi_body=trending_oi_body,
-        resolve_ids=sec_ids.resolve, quotes_for_ids=quotes_for_ids, cached_history=cached_history, history_for=history_for))
+        resolve_ids=sec_ids.resolve, quotes_for_ids=quotes_for_ids, cached_history=cached_history, history_for=history_for,
+        near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
     if paper:
         paper_api.register(app, paper)
     return app
