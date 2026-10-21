@@ -22,3 +22,23 @@
 /* settings popover */
 .db .db-settings { position: relative; }
 .db .db-pop { position: absolute; right: 0; top: calc(100% + var(--sp-1)); z-index: 20; min-width: 240px; box-shadow: var(--shadow-pop); }
+
+/* glance cards (right column) */
+.db .db-side { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.db .db-consensus { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.db .db-consensus .up { color: var(--up); font-weight: 600; }
+.db .db-consensus .down { color: var(--down); font-weight: 600; }
+.db .db-glance { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
+.db .db-glance-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.db .db-glance-head .card-title { margin: 0; }
+.db .db-figs { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-5); margin: 0; }
+.db .db-figs dt { font-size: var(--fs-xs); color: var(--text-3); }
+.db .db-figs dd { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.db .db-figs dd.up { color: var(--up); }
+.db .db-figs dd.down { color: var(--down); }
+.db .db-glance-note { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
+.db .db-glance-note.err { color: var(--down); }
+.db .db-glance-foot { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-3); }
+.db .db-glance-foot .warn { color: var(--warn); }
+.db .db-glance-foot a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.db .db-glance-foot a:hover { text-decoration: underline; }

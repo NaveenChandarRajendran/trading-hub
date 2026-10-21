@@ -8,7 +8,11 @@ import { SYMBOLS } from '../option-strategy/config/expiries';
 import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
 import { INTERVALS, REFRESH_OPTIONS, SR_RANGE } from './config/settings';
+import { buildCards, consensus } from './logic/cards';
 import { srLevels } from './logic/levels';
+import { Consensus, GlanceCard } from './GlanceCard';
+import constituents from '../components/config/constituents.json';
+import type { Constituent } from '../components/logic/components';
 import { PriceChart } from './PriceChart';
 import { useDashboard } from './useDashboard';
 import './dashboard.css';
@@ -23,6 +27,11 @@ export default function DashboardApp() {
 
   const chain = d.summary?.chain.data ?? null;
   const sr = useMemo(() => (chain ? srLevels(chain, SR_RANGE) : null), [chain]);
+  const cards = useMemo(
+    () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? []),
+    [d.summary, sr, d.symbol],
+  );
+  const staleAll = d.status.kind === 'stale'; // the whole summary is old: every card shows it
 
   const copyLevels = async () => {
     if (!sr) return;
@@ -111,6 +120,11 @@ export default function DashboardApp() {
             Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a>.
           </p>
         </section>
+
+        <aside className="db-side" aria-label="Live apps at a glance">
+          <Consensus counts={consensus(cards)} />
+          {cards.map((c) => <GlanceCard key={c.id} c={c} stale={staleAll} />)}
+        </aside>
       </div>
     </div>
   );
