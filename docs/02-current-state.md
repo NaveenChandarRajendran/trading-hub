@@ -17,6 +17,22 @@ Grouped into collapsible sections from the `group` field in `src/apps/registry.t
 "Manual (Paste)" and "Live (Dhan)". Both start open; closed sections are remembered in localStorage (`shell.groups`).
 With the sidebar collapsed to icons, section headers become dividers. Helpers + tests: `src/shared/sidebarGroups.ts`.
 
+## Live OI apps (branch `feature/live-oi-apps`, in progress)
+Live versions of the three paste apps, fed by Dhan through the backend. Built so far: the shared endpoint and adapter.
+- `GET /api/option-chain?symbol=NIFTY&expiry=2026-10-27` (`backend/chain_cache.py`, ADR 0002): one cached chain per
+  key (10 s open / 5 min closed), one fetch for concurrent requests, last good chain on failure (`meta.stale`).
+  The Trending OI tracker fetches through it (always fresh), so its minute fetches also serve the live pages.
+  `meta.lotSize` from Dhan's instrument list (fallback table in `chain_cache.py`). `/api/status` shows `chainFetches`.
+- `src/shared/dhan/chainAdapter.ts`: `toOptionChain` (NSE model, OI and volume ÷ lot size = contracts) and
+  `toSbSnapshot` (Sensibull model, units; "from" OI = Dhan `previous_oi`).
+- Field mapping / differences from NSE and Sensibull: change in OI = `oi − previous_oi` (Dhan's settled prior-day
+  OI); price change = `last_price − previous_close_price`; IV is Dhan's model; no total buy/sell qty (0); timestamp
+  = backend fetch time (Dhan sends none); ATM = strike nearest spot; totals summed over all strikes; Sensibull "from"
+  = prior-day close instead of 09:15 OI, and the full chain instead of ATM ±15.
+- Fixtures: `python capture_chain.py NIFTY BANKNIFTY` (reads `backend/.env.local`) writes the raw response to
+  `backend/fixtures/` and the API body to `frontend/src/shared/dhan/__fixtures__/`. Current ones: 21-Oct-2026 after close.
+- Tests: `backend/test_chain_cache.py`, `src/shared/dhan/chainAdapter.test.ts`.
+
 ## OI Support & Resistance
 Port of the Strike Desk HTML (index3.html), S/R part only. Open the app, pick index + expiry, Open the NSE link,
 paste the JSON, Analyze.

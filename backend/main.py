@@ -10,6 +10,7 @@ Options:  --port 8000  --strikes 7  --track NIFTY,BANKNIFTY  --force  --host 127
 Endpoints:
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
+    GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
     GET  /api/quotes?symbols=HDFCBANK,ICICIBANK   (live prices of NSE stocks, for index components)
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
     GET  /api/status
@@ -22,6 +23,7 @@ Postgres. Without it the backend falls back to JSON files in ./data.
 import argparse
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -33,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
+from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import paper_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
@@ -51,13 +54,29 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None, paper=None):
-    """paper: optional paper_api.PaperService; its routes and feed are added when given."""
+def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None):
+    """paper: optional paper_api.PaperService; its routes and feed are added when given.
+    instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either)."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
     quote_lock = threading.Lock()
     history_cache = {}  # (symbol, IST date) -> {"timestamp": [...], "close": [...]}
     sec_ids = security_ids or SecurityIds()  # symbol -> Dhan security ID; cache in data/security_ids.json
+    instruments = instruments or (paper.instruments if paper else None)
+    lot_cache = {}  # (symbol, expiry) -> lot size from Dhan's instrument list
+
+    def lot_size(symbol, expiry):
+        if (symbol, expiry) not in lot_cache:
+            lot = None
+            try:
+                rows = instruments.chain(symbol, expiry) if instruments else []
+                lot = next((r[k]["lotSize"] for r in rows for k in ("ce", "pe") if r[k]), None)
+            except Exception as e:  # instrument CSV unreachable and no cache yet
+                logging.getLogger("main").warning("lot size for %s %s unavailable: %s", symbol, expiry, e)
+            if lot is None:
+                return FALLBACK_LOT_SIZE[symbol]  # not cached, so the instrument list is tried again next time
+            lot_cache[(symbol, expiry)] = lot
+        return lot_cache[(symbol, expiry)]
 
     def get_expiries(symbol):
         hit = expiry_cache.get(symbol)
@@ -100,6 +119,25 @@ def create_app(tracker, track=(), security_ids=None, paper=None):
             return {"symbol": symbol, "expiries": get_expiries(symbol)}
         except DhanError as e:
             raise HTTPException(502, str(e))
+
+    @app.get("/api/option-chain")
+    def option_chain(symbol: str = "NIFTY", expiry: str = ""):
+        """Whole option chain for the live pages, from the shared cache (one Dhan call per key per 10 s at most)."""
+        symbol = symbol.upper()
+        if symbol not in SCRIP:
+            raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
+        if expiry and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", expiry):
+            raise HTTPException(400, "expiry must look like 2026-10-27")
+        try:
+            if not expiry:
+                expiry = get_expiries(symbol)[0]
+            entry, cached = tracker.chains.get(symbol, expiry)
+        except TokenExpired as e:
+            raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
+        except DhanError as e:
+            raise HTTPException(502, f"Dhan option chain failed: {e}")
+        return chain_response(symbol, expiry, entry, cached, lot_size(symbol, expiry), tracker.clock(),
+                              tracker.market_open(), tracker.client.token_expired)
 
     @app.get("/api/trending-oi")
     def trending_oi(symbol: str = "NIFTY", expiry: str = "", interval: int = 5):
@@ -211,7 +249,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None):
             "marketOpen": tracker.market_open(), "force": tracker.force,
             "tokenExpired": tracker.client.token_expired,
             "hasCredentials": bool(tracker.client.client_id and tracker.client.token),
-            "storage": tracker.store.kind,
+            "storage": tracker.store.kind, "chainFetches": tracker.chains.fetches,
             "paper": {"storage": paper.store.kind, "feedConnected": paper.feed.status["connected"]} if paper else None,
         }
 
