@@ -140,14 +140,16 @@ export function componentsCard(s: Summary['components'] | undefined, list: Const
   return c;
 }
 
-export function buildCards(summary: Summary | null, sr: SrLevels | null, constituents: Constituent[], now = new Date()): CardModel[] {
-  return [
+/** failure: why there is no summary at all (e.g. backend not running); every card then shows it instead of "Loading…". */
+export function buildCards(summary: Summary | null, sr: SrLevels | null, constituents: Constituent[], now = new Date(), failure = ''): CardModel[] {
+  const cards = [
     trendingCard(summary?.trendingOi),
     oiChangeCard(summary?.chain),
     sensibullCard(summary?.chain),
     componentsCard(summary?.components, constituents, now),
     srCard(summary?.chain, sr),
   ];
+  return !summary && failure ? cards.map((c) => ({ ...c, state: 'error' as const, message: failure })) : cards;
 }
 
 /** "Bullish 3 · Bearish 1 · Neutral 1": cards with a verdict only (no verdict, loading or failed cards don't count). */

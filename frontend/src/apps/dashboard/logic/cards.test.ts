@@ -134,6 +134,13 @@ describe('states and consensus', () => {
     expect(consensus(cards)).toEqual({ Bullish: 1, Bearish: 2, Neutral: 0 });
   });
 
+  it('no summary at all (backend down): every card shows the error instead of loading', () => {
+    const cards = buildCards(null, null, [], new Date(), 'Cannot reach the backend at http://127.0.0.1:8000.');
+    expect(cards.map((c) => c.state)).toEqual(['error', 'error', 'error', 'error', 'error']);
+    expect(cards[0].message).toMatch(/Cannot reach the backend/);
+    expect(buildCards(null, null, []).map((c) => c.state)).toEqual(['loading', 'loading', 'loading', 'loading', 'loading']);
+  });
+
   it('market closed: cards still show the last session with its time', () => {
     const c = oiChangeCard(chain);
     expect([c.state, c.asOf]).toEqual(['ok', '15:40']);

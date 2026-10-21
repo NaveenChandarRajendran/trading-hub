@@ -28,8 +28,9 @@ export default function DashboardApp() {
   const chain = d.summary?.chain.data ?? null;
   const sr = useMemo(() => (chain ? srLevels(chain, SR_RANGE) : null), [chain]);
   const cards = useMemo(
-    () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? []),
-    [d.summary, sr, d.symbol],
+    () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? [], new Date(),
+      d.summaryError != null ? 'Not available. See the message at the top.' : ''),
+    [d.summary, sr, d.symbol, d.summaryError],
   );
   const staleAll = d.status.kind === 'stale'; // the whole summary is old: every card shows it
 
@@ -84,12 +85,12 @@ export default function DashboardApp() {
       <div className="db-grid">
         <section className="card db-chart-card">
           <div className="card-head">
-            <h2 className="card-title">{d.symbol} · {d.interval} min{d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h2>
+            <h3 className="card-title">{d.symbol} · {d.interval} min{d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h3>
             {sr && <span className="db-muted num">Spot {inr(2)(sr.spot)}</span>}
           </div>
-          {d.candlesError != null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
-          {!d.bars.length && d.candlesError == null ? (
-            <EmptyState>Loading candles…</EmptyState>
+          {d.candlesError != null && d.summaryError == null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
+          {!d.bars.length ? (
+            <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
           ) : (
             <PriceChart bars={d.bars} liveBar={d.liveBar} levels={sr?.levels ?? null} resetKey={`${d.symbol}-${d.interval}`} />
           )}
@@ -112,7 +113,9 @@ export default function DashboardApp() {
                 </span>
               </>
             ) : (
-              <span className="db-muted">{d.summary?.chain.error || 'Loading OI levels…'}</span>
+              <span className="db-muted">
+                {d.summary?.chain.error || (d.summaryError != null ? 'OI levels are not available right now.' : 'Loading OI levels…')}
+              </span>
             )}
           </div>
           <p className="card-foot">
