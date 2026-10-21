@@ -19,3 +19,24 @@
 .pa table.pa-movers tbody tr:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
 .pa .card-title .up { color: var(--up); }
 .pa .card-title .down { color: var(--down); }
+
+/* summary strip */
+.pa .stat .up { color: var(--up); }
+.pa .stat .down { color: var(--down); }
+.pa .pa-spot { font-size: var(--fs-lg); }
+
+/* full table: header tints only, never cell fills */
+.pa .ag-header-group-cell.pa-call { background: var(--call-soft); }
+.pa .ag-header-group-cell.pa-put { background: var(--put-soft); }
+.pa .ag-header-group-cell.pa-call .ag-header-group-cell-label, .pa .ag-header-group-cell.pa-put .ag-header-group-cell-label { justify-content: center; font-weight: 600; }
+.pa .pa-center-header .ag-header-cell-label { justify-content: center; }
+.pa .ag-cell.up { color: var(--up); }
+.pa .ag-cell.down { color: var(--down); }
+.pa .ag-cell.num { font-variant-numeric: tabular-nums; }
+.pa .pa-strike { display: inline-flex; align-items: center; gap: var(--sp-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pa .pa-none { color: var(--text-3); }
+.pa .ag-row.pa-atm { background: var(--accent-soft); }
+/* top movers click: the row lights up, then fades back */
+.pa .ag-row { transition: background-color 600ms ease-out; }
+.pa .ag-row.pa-flash { background: var(--accent-soft); transition: none; }
+.pa .pa-inline-btn { height: 24px; margin-left: var(--sp-2); font-size: var(--fs-sm); }

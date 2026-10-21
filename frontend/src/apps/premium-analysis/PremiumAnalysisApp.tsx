@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { AgGridReact } from 'ag-grid-react';
 import { inr, signed } from '../../shared/grid';
-import { Alert, CheckIcon, CopyValue, EmptyState, Segmented, type Tone } from '../../shared/ui';
-import { TOP_N } from './config/settings';
-import { compareSnapshots, topMovers, type Basis, type Mover, type OptSide, type PremSnapshot, type SortBy } from './logic/premium';
+import { Alert, CheckIcon, CopyValue, EmptyState, Segmented, Stat, type Tone } from '../../shared/ui';
+import { FLASH_MS, TOP_N } from './config/settings';
+import { FullTable } from './FullTable';
+import { compareSnapshots, topMovers, type Basis, type Mover, type OptSide, type PremSnapshot, type SortBy, type StrikeChange } from './logic/premium';
 import { ChainParseError, pairError, parseSnapshot, snapTime } from './logic/snapshots';
 import { store } from './storage';
 import './premium-analysis.css';
@@ -100,7 +102,8 @@ export default function PremiumAnalysisApp() {
   const [basis, setBasisState] = useState<Basis>(() => (store.get('basis') === 'mid' ? 'mid' : 'ltp'));
   const [sortBy, setSortByState] = useState<SortBy>(() => (store.get('sort') === 'pct' ? 'pct' : 'points'));
   const [inputsKey, setInputsKey] = useState(0); // remounts the paste areas after Clear
-  const [, setPicked] = useState<number | null>(null); // strike clicked in the top movers (the full table scrolls to it)
+  const tableRef = useRef<AgGridReact<StrikeChange>>(null);
+  const tableCard = useRef<HTMLElement>(null);
 
   const saveSnap = (k: 'a' | 'b', s: PremSnapshot | null) => {
     store.set(k, s ? JSON.stringify(s) : null);
@@ -108,6 +111,12 @@ export default function PremiumAnalysisApp() {
   };
   const setBasis = (v: Basis) => { store.set('basis', v); setBasisState(v); };
   const setSortBy = (v: SortBy) => { store.set('sort', v); setSortByState(v); };
+  const swap = () => {
+    const [na, nb] = [b, a];
+    saveSnap('a', na);
+    saveSnap('b', nb);
+    setInputsKey((n) => n + 1);
+  };
   const clear = () => {
     saveSnap('a', null);
     saveSnap('b', null);
@@ -121,6 +130,20 @@ export default function PremiumAnalysisApp() {
     [cmp, sortBy],
   );
   const head = a ?? b;
+
+  /** Top movers row click: bring the full table into view, scroll it to the strike and highlight the row briefly. */
+  const pick = (strike: number) => {
+    tableCard.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const api = tableRef.current?.api;
+    const node = api?.getRowNode(String(strike));
+    if (!api || !node) return;
+    api.ensureNodeVisible(node, 'middle');
+    window.setTimeout(() => {
+      const els = tableCard.current?.querySelectorAll<HTMLElement>(`.ag-row[row-id="${strike}"]`) ?? [];
+      els.forEach((el) => el.classList.add('pa-flash'));
+      window.setTimeout(() => els.forEach((el) => el.classList.remove('pa-flash')), FLASH_MS);
+    }, 50); // after the grid has rendered the row
+  };
 
   return (
     <div className="ds pa">
@@ -143,7 +166,37 @@ export default function PremiumAnalysisApp() {
         <SnapshotInput label="B" title="Snapshot B (later)" snap={b} onChange={(s) => saveSnap('b', s)} />
       </div>
 
-      {mismatch && <Alert kind="error">{mismatch}</Alert>}
+      {mismatch && (
+        <Alert kind="error">
+          {mismatch}
+          {a && b && a.symbol === b.symbol && a.expiry === b.expiry && b.t < a.t && (
+            <> <button className="btn pa-inline-btn" onClick={swap}>Swap A and B</button></>
+          )}
+        </Alert>
+      )}
+
+      {!a && !b && (
+        <EmptyState>
+          Paste two NSE option-chain snapshots of the same index and expiry, taken at different times: A (earlier) and B
+          (later). The app shows which strikes' premiums moved most for the spot move between them.
+        </EmptyState>
+      )}
+      {(a ? !b : b) && (
+        <EmptyState>
+          Snapshot {a ? 'A' : 'B'} is loaded ({snapTime((a ?? b)!)} IST, spot {f2((a ?? b)!.spot)}). Paste snapshot{' '}
+          {a ? 'B (later)' : 'A (earlier)'} to compare.
+        </EmptyState>
+      )}
+
+      {cmp && a && b && (
+        <div className="stats">
+          <Stat label="Spot A → B" value={<span className="pa-spot">{f2(a.spot)} → {f2(b.spot)}</span>} delta={`${snapTime(a)} → ${snapTime(b)} IST`} />
+          <Stat label="Spot move" value={<span className={toneOf(cmp.spotMove)}>{signed(2)(cmp.spotMove)}</span>} delta="B − A, points" />
+          <Stat label="PCR at B" value={b.pcr == null ? '—' : f2(b.pcr)} delta="Put OI ÷ call OI" />
+          <Stat label="ATM at A" value={inr(0)(a.atmStrike)} />
+          <Stat label="ATM at B" value={inr(0)(b.atmStrike)} />
+        </div>
+      )}
 
       {cmp && movers && (
         <section className="card">
@@ -154,17 +207,25 @@ export default function PremiumAnalysisApp() {
           <div className="pa-split">
             <div>
               <h4 className="pa-list-title">Calls · biggest gains</h4>
-              <MoversTable side="ce" movers={movers.ce} onPick={setPicked} />
+              <MoversTable side="ce" movers={movers.ce} onPick={pick} />
             </div>
             <div>
               <h4 className="pa-list-title">Puts · biggest gains</h4>
-              <MoversTable side="pe" movers={movers.pe} onPick={setPicked} />
+              <MoversTable side="pe" movers={movers.pe} onPick={pick} />
             </div>
           </div>
           <p className="card-foot">
             Top {TOP_N} strikes whose {basis === 'ltp' ? 'LTP' : 'mid price'} rose, by {sortBy === 'points' ? 'points' : '%'};
             ties go to the lower ratio. Click a row to find the strike in the full table.
           </p>
+        </section>
+      )}
+
+      {cmp && a && b && (
+        <section className="card" ref={tableCard}>
+          <FullTable gridRef={tableRef} rows={cmp.rows} atmA={a.atmStrike} atmB={b.atmStrike}
+            fileName={`${b.symbol}-${b.expiry}-premium-${snapTime(a).replace(':', '')}-${snapTime(b).replace(':', '')}-${basis}.csv`} />
+          <p className="card-foot">Chg = later − earlier premium. Ratio = spot points per 1 premium point; lower means the premium moved more.</p>
         </section>
       )}
     </div>
