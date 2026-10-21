@@ -13,9 +13,25 @@
 .pt tr.pt-closed td { color: var(--text-3); }
 
 /* option chain */
-.pt .pt-chain th.pt-call { background: var(--call-soft); }
-.pt .pt-chain th.pt-put { background: var(--put-soft); }
+/* side headers: the CALLS / PUTS labels carry the meaning; the call / put tint is only a hint */
+.pt .pt-chain th.pt-call { background: color-mix(in srgb, var(--call-soft) 40%, var(--surface-2)); }
+.pt .pt-chain th.pt-put { background: color-mix(in srgb, var(--put-soft) 40%, var(--surface-2)); }
+.pt .pt-chain tr.pt-group th { text-align: center; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
 .pt .pt-chain th.pt-strike, .pt .pt-chain td.pt-strike { text-align: center; font-weight: 600; background: var(--surface-2); }
+.pt .pt-chain th.pt-strike { vertical-align: middle; }
+.pt .pt-chain td.pt-itm { background: var(--itm-soft); }
+/* live spot: a thin accent line between the two strikes around spot, with the value on the strike column */
+.pt .pt-chain tr.pt-spot-row td, .pt .pt-chain tr.pt-spot-row:hover td {
+  height: 20px; padding: 0; border-bottom: 0;
+  background: linear-gradient(var(--accent), var(--accent)) center / 100% 1px no-repeat;
+}
+.pt .pt-chain tr.pt-spot-row td.pt-strike, .pt .pt-chain tr.pt-spot-row:hover td.pt-strike { background-color: var(--surface-2); }
+.pt .pt-chain tr.pt-spot-row td.pt-strike { position: relative; }
+/* centred on the strike cell but out of the layout, so the pill never widens the Strike column */
+.pt .pt-chain .pt-spot-pill { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; }
+.pt .pt-chain-meta { display: inline-flex; align-items: center; gap: var(--sp-3); }
+.pt .pt-legend { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-2); }
+.pt .pt-swatch { width: 12px; height: 12px; border-radius: 2px; background: var(--itm-soft); border: 1px solid var(--border); }
 .pt .pt-chain td.pt-leg { position: relative; min-width: 96px; }
 /* B / S float over the left of the LTP cell on hover, so the table never changes width */
 .pt .pt-bs { display: none; gap: 2px; position: absolute; top: 50%; left: var(--sp-1); transform: translateY(-50%); }

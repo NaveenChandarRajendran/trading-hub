@@ -86,6 +86,12 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
 - Tests: `test_paper_engine.py`, `test_paper_charges.py`, `test_dhan_feed.py`, `test_paper_api.py`, `test_paper_store.py`,
   `test_instruments.py`; frontend `paper-trade/logic/*.test.ts`. Postgres store tests need `TEST_DATABASE_URL`.
 
+- Option chain UI (2026-10-21, `fix/live-ui-polish`): CALLS / Strike / PUTS group header row (call / put header tints
+  toned down), ITM cells shaded with the new `--itm-soft` token (calls below spot, puts above; the ATM row keeps its
+  highlight), a live spot line with a "NIFTY 22,957.05" pill between the two strikes around spot (`logic/chain.ts`
+  `itm`, `spotGapAfter`, tested), and an ITM legend in the card head. Stat tiles wrap long text (`ui.css`).
+  At ~1280px the chain card is narrower than the table, so it scrolls sideways (unchanged from before).
+
 Known limits / open:
 - Never run against the live Dhan feed yet: record frames with `backend/capture_feed.py` on a trading day
   (enables `test_captured_frames`) and check Dhan's LTT time zone.

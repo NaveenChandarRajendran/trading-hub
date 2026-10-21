@@ -50,7 +50,8 @@
 .ds .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--text-3); }
 
 .ds .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
-.ds .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: 2px; }
+.ds .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ds .stat > * { overflow-wrap: anywhere; } /* long values / sub-text wrap inside the tile instead of overflowing */
 .ds .stat-label { font-size: var(--fs-sm); color: var(--text-3); }
 .ds .stat-value { font-size: var(--fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ds .stat-delta { font-size: var(--fs-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
