@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-20 (paper trading steps 1–4)_
+_Last updated: 2026-10-21 (sidebar grouping; live OI apps in progress on `feature/live-oi-apps`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -11,6 +11,11 @@ _Last updated: 2026-10-20 (paper trading steps 1–4)_
 | **Paper Trading** (`paper-trade`) | backend `/api/paper/*`, `/ws/paper` (live Dhan feed) | simulation only; design system |
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
+
+## Sidebar
+Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
+"Manual (Paste)" and "Live (Dhan)". Both start open; closed sections are remembered in localStorage (`shell.groups`).
+With the sidebar collapsed to icons, section headers become dividers. Helpers + tests: `src/shared/sidebarGroups.ts`.
 
 ## OI Support & Resistance
 Port of the Strike Desk HTML (index3.html), S/R part only. Open the app, pick index + expiry, Open the NSE link,
