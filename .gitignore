@@ -9,3 +9,4 @@ __pycache__/
 
 # Backend runtime data: caches, snapshots, paper.json (see CLAUDE.md: data/ is never committed)
 backend/data/
+backend/logs/

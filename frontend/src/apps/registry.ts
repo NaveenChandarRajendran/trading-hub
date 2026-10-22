@@ -109,6 +109,14 @@ export const apps: AppEntry[] = [
     icon: '⇄',
     component: lazy(() => import('./paper-trade/PaperTradeApp')),
   },
+  {
+    id: 'algo',
+    group: 'live',
+    name: 'Algo (paper)',
+    path: '/algo',
+    icon: '⚙',
+    component: lazy(() => import('./algo/AlgoApp')),
+  },
 ];
 
 /** Apps per sidebar section, keeping registry order inside each section. Empty sections are dropped. */

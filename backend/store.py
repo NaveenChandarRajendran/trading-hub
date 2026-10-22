@@ -16,6 +16,7 @@ import glob
 import json
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -231,12 +232,28 @@ def _summarize_days(positions_by_day, trades_by_day, from_day, to_day):
     return rows
 
 
+def _locked(cls):
+    """Every public method under one lock: the paper service and the algo write the same file from two threads."""
+    for name, fn in list(vars(cls).items()):
+        if callable(fn) and not name.startswith("_"):
+            def wrap(f):
+                def inner(self, *a, **k):
+                    with self._lock:
+                        return f(self, *a, **k)
+                inner.__name__, inner.__doc__ = f.__name__, f.__doc__
+                return inner
+            setattr(cls, name, wrap(fn))
+    return cls
+
+
+@_locked
 class PaperJsonStore:
     """Everything in one file, data/paper.json, rewritten on every change (fine for one person's trades)."""
     kind = "json"
 
     def __init__(self, data_dir="data"):
         os.makedirs(data_dir, exist_ok=True)
+        self._lock = threading.RLock()
         self.path = os.path.join(data_dir, "paper.json")
         self.d = {"accounts": [], "orders": {}, "trades": {}, "positions": {}}
         if os.path.exists(self.path):
@@ -252,16 +269,17 @@ class PaperJsonStore:
     def _day(self, table, acc, day):
         return self.d[table].setdefault(str(acc), {}).setdefault(day, {})
 
-    def active_account(self):
-        a = next((a for a in reversed(self.d["accounts"]) if not a["archived_at"]), None)
+    def active_account(self, name=None):
+        """name None: the manual Paper Trading account; "Algo": the algo's."""
+        a = next((a for a in reversed(self.d["accounts"]) if not a["archived_at"] and a.get("name") == name), None)
         return dict(a) if a else None
 
     def accounts(self):
         return [dict(a) for a in self.d["accounts"]]
 
-    def create_account(self, capital, now):
+    def create_account(self, capital, now, name=None):
         a = {"id": len(self.d["accounts"]) + 1, "capital": float(capital), "created_at": now.isoformat(),
-             "archived_at": None}
+             "archived_at": None, "name": name}
         self.d["accounts"].append(a)
         self._write()
         return dict(a)
@@ -298,6 +316,21 @@ class PaperJsonStore:
     def order_levels(self, acc, day):
         return list(self.d.get("order_levels", {}).get(str(acc), {}).get(day, {}).values())
 
+    # ---- OI breakout algo (algo_service.py)
+    def algo_add_event(self, day, ev):
+        self.d.setdefault("algo_events", {}).setdefault(day, []).append(ev)
+        self._write()
+
+    def algo_events(self, day):
+        return list(self.d.get("algo_events", {}).get(day, []))
+
+    def algo_save_state(self, day, symbol, state):
+        self.d.setdefault("algo_state", {}).setdefault(day, {})[symbol] = state
+        self._write()
+
+    def algo_states(self, day):
+        return dict(self.d.get("algo_state", {}).get(day, {}))
+
     def orders(self, acc, day):
         return sorted(self.d["orders"].get(str(acc), {}).get(day, {}).values(), key=lambda o: o["created_at"])
 
@@ -319,7 +352,9 @@ class PaperPgStore:
     """Paper trading tables (pt_*) in Postgres, sharing PgStore's connection pool and schema.sql."""
     kind = "postgres"
     _ORDER_COLS = ("id", "security_id", "side", "order_type", "lots", "lot_size", "price", "trigger_price", "status",
-                   "avg_price", "slippage_capped", "reason", "blocked", "created_at", "updated_at", "filled_at")
+                   "avg_price", "slippage_capped", "reason", "blocked", "created_at", "updated_at", "filled_at",
+                   "source", "setup")
+    _ORDER_DEFAULTS = {"source": "manual", "setup": ""}
 
     def __init__(self, pg):
         self.pg = pg
@@ -327,24 +362,25 @@ class PaperPgStore:
     @staticmethod
     def _account(r):
         return {"id": r[0], "capital": r[1], "created_at": r[2].astimezone(IST).isoformat(),
-                "archived_at": r[3].astimezone(IST).isoformat() if r[3] else None}
+                "archived_at": r[3].astimezone(IST).isoformat() if r[3] else None, "name": r[4]}
 
-    def active_account(self):
+    def active_account(self, name=None):
+        """name None: the manual Paper Trading account; "Algo": the algo's."""
         with self.pg._cursor() as cur:
-            cur.execute("SELECT id, capital, created_at, archived_at FROM pt_accounts WHERE archived_at IS NULL "
-                        "ORDER BY id DESC LIMIT 1")
+            cur.execute("SELECT id, capital, created_at, archived_at, name FROM pt_accounts WHERE archived_at IS NULL "
+                        "AND name IS NOT DISTINCT FROM %s ORDER BY id DESC LIMIT 1", (name,))
             r = cur.fetchone()
         return self._account(r) if r else None
 
     def accounts(self):
         with self.pg._cursor() as cur:
-            cur.execute("SELECT id, capital, created_at, archived_at FROM pt_accounts ORDER BY id")
+            cur.execute("SELECT id, capital, created_at, archived_at, name FROM pt_accounts ORDER BY id")
             return [self._account(r) for r in cur.fetchall()]
 
-    def create_account(self, capital, now):
+    def create_account(self, capital, now, name=None):
         with self.pg._cursor() as cur:
-            cur.execute("INSERT INTO pt_accounts (capital, created_at) VALUES (%s, %s) "
-                        "RETURNING id, capital, created_at, archived_at", (float(capital), now))
+            cur.execute("INSERT INTO pt_accounts (capital, created_at, name) VALUES (%s, %s, %s) "
+                        "RETURNING id, capital, created_at, archived_at, name", (float(capital), now, name))
             return self._account(cur.fetchone())
 
     def archive_account(self, acc, now):
@@ -362,7 +398,7 @@ class PaperPgStore:
             cur.execute(f"INSERT INTO pt_orders (account_id, trade_date, {', '.join(cols)}) "
                         f"VALUES (%s, %s, {', '.join(['%s'] * len(cols))}) "
                         f"ON CONFLICT (account_id, id) DO UPDATE SET {updates}",
-                        (acc, day, *[o[c] for c in cols]))
+                        (acc, day, *[o.get(c, self._ORDER_DEFAULTS.get(c)) for c in cols]))
 
     def save_trade(self, acc, day, t):
         c = t["charges"]
@@ -391,6 +427,31 @@ class PaperPgStore:
                         "ON CONFLICT (account_id, order_id) DO NOTHING",
                         (acc, r["order_id"], day, r["symbol"], r["expiry"], r["spot"], r["levelsAt"],
                          json.dumps(r["levels"]), z.get("slot"), z.get("strike"), r["created_at"]))
+
+    # ---- OI breakout algo (algo_service.py)
+    def algo_add_event(self, day, ev):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO algo_events (trade_date, at, symbol, setup, kind, message, data) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)", (day, ev["at"], ev["symbol"], ev.get("setup", ""), ev["kind"],
+                                                         ev["message"], json.dumps(ev.get("data", {}))))
+
+    def algo_events(self, day):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT at, symbol, setup, kind, message, data FROM algo_events WHERE trade_date=%s ORDER BY id",
+                        (day,))
+            return [{"at": r[0].astimezone(IST).isoformat(), "symbol": r[1], "setup": r[2], "kind": r[3],
+                     "message": r[4], "data": r[5]} for r in cur.fetchall()]
+
+    def algo_save_state(self, day, symbol, state):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO algo_state (trade_date, symbol, state, updated_at) VALUES (%s,%s,%s,now()) "
+                        "ON CONFLICT (trade_date, symbol) DO UPDATE SET state=EXCLUDED.state, updated_at=now()",
+                        (day, symbol, json.dumps(state)))
+
+    def algo_states(self, day):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT symbol, state FROM algo_state WHERE trade_date=%s", (day,))
+            return {r[0]: r[1] for r in cur.fetchall()}
 
     def order_levels(self, acc, day):
         with self.pg._cursor() as cur:

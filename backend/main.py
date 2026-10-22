@@ -38,7 +38,12 @@ from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
+import algo_api
+import algo_config
 import dashboard_api
+from algo_filters import load_constituents
+from algo_service import AlgoData, AlgoService
+from candles import parse_intraday, recent_sessions
 import paper_api
 from paper_levels import TrackerLevels
 import sr_api
@@ -59,8 +64,9 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None):
+def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
+    algo_mode: "paper" | "signals" | "off" runs the OI breakout algo (needs paper; None = not created, as in tests).
     instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either)."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
@@ -117,6 +123,45 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             history_cache[key] = hit
         return hit
 
+    algo = None
+    if paper and algo_mode in ("paper", "signals"):
+        constituents = load_constituents()
+        algo_warmer = dashboard_api.HistoryWarmer(history_for)
+
+        def algo_chain(symbol, expiry):
+            entry, _cached = tracker.chains.get(symbol, expiry)
+            return {"spot": entry.chain["spot"], "oc": entry.chain["oc"], "lotSize": lot_size(symbol, expiry)}
+
+        def algo_trending(symbol, expiry):
+            rows = trending_oi_body(symbol, expiry, algo_config.TOI_INTERVAL)["rows"]
+            return rows[0] if rows else None
+
+        def algo_components(symbol):
+            lst = constituents[symbol]
+            ids, _unknown = sec_ids.resolve([c["symbol"] for c in lst])
+            by_id = quotes_for_ids(list(ids.values()))
+            quotes = {sym: by_id[str(sid)]["ltp"] for sym, sid in ids.items() if str(sid) in by_id}
+            history, missing = {}, {}
+            for sym, sid in ids.items():
+                h = cached_history(sym)
+                if h is None:
+                    missing[sym] = sid
+                else:
+                    history[sym] = h
+            if missing:
+                algo_warmer.request(missing)  # previous closes load in the background; no verdict until then
+            return {"constituents": lst, "quotes": quotes, "history": history}
+
+        def algo_intraday(symbol):
+            sessions = recent_sessions(datetime.now(IST).date())
+            frm, to = f"{sessions[0]} 09:15:00", f"{sessions[-1] + timedelta(days=1)} 09:15:00"  # toDate is exclusive
+            return parse_intraday(tracker.client.intraday(symbol, frm, to))
+
+        algo = AlgoService(paper.store, paper, paper.instruments, AlgoData(
+            expiries=get_expiries, chain=algo_chain, trending=algo_trending, components=algo_components,
+            intraday=algo_intraday, token_expired=lambda: tracker.client.token_expired),
+            clock=paper.clock, mode=algo_mode)
+
     def start_default_tracking():
         tracker.restore_today()  # resume whatever was tracked earlier today (backend restarted mid-session)
         for sym in track:
@@ -131,7 +176,11 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         if paper:
             paper.start()
         threading.Thread(target=start_default_tracking, daemon=True).start()
+        if algo:
+            algo.start()
         yield
+        if algo:
+            algo.stop_thread()
         if paper:
             paper.stop()
         tracker.stop()
@@ -292,6 +341,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     sr_api.register(app, tracker, get_expiries)
     if paper:
         paper_api.register(app, paper)
+    if algo:
+        algo_api.register(app, algo)
+        app.state.algo = algo
     return app
 
 
@@ -326,7 +378,9 @@ def main():
     paper = paper_api.PaperService(
         paper_store, DhanFeed(client.client_id, client.token),
         OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")), levels=TrackerLevels(tracker))
-    uvicorn.run(create_app(tracker, track, paper=paper), host=a.host, port=a.port, log_level="info")
+    logging.getLogger("main").info("OI breakout algo: ALGO_MODE=%s (paper orders only, never real orders)", algo_config.MODE)
+    uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE), host=a.host, port=a.port,
+                log_level="info")
 
 
 if __name__ == "__main__":

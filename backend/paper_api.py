@@ -74,6 +74,8 @@ class PaperService:
         self._order_levels = {}  # order id -> pt_order_levels row, today
         self._shift_ids = {}  # security id -> level shift ids last sent, to push a position when a new shift appears
         self._next_shift_check = None
+        self.listeners = []  # fn(pkt, now) for every market packet (the algo, algo_service.py)
+        self._extra_subs = {}  # owner -> feed keys kept subscribed for it (the algo's indices and options)
         self.lock = threading.RLock()
         self.clients = set()
         self.last_error = ""
@@ -298,6 +300,8 @@ class PaperService:
         need |= {(FNO, o.security_id) for o in self.engine.orders.values() if o.status in OPEN_STATES}
         for c in list(self.clients):
             need |= c.subs
+        for keys in self._extra_subs.values():
+            need |= keys
         add, drop = need - self._feed_subs, self._feed_subs - need
         for mode in (FULL, TICKER):
             keys = [k for k in add if (k[0] == FNO) == (mode == FULL)]
@@ -306,6 +310,14 @@ class PaperService:
         if drop:
             self.feed.unsubscribe(list(drop))
         self._feed_subs = need
+
+    def set_feed_keys(self, owner, keys):
+        """Keeps these (segment, security id) keys subscribed for `owner` (e.g. the algo), whatever the pages ask for."""
+        keys = {tuple(k) for k in keys}
+        with self.lock:
+            if self._extra_subs.get(owner) != keys:
+                self._extra_subs[owner] = keys
+                self._sync_feed()
 
     # ---------- market data ----------
     def on_packet(self, pkt):
@@ -341,6 +353,11 @@ class PaperService:
                 for c in list(self.clients):
                     if key in c.subs:
                         c.push(cmsg)
+        for fn in list(self.listeners):
+            try:
+                fn(pkt, now)
+            except Exception:
+                log.exception("packet listener failed")
 
     # ---------- commands ----------
     def place_order(self, security_id, side, lots, order_type, price=None, trigger_price=None):

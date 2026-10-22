@@ -1,0 +1,28 @@
+/* Algo page: layout only. Colors and sizes come from tokens. */
+.algo { display: flex; flex-direction: column; gap: var(--sp-4); }
+.algo .algo-title { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.algo .algo-alerts { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.algo .btn.algo-danger { color: var(--down); border-color: var(--down); }
+.algo .algo-indices { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+@media (max-width: 1000px) { .algo .algo-indices { grid-template-columns: 1fr; } }
+.algo .algo-head-end { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.algo .algo-levels { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.algo .algo-level { font-weight: 600; }
+.algo .algo-level.up { color: var(--up); }
+.algo .algo-level.down { color: var(--down); }
+.algo .algo-level b { color: var(--text); font-weight: 500; }
+.algo .algo-line { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); }
+.algo .algo-warn { color: var(--warn); }
+.algo .algo-open { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--accent); background: var(--accent-soft); font-size: var(--fs-sm); }
+.algo .algo-scroll { overflow-x: auto; }
+.algo table.t td { vertical-align: top; }
+.algo .algo-reason { max-width: 360px; white-space: normal; font-size: var(--fs-sm); }
+.algo tr.algo-why td { white-space: normal; font-size: var(--fs-sm); color: var(--text-2); background: var(--surface-2); }
+.algo .algo-log-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.algo .algo-check { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-2); }
+.algo .algo-log { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow-y: auto; font-size: var(--fs-sm); }
+.algo .algo-log li { display: grid; grid-template-columns: 5em 6.5em 5.5em 1fr; gap: var(--sp-2); align-items: start;
+  padding: var(--sp-1) 0; border-bottom: 1px solid var(--border); }
+.algo .algo-sym { font-weight: 600; color: var(--text-2); }
+.algo .algo-msg { white-space: normal; overflow-wrap: anywhere; }

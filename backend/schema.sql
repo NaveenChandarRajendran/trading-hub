@@ -125,3 +125,30 @@ CREATE TABLE IF NOT EXISTS pt_positions (             -- day position per instru
     realized     double precision NOT NULL,
     PRIMARY KEY (account_id, trade_date, security_id)
 );
+
+-- Accounts by name: NULL = the manual Paper Trading account, 'Algo' = the OI breakout algo's (algo_service.py).
+ALTER TABLE pt_accounts ADD COLUMN IF NOT EXISTS name text;
+-- Who placed an order: 'manual' (the page) or 'algo' (+ the setup, e.g. 'Breakout CE').
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS setup text NOT NULL DEFAULT '';
+
+-- OI breakout algo (algo_service.py): decision log and per-index state (resume after a restart).
+CREATE TABLE IF NOT EXISTS algo_events (
+    id          bigserial   PRIMARY KEY,
+    trade_date  date        NOT NULL,
+    at          timestamptz NOT NULL,
+    symbol      text        NOT NULL,
+    setup       text        NOT NULL DEFAULT '',
+    kind        text        NOT NULL,       -- levels | armed | skip | cancel | expire | entry | exit | error | info
+    message     text        NOT NULL,
+    data        jsonb       NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS algo_events_day ON algo_events (trade_date, id);
+
+CREATE TABLE IF NOT EXISTS algo_state (
+    trade_date  date        NOT NULL,
+    symbol      text        NOT NULL,
+    state       jsonb       NOT NULL,       -- algo_logic state: locked levels, setup, open trade, trade count
+    updated_at  timestamptz NOT NULL,
+    PRIMARY KEY (trade_date, symbol)
+);

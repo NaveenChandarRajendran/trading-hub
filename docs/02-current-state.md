@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-22 (S/R level history on `feature/sr-level-history`)_
+_Last updated: 2026-10-23 (OI breakout algo on `feature/oi-breakout-algo`, built on `feature/sr-level-history`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -53,6 +53,24 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   intraday data has no 09:15 candle for the index (first is 09:16), so the first bar of the day comes from the live
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
+
+## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
+PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range
+setups on 5-minute candles, filters from the live apps, its own "Algo" paper account (₹1,00,000). `ALGO_MODE` =
+`paper` (default) / `signals` / `off`. Page: Live → Algo (paper).
+- Backend: `algo_config.py` (all numbers), `algo_logic.py` (pure rules), `algo_filters.py` (Python ports of the
+  OI & OI Change, Index Components and RSI functions, golden-tested), `algo_service.py` (runner, own PaperEngine,
+  decision log, restore), `algo_api.py` (`/api/algo/status`, `/events`, `/stop`, `/stop-exit-all`, `/resume`).
+  `paper_api.py`: packet listeners + extra feed subscriptions. Store: `pt_accounts.name`, `pt_orders.source/setup`,
+  `algo_events`, `algo_state` (JSON: in `paper.json`, now written under a lock). Log file `backend/logs/algo-<day>.log`.
+- Frontend `src/apps/algo/`: status per index (levels, setup, open trade), kill switches, today's trades with
+  "Why" (entry and exit reasons) and "Copy review", decision log (filters, date).
+- Tests: `test_algo_logic.py` (state machine), `test_algo_filters.py` (ports vs TypeScript), `test_algo_service.py`
+  (end to end with the real engine: entry, exits, 15:15, risk, stale data, restart, kill switch, signals mode, the
+  no-real-orders check), `algo/logic/algo.test.ts`.
+- Checked against live Dhan after hours (levels, filters, intraday, option lookup); not yet run in a live session.
+- Known limits: candles missed while the backend is down are skipped (only the newest closed candle is evaluated);
+  the paper P&L page does not separate the Algo account yet (deferred, with replay / backtest and a settings popover).
 
 ## S/R level history (branch `feature/sr-level-history`, ADR 0004)
 Levels used to be re-ranked on every chain, so they jumped around and old lines vanished. Now the backend decides them
