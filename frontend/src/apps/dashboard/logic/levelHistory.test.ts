@@ -29,6 +29,13 @@ describe('segments', () => {
     expect([old.from, old.to, cur.from]).toEqual([t('09:16'), t('10:47'), t('10:47')]);
   });
 
+  it('never past the last bar: a level recorded before its candle arrives does not stretch the time axis', () => {
+    // last bar 10:46 (the 10:47 candle not in yet); found live after hours: levels at 23:49, last candle 15:29
+    const segs = segmentsFor(ROWS, 1, t('10:46'));
+    expect(segs.map((s) => [s.from, s.to])).toEqual([[t('09:16'), t('10:46')], [t('09:16'), t('10:46')], [t('10:46'), t('10:46')]]);
+    expect(Math.max(...segmentsFor([row('R1', 22800, '23:49', null)], 5, t('15:25')).flatMap((s) => [s.from, s.to]))).toBe(t('15:25'));
+  });
+
   it('ids stay the same across refreshes, so the chart can update a segment in place', () => {
     expect(segmentsFor(ROWS, 5, t('11:30')).map((s) => s.id)).toEqual(segmentsFor(ROWS, 5, t('12:00')).map((s) => s.id));
   });

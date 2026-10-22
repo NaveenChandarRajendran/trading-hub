@@ -65,12 +65,14 @@ export interface Segment {
   current: boolean;
 }
 
-/** Rows -> segments on the chart's bars. Segments that end before they start on the chart's bars are dropped. */
+/** Rows -> segments on the chart's bars. Times never go past the last bar (a point there would stretch the time axis,
+ *  e.g. a level recorded a minute before its candle arrives). Segments that end before they start are dropped. */
 export function segmentsFor(rows: SrRow[], interval: number, lastBar: number | null): Segment[] {
+  const cap = (t: number) => (lastBar == null ? t : Math.min(t, lastBar));
   const out: Segment[] = [];
   for (const r of rows) {
-    const from = bucketStart(istEpoch(r.valid_from), interval);
-    const to = r.valid_to ? bucketStart(istEpoch(r.valid_to), interval) : Math.max(lastBar ?? from, from);
+    const from = cap(bucketStart(istEpoch(r.valid_from), interval));
+    const to = r.valid_to ? cap(bucketStart(istEpoch(r.valid_to), interval)) : (lastBar ?? from);
     if (to < from) continue;
     out.push({ id: `${r.slot}|${r.valid_from}`, slot: r.slot, strike: r.strike, from, to, current: r.valid_to == null });
   }
