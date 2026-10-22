@@ -14,6 +14,7 @@ Endpoints:
     GET  /api/dashboard/summary?symbol=NIFTY&expiry=&stocks=HDFCBANK,...   (dashboard glance cards, see dashboard_api.py)
     GET  /api/quotes?symbols=HDFCBANK,ICICIBANK   (live prices of NSE stocks, for index components)
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
+    GET  /api/sr/history?symbol=NIFTY&expiry=&date=   (OI support / resistance level history, see sr_api.py)
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
     /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
@@ -39,6 +40,7 @@ from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import dashboard_api
 import paper_api
+import sr_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
@@ -286,6 +288,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         tracker=tracker, get_expiries=get_expiries, lot_size=lot_size, trending_oi_body=trending_oi_body,
         resolve_ids=sec_ids.resolve, quotes_for_ids=quotes_for_ids, cached_history=cached_history, history_for=history_for,
         near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
+    sr_api.register(app, tracker, get_expiries)
     if paper:
         paper_api.register(app, paper)
     return app

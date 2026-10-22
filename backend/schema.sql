@@ -27,6 +27,27 @@ CREATE TABLE IF NOT EXISTS toi_snapshot (
     PRIMARY KEY (symbol, expiry, ts)
 );
 
+-- OI support / resistance level history (sr_levels.py): a row per level per time it was in effect.
+-- Written only when a slot's strike changes; the old row gets its valid_to. Times are minutes (IST).
+CREATE TABLE IF NOT EXISTS sr_levels (
+    symbol      text             NOT NULL,
+    expiry      text             NOT NULL,
+    trade_date  date             NOT NULL,            -- IST trading day
+    slot        text             NOT NULL,            -- R1 R2 R3 S1 S2 S3
+    strike      double precision NOT NULL,
+    oi          double precision NOT NULL,            -- units, when the level took effect
+    valid_from  timestamptz      NOT NULL,
+    valid_to    timestamptz,                          -- NULL while it is the current level
+    reason      text             NOT NULL,            -- open | oi | crossed | range | fill | renumber
+    PRIMARY KEY (symbol, expiry, slot, valid_from)
+);
+
+-- Stability rule settings shared by every browser (one row).
+CREATE TABLE IF NOT EXISTS sr_settings (
+    id          integer          PRIMARY KEY DEFAULT 1,
+    settings    jsonb            NOT NULL
+);
+
 -- Paper trading (simulation only). Prefixed pt_. Quantities in units (lots x lot size), money in rupees.
 CREATE TABLE IF NOT EXISTS pt_accounts (
     id           serial           PRIMARY KEY,

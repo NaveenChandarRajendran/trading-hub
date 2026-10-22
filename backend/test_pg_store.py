@@ -1,6 +1,6 @@
 """Postgres tests. They need a real database, so they only run when TEST_DATABASE_URL is set, e.g.
     set TEST_DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/some_throwaway_db
-They TRUNCATE the toi_ tables, so never point this at a database holding data you want to keep."""
+They TRUNCATE the toi_ and sr_ tables, so never point this at a database holding data you want to keep."""
 import os
 
 import pytest
@@ -22,7 +22,7 @@ SNAP = dict(spot=55629.35, strikes_used=15, call_chg=1053810.0, put_chg=410340.0
 def store():
     s = PgStore(DSN)
     with s._cursor() as cur:
-        cur.execute("TRUNCATE toi_snapshot, toi_session")
+        cur.execute("TRUNCATE toi_snapshot, toi_session, sr_levels, sr_settings")
     yield s
     s.close()
 
@@ -88,3 +88,16 @@ def test_database_down_gives_503_not_a_crash(store):
     store.close()
     r = TestClient(create_app(tr)).get("/api/trending-oi?symbol=BANKNIFTY&expiry=2026-10-27&interval=5")
     assert r.status_code == 503
+
+
+def test_sr_level_rows_open_close_and_settings(store):
+    row = {"slot": "S1", "strike": 22700.0, "oi": 1000.0, "valid_from": "2026-10-22 09:16", "valid_to": None, "reason": "open"}
+    store.sr_write("NIFTY", "2026-10-27", "2026-10-22", [], [row])
+    store.sr_write("NIFTY", "2026-10-27", "2026-10-22", [], [row])  # same row again: no duplicate
+    nxt = {**row, "strike": 22600.0, "valid_from": "2026-10-22 10:47", "reason": "crossed"}
+    store.sr_write("NIFTY", "2026-10-27", "2026-10-22", [{**row, "valid_to": "2026-10-22 10:47"}], [nxt])
+    assert store.sr_rows("NIFTY", "2026-10-27", "2026-10-22") == [{**row, "valid_to": "2026-10-22 10:47"}, nxt]
+    assert store.sr_rows("NIFTY", "2026-10-27", "2026-10-21") == []
+    assert store.sr_settings() == {}
+    store.save_sr_settings({"leadPct": 5, "confirmRefreshes": 2, "range": 400})
+    assert store.sr_settings() == {"leadPct": 5, "confirmRefreshes": 2, "range": 400}

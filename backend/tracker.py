@@ -15,6 +15,7 @@ from calc import pick_strikes, summarize
 from chain_cache import ChainCache
 from dhan_client import STRIKE_STEP, DhanError
 from holidays import NSE_HOLIDAYS
+from sr_levels import DEFAULTS as SR_DEFAULTS, LevelState, apply_changes, side_oi
 from store import IST, JsonStore
 
 log = logging.getLogger("tracker")
@@ -48,6 +49,13 @@ class Tracker:
         self.clock = clock
         # Shared with GET /api/option-chain: every fetch the tracker makes also refreshes the live pages' cache.
         self.chains = ChainCache(client, market_open=self.market_open, clock=clock)
+        # OI support / resistance levels (sr_levels.py), updated from every minute poll and recorded as history
+        self._levels = {}  # (symbol, expiry, date) -> {"state": LevelState, "open": {slot: row}, "pending": [...]}
+        try:
+            self.sr_settings = {**SR_DEFAULTS, **self.store.sr_settings()}
+        except Exception as e:  # database unreachable: defaults until it comes back
+            log.warning("could not read S/R settings: %s", e)
+            self.sr_settings = dict(SR_DEFAULTS)
         self._days = {}
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -155,7 +163,44 @@ class Tracker:
             with self._lock:
                 d.unsaved = pending + d.unsaved
                 d.last_error = f"Database write failed, will retry: {e}"
+        try:  # never let level recording break Trending OI
+            self._record_levels(symbol, expiry, today, chain, snap["ts"])
+        except Exception as e:
+            log.warning("S/R levels for %s %s: %s", symbol, expiry, e)
         return snap
+
+    # ------------------------------------------------------- S/R levels
+    def _record_levels(self, symbol, expiry, date, chain, ts):
+        """One refresh of the stability rule; history rows are written only for slots whose strike changed.
+        A failed write stays pending and is retried on the next poll."""
+        key = (symbol, expiry, date)
+        with self._lock:
+            lv = self._levels.get(key)
+        if lv is None:  # first poll today (or after a restart): resume from the open rows
+            open_rows = {r["slot"]: r for r in self.store.sr_rows(symbol, expiry, date) if r.get("valid_to") is None}
+            lv = {"state": LevelState.from_slots({s: r["strike"] for s, r in open_rows.items()}), "open": open_rows,
+                  "pending": []}
+            with self._lock:  # forget earlier days
+                self._levels = {k: v for k, v in self._levels.items() if k[2] == date}
+                self._levels[key] = lv
+        changes = lv["state"].update(chain["oc"], chain["spot"], self.sr_settings)
+        if changes:
+            oi_by_slot = {slot: side_oi(chain["oc"], slot[0]).get(k, 0.0) for slot, (k, _) in changes.items() if k is not None}
+            closed, opened = apply_changes(lv["open"], changes, ts, oi_by_slot)
+            with self._lock:
+                for r in closed:
+                    lv["open"].pop(r["slot"], None)
+                lv["open"].update({r["slot"]: r for r in opened})
+                lv["pending"].append((closed, opened))
+        while lv["pending"]:
+            self.store.sr_write(symbol, expiry, date, *lv["pending"][0])  # raises: stays pending
+            lv["pending"].pop(0)
+
+    def current_levels(self, symbol, expiry, date):
+        """The levels in effect now ({slot: row}), or None when this key has no levels today (not tracked yet)."""
+        with self._lock:
+            lv = self._levels.get((symbol, expiry, date))
+            return {s: dict(r) for s, r in lv["open"].items()} if lv else None
 
     def _poll_all(self, only_new):
         now = self.clock()

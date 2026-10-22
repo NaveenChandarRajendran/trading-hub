@@ -8,6 +8,7 @@ Both expose the same four methods used by tracker.py:
     load(symbol, expiry, date)  -> (strikes, snaps)      date = 'YYYY-MM-DD' (IST trading day)
     save(symbol, expiry, date, strikes, new_snaps, all_snaps)
     active_keys(date)           -> [(symbol, expiry), ...] tracked on that day
+and the S/R level history (sr_levels.py): sr_rows / sr_write / sr_settings / save_sr_settings.
 A snapshot is a dict: ts ('YYYY-MM-DD HH:MM' IST), spot, strikes_used, call_chg, put_chg,
 call_ltp, put_ltp, call_ltp_chg, put_ltp_chg.
 """
@@ -59,6 +60,42 @@ class JsonStore:
             if len(parts) == 3:
                 keys.append((parts[0], parts[1]))
         return keys
+
+    # ---------------------------------------------------- S/R level history (sr_levels.py)
+    def _sr_path(self, symbol, expiry, date):
+        return os.path.join(self.data_dir, f"sr_{symbol}_{expiry}_{date}.json")
+
+    def sr_rows(self, symbol, expiry, date):
+        """The day's level rows, oldest first: {slot, strike, oi, valid_from, valid_to, reason}."""
+        try:
+            with open(self._sr_path(symbol, expiry, date), encoding="utf-8") as f:
+                return json.load(f).get("rows", [])
+        except (OSError, ValueError):
+            return []
+
+    def sr_write(self, symbol, expiry, date, closed, opened):
+        """Closes rows (matched by slot + valid_from) and appends new ones."""
+        rows = self.sr_rows(symbol, expiry, date)
+        ends = {(r["slot"], r["valid_from"]): r["valid_to"] for r in closed}
+        for r in rows:
+            if (r["slot"], r["valid_from"]) in ends and r.get("valid_to") is None:
+                r["valid_to"] = ends[(r["slot"], r["valid_from"])]
+        rows += opened
+        path = self._sr_path(symbol, expiry, date)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump({"symbol": symbol, "expiry": expiry, "date": date, "rows": rows}, f)
+        os.replace(path + ".tmp", path)
+
+    def sr_settings(self):
+        try:
+            with open(os.path.join(self.data_dir, "sr_settings.json"), encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def save_sr_settings(self, settings):
+        with open(os.path.join(self.data_dir, "sr_settings.json"), "w", encoding="utf-8") as f:
+            json.dump(settings, f)
 
 
 class PgStore:
@@ -139,6 +176,37 @@ class PgStore:
         with self._cursor() as cur:
             cur.execute("SELECT symbol, expiry FROM toi_session WHERE trade_date=%s", (date,))
             return [(r[0], r[1]) for r in cur.fetchall()]
+
+    # ---------------------------------------------------- S/R level history (sr_levels.py)
+    def sr_rows(self, symbol, expiry, date):
+        with self._cursor() as cur:
+            cur.execute("SELECT slot, strike, oi, valid_from, valid_to, reason FROM sr_levels "
+                        "WHERE symbol=%s AND expiry=%s AND trade_date=%s ORDER BY valid_from, slot", (symbol, expiry, date))
+            fmt = lambda t: t.astimezone(IST).strftime("%Y-%m-%d %H:%M") if t else None  # noqa: E731
+            return [{"slot": r[0], "strike": r[1], "oi": r[2], "valid_from": fmt(r[3]), "valid_to": fmt(r[4]),
+                     "reason": r[5]} for r in cur.fetchall()]
+
+    def sr_write(self, symbol, expiry, date, closed, opened):
+        ts = lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=IST)  # noqa: E731
+        with self._cursor() as cur:
+            for r in closed:
+                cur.execute("UPDATE sr_levels SET valid_to=%s WHERE symbol=%s AND expiry=%s AND slot=%s AND valid_from=%s "
+                            "AND valid_to IS NULL", (ts(r["valid_to"]), symbol, expiry, r["slot"], ts(r["valid_from"])))
+            for r in opened:
+                cur.execute("INSERT INTO sr_levels (symbol, expiry, trade_date, slot, strike, oi, valid_from, reason) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (symbol, expiry, slot, valid_from) DO NOTHING",
+                            (symbol, expiry, date, r["slot"], r["strike"], r["oi"], ts(r["valid_from"]), r["reason"]))
+
+    def sr_settings(self):
+        with self._cursor() as cur:
+            cur.execute("SELECT settings FROM sr_settings WHERE id=1")
+            row = cur.fetchone()
+            return row[0] if row else {}
+
+    def save_sr_settings(self, settings):
+        with self._cursor() as cur:
+            cur.execute("INSERT INTO sr_settings (id, settings) VALUES (1, %s) "
+                        "ON CONFLICT (id) DO UPDATE SET settings=EXCLUDED.settings", (json.dumps(settings),))
 
 
 # ================================================================ paper trading
