@@ -128,3 +128,18 @@ def apply_changes(open_rows, changes, at, oi_by_slot):
             opened.append({"slot": slot, "strike": strike, "oi": oi_by_slot.get(slot, 0.0), "valid_from": at,
                            "valid_to": None, "reason": reason})
     return closed, opened
+
+
+def changes_from(rows):
+    """[{at, slot, from, to, reason}] newest first, from the history rows (the day's first set is not a change)."""
+    by_slot = {}
+    for r in sorted(rows, key=lambda r: r["valid_from"]):
+        by_slot.setdefault(r["slot"], []).append(r)
+    out = []
+    for slot, seq in by_slot.items():
+        for prev, cur in zip(seq, seq[1:]):
+            out.append({"at": cur["valid_from"], "slot": slot, "from": prev["strike"], "to": cur["strike"], "reason": cur["reason"]})
+        last = seq[-1]
+        if last.get("valid_to") and not any(r["valid_from"] == last["valid_to"] for r in seq):  # slot left empty
+            out.append({"at": last["valid_to"], "slot": slot, "from": last["strike"], "to": None, "reason": "gone"})
+    return sorted(out, key=lambda c: (c["at"], c["slot"]), reverse=True)

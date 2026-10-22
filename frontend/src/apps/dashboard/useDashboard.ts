@@ -13,6 +13,7 @@ import {
 } from './config/settings';
 import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
 import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
+import type { Position } from '../paper-trade/logic/api';
 import { fetchSrHistory, type PinnedSet, type SrHistory } from './logic/levelHistory';
 
 const read = (k: string) => {
@@ -59,6 +60,8 @@ export function useDashboard() {
   const expiry = expiries.includes(expiryPick) ? expiryPick : expiries[0] ?? '';
 
   const [summary, setSummary] = useState<Summary | null>(null);
+  // paper positions from the same /ws/paper connection: open ones draw their S/R entry zone on the chart
+  const [positions, setPositions] = useState<Map<number, Position>>(new Map());
   // recorded S/R levels (backend stability rule): current set, the day's segments and changes
   const [history, setHistory] = useState<SrHistory | null>(null);
   const [historyError, setHistoryError] = useState<unknown>(null);
@@ -185,7 +188,11 @@ export function useDashboard() {
       onState: setFeedState,
       onTicks: () => {},
       onMessage: (m) => {
-        if (m.type === 'candle' && m.data.securityId === spotId) {
+        if (m.type === 'snapshot') {
+          setPositions(new Map(m.positions.map((p) => [p.security_id, p])));
+        } else if (m.type === 'position') {
+          setPositions((prev) => new Map(prev).set(m.data.security_id, m.data));
+        } else if (m.type === 'candle' && m.data.securityId === spotId) {
           const pending = pendingVolume.current.get(m.data.time);
           pendingVolume.current.delete(m.data.time);
           putMinutes(applyMinute(minutesRef.current, m.data, pending));
@@ -215,7 +222,7 @@ export function useDashboard() {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
     summary, summaryError, loading, history, historyError, levelView, setLevelView, pinned, setPinned,
-    bars, volumeInfo, volumeError, candlesError, feedState, refresh, reloadHistory: () => void loadSummary(),
+    bars, volumeInfo, volumeError, candlesError, feedState, refresh, reloadHistory: () => void loadSummary(), positions,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

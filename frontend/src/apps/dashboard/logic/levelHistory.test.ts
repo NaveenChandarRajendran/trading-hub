@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  currentLevels, istEpoch, morningLines, morningSet, pinNow, pinnedLines, rawSegments, segmentsFor, shiftMarkers, type SrChange, type SrHistory, type SrRow,
+  currentLevels, entryLines, istEpoch, morningLines, morningSet, pinNow, pinnedLines, rawSegments, segmentsFor, shiftMarkers, type SrChange, type SrHistory, type SrRow,
 } from './levelHistory';
 
 const row = (slot: SrRow['slot'], strike: number, from: string, to: string | null, reason = 'open'): SrRow =>
@@ -105,5 +105,21 @@ describe('reference lines and the raw fallback', () => {
       ['S2', 22800, t('09:15'), t('10:00'), true],
     ]);
     expect(rawSegments(null, t('09:15'), t('10:00'))).toEqual([]);
+  });
+});
+
+describe('paper entry zone on the chart', () => {
+  const zone = (strike: number, symbol = 'NIFTY') =>
+    ({ slot: 'S1', strike, symbol, expiry: '2026-10-27', spot: strike + 40, at: '2026-10-22 10:00', orderId: 'PT1' });
+
+  it('one accent line per entry strike of open positions on this index', () => {
+    const lines = entryLines([
+      { open_qty: 65, entryZone: zone(22900) },
+      { open_qty: 130, entryZone: zone(22900) },
+      { open_qty: 0, entryZone: zone(22800) }, // closed
+      { open_qty: 65, entryZone: zone(51000, 'BANKNIFTY') },
+      { open_qty: 65, entryZone: null },
+    ], 'NIFTY');
+    expect(lines).toEqual([{ id: 'entry|22900', price: 22900, kind: 'entry', side: 'S', title: 'Entry S1 22,900 (2)' }]);
   });
 });

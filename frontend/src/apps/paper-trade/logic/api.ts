@@ -1,5 +1,6 @@
 // Types + calls for the paper trading backend (backend/paper_api.py). Quantities are units (lots x lot size).
 import { requestJson } from '../../../shared/api';
+import type { EntryZone, LevelShift } from './levels';
 import { PAPER_API } from '../config/settings';
 
 export type Side = 'BUY' | 'SELL';
@@ -68,6 +69,8 @@ export interface Position extends Named {
   ltp: number | null;
   realized: number;
   unrealized: number;
+  entryZone?: EntryZone | null; // open positions: the S/R level nearest spot at entry (backend paper_levels.py)
+  levelShifts?: LevelShift[]; // levels within 100 pts of it that moved since, newest first
 }
 
 export interface Charges {

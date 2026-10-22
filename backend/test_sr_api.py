@@ -138,3 +138,25 @@ def test_history_errors_and_empty_days():
     assert old["segments"] == [] and old["changes"] == [] and old["meta"]["message"] == "No levels recorded for this day."
     today = c.get("/api/sr/history?symbol=NIFTY").json()  # nearest expiry, today, before the first poll
     assert today["meta"]["expiry"] == "2026-10-27" and today["meta"]["message"].startswith("No levels yet")
+
+
+def test_levels_snapshot_for_paper_orders():
+    fake, tr, c, tmp = make()
+    tr.clock = lambda: at("09:17")
+    assert tr.levels_snapshot("NIFTY") is None  # nothing recorded yet
+    poll(tr, "09:16", "09:17")
+    snap = tr.levels_snapshot("NIFTY", "2026-11-03")  # expiry not tracked: the nearest tracked one
+    assert (snap["expiry"], snap["spot"], snap["at"]) == ("2026-10-27", 22811.0, "2026-10-22 09:17")
+    assert snap["levels"] == {"R1": 22900, "R2": 23000, "R3": 23100, "S1": 22700, "S2": 22600, "S3": 22500}
+    assert tr.levels_snapshot("BANKNIFTY") is None
+
+
+def test_tracker_levels_changes_match_the_history_endpoint():
+    from paper_levels import TrackerLevels
+    fake, tr, c, tmp = make()
+    fake.spot = 22650.0  # S1 22,700 crossed
+    poll(tr, "09:16")
+    fake.spot = 22811.0
+    poll(tr, "09:17")
+    tr.clock = lambda: at("09:18")
+    assert TrackerLevels(tr).changes(*KEY, "2026-10-22") == c.get("/api/sr/history", params={"expiry": KEY[1]}).json()["changes"]

@@ -40,6 +40,7 @@ from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import dashboard_api
 import paper_api
+from paper_levels import TrackerLevels
 import sr_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
@@ -324,7 +325,7 @@ def main():
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]
     paper = paper_api.PaperService(
         paper_store, DhanFeed(client.client_id, client.token),
-        OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")))
+        OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")), levels=TrackerLevels(tracker))
     uvicorn.run(create_app(tracker, track, paper=paper), host=a.host, port=a.port, log_level="info")
 
 

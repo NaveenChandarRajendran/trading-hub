@@ -290,6 +290,14 @@ class PaperJsonStore:
         self._day("positions", acc, day)[str(pos["security_id"])] = pos
         self._write()
 
+    def save_order_levels(self, acc, day, row):
+        self.d.setdefault("order_levels", {})
+        self._day("order_levels", acc, day)[row["order_id"]] = row
+        self._write()
+
+    def order_levels(self, acc, day):
+        return list(self.d.get("order_levels", {}).get(str(acc), {}).get(day, {}).values())
+
     def orders(self, acc, day):
         return sorted(self.d["orders"].get(str(acc), {}).get(day, {}).values(), key=lambda o: o["created_at"])
 
@@ -374,6 +382,24 @@ class PaperPgStore:
                         "avg_sell=EXCLUDED.avg_sell, realized=EXCLUDED.realized",
                         (acc, day, p["security_id"], p["lot_size"], p["buy_qty"], p["sell_qty"], p["avg_buy"],
                          p["avg_sell"], p["realized"]))
+
+    def save_order_levels(self, acc, day, r):
+        z = r["zone"] or {}
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO pt_order_levels (account_id, order_id, trade_date, symbol, expiry, spot, levels_at, "
+                        "levels, zone_slot, zone_strike, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "ON CONFLICT (account_id, order_id) DO NOTHING",
+                        (acc, r["order_id"], day, r["symbol"], r["expiry"], r["spot"], r["levelsAt"],
+                         json.dumps(r["levels"]), z.get("slot"), z.get("strike"), r["created_at"]))
+
+    def order_levels(self, acc, day):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT order_id, symbol, expiry, trade_date, spot, levels_at, levels, zone_slot, zone_strike, "
+                        "created_at FROM pt_order_levels WHERE account_id=%s AND trade_date=%s", (acc, day))
+            rows = cur.fetchall()
+        return [{"order_id": r[0], "symbol": r[1], "expiry": r[2].isoformat(), "date": r[3].isoformat(), "spot": r[4],
+                 "levelsAt": r[5], "levels": r[6], "zone": {"slot": r[7], "strike": r[8]} if r[7] else None,
+                 "created_at": r[9].astimezone(IST).isoformat()} for r in rows]
 
     def orders(self, acc, day):
         with self.pg._cursor() as cur:

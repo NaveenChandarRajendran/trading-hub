@@ -11,6 +11,7 @@
 .pt .pt-stack { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .pt table.t td, .pt table.t th { white-space: nowrap; }
 .pt tr.pt-closed td { color: var(--text-3); }
+.pt .pt-zone { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
 
 /* option chain */
 /* side headers: the CALLS / PUTS labels carry the meaning; the call / put tint is only a hint */

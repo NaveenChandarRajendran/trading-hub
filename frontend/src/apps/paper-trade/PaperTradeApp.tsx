@@ -6,6 +6,7 @@ import { SYMBOLS } from '../option-strategy/config/expiries';
 import { STALE_AFTER_MS, STORAGE_PREFIX } from './config/settings';
 import { longDate, rupees, signedRupees, toneOf } from './format';
 import { api, type Chain } from './logic/api';
+import { unseenShifts } from './logic/levels';
 import { keyOf } from './logic/feed';
 import { OrderTicket, type TicketTarget } from './OrderTicket';
 import { OrdersView } from './OrdersView';
@@ -112,15 +113,29 @@ export default function PaperTradeApp() {
   const [chain, setChain] = useState<Chain | null>(null);
   const [chainError, setChainError] = useState('');
   const [ticket, setTicket] = useState<TicketTarget | null>(null);
-  const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'info' | 'warn' | 'error'; text: string } | null>(null);
 
   useEffect(() => save('view', view), [view]);
   useEffect(() => save('symbol', symbol), [symbol]);
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(null), notice.kind === 'error' ? 8000 : 4000);
+    const t = setTimeout(() => setNotice(null), notice.kind === 'info' ? 4000 : 8000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  // one notice per S/R level shift near an open position's entry zone (seen ids kept per day in this browser)
+  useEffect(() => {
+    const day = paper.today;
+    let seen: { day: string; ids: string[] } = { day, ids: [] };
+    try {
+      const s = JSON.parse(load('seenShifts') ?? 'null');
+      if (s?.day === day) seen = s;
+    } catch { /* start fresh */ }
+    const fresh = unseenShifts([...paper.positions.values()], new Set(seen.ids));
+    if (!fresh.length) return;
+    save('seenShifts', JSON.stringify({ day, ids: [...seen.ids, ...fresh.map((f) => f.key)] }));
+    setNotice({ kind: 'warn', text: fresh.map((f) => f.text).join(' ') });
+  }, [paper.positions, paper.today]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -142,7 +157,7 @@ export default function PaperTradeApp() {
     if (view !== 'trade' && spotKey) paper.subscribe([spotKey]);
   }, [view, spotKey, paper.subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onNotice = (kind: 'info' | 'error', text: string) => setNotice({ kind, text });
+  const onNotice = (kind: 'info' | 'warn' | 'error', text: string) => setNotice({ kind, text });
   const spot = chain ? paper.ticks.get(keyOf(chain.spot.segment, chain.spot.securityId))?.ltp : undefined;
   const positions = [...paper.positions.values()];
   const unrealized = positions.reduce((t, p) => t + liveUnrealized(paper, p), 0); // live, from the latest ticks

@@ -3,6 +3,7 @@
 import { API_BASE, getJson, requestJson } from '../../../shared/api';
 import { inr } from '../../../shared/grid';
 import type { Level, Side } from '../../oi-support-resistance/logic/levels';
+import type { EntryZone } from '../../paper-trade/logic/levels';
 import { bucketStart } from './candles';
 
 export type Slot = 'R1' | 'R2' | 'R3' | 'S1' | 'S2' | 'S3';
@@ -161,4 +162,19 @@ export function pinnedLines(p: PinnedSet | null, symbol: string, expiry: string)
   if (!p || p.symbol !== symbol || p.expiry !== expiry) return [];
   const at = new Date(p.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
   return lines(p.levels, 'pinned', (slot, strike) => `${slot} ${fmt(strike)} · pinned ${at}`);
+}
+
+/** Open paper positions on this index: one accent line per entry-zone strike, "Entry S1 22,900 (2)" when shared. */
+export function entryLines(positions: { open_qty: number; entryZone?: EntryZone | null }[], symbol: string): RefLine[] {
+  const by = new Map<number, { zone: EntryZone; n: number }>();
+  for (const p of positions) {
+    const z = p.entryZone;
+    if (p.open_qty <= 0 || !z || z.symbol !== symbol) continue;
+    const have = by.get(z.strike);
+    by.set(z.strike, { zone: have?.zone ?? z, n: (have?.n ?? 0) + 1 });
+  }
+  return [...by.values()].map(({ zone, n }) => ({
+    id: `entry|${zone.strike}`, price: zone.strike, kind: 'entry', side: zone.slot[0] as Side,
+    title: `Entry ${zone.slot} ${fmt(zone.strike)}${n > 1 ? ` (${n})` : ''}`,
+  }));
 }

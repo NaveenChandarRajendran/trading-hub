@@ -10,6 +10,7 @@ from datetime import datetime
 import pytest
 
 from paper_engine import BUY, LIMIT, MARKET, SELL, Book, PaperEngine
+from paper_levels import order_snapshot
 from store import IST, PaperJsonStore, PaperPgStore, PgStore
 
 DSN = os.getenv("TEST_DATABASE_URL")
@@ -31,7 +32,7 @@ def store(request):
         pytest.skip("set TEST_DATABASE_URL to run the Postgres paper store tests")
     pg = PgStore(DSN)
     with pg._cursor() as cur:
-        cur.execute("TRUNCATE pt_positions, pt_trades, pt_orders, pt_accounts RESTART IDENTITY CASCADE")
+        cur.execute("TRUNCATE pt_order_levels, pt_positions, pt_trades, pt_orders, pt_accounts RESTART IDENTITY CASCADE")
     yield PaperPgStore(pg)
     pg.close()
 
@@ -97,3 +98,15 @@ def test_accounts_are_separate(store):
     b = store.create_account(100_000, at("16:01"))["id"]
     assert store.orders(b, "2026-10-21") == [] and store.day_summary(b, "2026-10-01", "2026-10-31") == []
     assert len(store.day_summary(a, "2026-10-01", "2026-10-31")) == 1  # archived history still readable
+
+
+def test_order_levels_round_trip(store):
+    acc = store.create_account(100000, at("09:00"))["id"]
+    snap = {"symbol": "NIFTY", "expiry": "2026-10-27", "date": "2026-10-21", "spot": 25060.0, "at": "2026-10-21 10:15",
+            "levels": {"R1": 25200.0, "R2": 25300.0, "S1": 25000.0, "S2": 24900.0}}
+    row = order_snapshot("PT20261021-0001", snap, at("10:15").isoformat())
+    store.save_order_levels(acc, "2026-10-21", row)
+    store.save_order_levels(acc, "2026-10-21", row)  # a retried write adds nothing
+    assert store.order_levels(acc, "2026-10-21") == [row]
+    assert row["zone"] == {"slot": "S1", "strike": 25000.0}
+    assert store.order_levels(acc, "2026-10-22") == []

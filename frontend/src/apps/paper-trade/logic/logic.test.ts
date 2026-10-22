@@ -5,6 +5,7 @@ import type { ChargeRates, PnlRow } from './api';
 import { buildCalendar, fyOf, fyRange, istToday, level, weeksBetween } from './calendar';
 import { byMonth, summarize, toCsv } from './pnl';
 import { checkTicket, estimateCharges, type TicketInput } from './ticket';
+import { shiftText, unseenShifts, zoneText, type EntryZone, type LevelShift } from './levels';
 
 // same values as backend/paper_charges.py RATES
 const RATES: ChargeRates = { brokeragePerOrder: 20, sttSell: 0.0015, transaction: 0.0003503, sebi: 1e-6, stampBuy: 0.00003, gst: 0.18 };
@@ -153,5 +154,26 @@ describe('chain window', () => {
     expect(spotGapAfter(rows, 24990)).toBe(-1); // below the rows shown
     expect(spotGapAfter(rows, 25200)).toBe(-1); // on the last strike: nothing below to draw against
     expect(spotGapAfter(rows, null)).toBe(-1);
+  });
+});
+
+describe('entry zone and level shifts', () => {
+  const zone: EntryZone = { slot: 'S1', strike: 22900, symbol: 'NIFTY', expiry: '2026-10-27', spot: 22950, at: '2026-10-22 10:00', orderId: 'PT1' };
+  const shift = (at: string, to: number | null, slot = 'S1'): LevelShift => ({ id: `${slot}|2026-10-22 ${at}`, at: `2026-10-22 ${at}`, slot, from: 22900, to, reason: 'oi' });
+  const pos = (shifts: LevelShift[], open_qty = 65) => ({ security_id: 7, name: 'NIFTY 27 OCT 23000 CALL', open_qty, entryZone: zone, levelShifts: shifts });
+
+  it('row texts: "Zone S1 22,900 · 10:00" and "Level shifted → 22,800"', () => {
+    expect(zoneText(zone)).toBe('Zone S1 22,900 · 10:00');
+    expect(shiftText(shift('10:47', 22800))).toBe('Level shifted → 22,800');
+    expect(shiftText(shift('10:47', null))).toBe('Level shifted → removed');
+  });
+
+  it('each shift is announced once, oldest first; closed positions are not', () => {
+    const p = pos([shift('11:30', 22700), shift('10:47', 22800)]); // newest first, as the backend sends them
+    const first = unseenShifts([p], new Set());
+    expect(first.map((f) => f.key)).toEqual(['7|S1|2026-10-22 10:47', '7|S1|2026-10-22 11:30']);
+    expect(first[0].text).toBe('NIFTY 27 OCT 23000 CALL: S1 22,900 → 22,800 at 10:47, near your entry zone S1 22,900. The position is unchanged.');
+    expect(unseenShifts([p], new Set(first.map((f) => f.key)))).toEqual([]);
+    expect(unseenShifts([pos([shift('10:47', 22800)], 0)], new Set())).toEqual([]);
   });
 });

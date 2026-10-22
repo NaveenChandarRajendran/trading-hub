@@ -196,6 +196,22 @@ class Tracker:
             self.store.sr_write(symbol, expiry, date, *lv["pending"][0])  # raises: stays pending
             lv["pending"].pop(0)
 
+    def levels_snapshot(self, symbol, expiry=None):
+        """For paper orders: today's current levels {slot: strike} of `symbol` with the spot of the same refresh, for
+        `expiry` when it is tracked, else the nearest tracked expiry. None when nothing is recorded for the symbol today."""
+        today = self.clock().strftime("%Y-%m-%d")
+        with self._lock:
+            keys = sorted(k for k, d in self._days.items() if k[0] == symbol and d.date == today and d.snaps
+                          and (*k, today) in self._levels)
+            if not keys:
+                return None
+            key = next((k for k in keys if k[1] == expiry), keys[0])
+            snap = self._days[key].snaps[-1]
+            levels = {s: r["strike"] for s, r in self._levels[(*key, today)]["open"].items()}
+        if not levels:
+            return None
+        return {"symbol": symbol, "expiry": key[1], "date": today, "spot": snap["spot"], "at": snap["ts"], "levels": levels}
+
     def current_levels(self, symbol, expiry, date):
         """The levels in effect now ({slot: row}), or None when this key has no levels today (not tracked yet)."""
         with self._lock:

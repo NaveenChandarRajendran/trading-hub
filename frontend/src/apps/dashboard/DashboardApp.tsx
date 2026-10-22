@@ -10,7 +10,7 @@ import { levelsText } from '../oi-support-resistance/logic/levels';
 import { EMA_PERIOD, INTERVALS, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE } from './config/settings';
 import { buildCards, consensus } from './logic/cards';
 import {
-  currentLevels, morningLines, pinNow, pinnedLines, rawSegments, saveSrSettings, segmentsFor, shiftMarkers, type SrChange, type SrSettings,
+  currentLevels, entryLines, morningLines, pinNow, pinnedLines, rawSegments, saveSrSettings, segmentsFor, shiftMarkers, type SrChange, type SrSettings,
 } from './logic/levelHistory';
 import { srFrom } from './logic/levels';
 import { Consensus, GlanceCard } from './GlanceCard';
@@ -57,7 +57,8 @@ export default function DashboardApp() {
   const refLines = useMemo(() => [
     ...(d.levelView.morning && h ? morningLines(h.segments, d.levelView.morningTime) : []),
     ...pinnedLines(d.pinned, d.symbol, d.expiry),
-  ], [d.levelView.morning, d.levelView.morningTime, h, d.pinned, d.symbol, d.expiry]);
+    ...entryLines([...d.positions.values()], d.symbol),
+  ], [d.levelView.morning, d.levelView.morningTime, h, d.pinned, d.symbol, d.expiry, d.positions]);
   const cards = useMemo(
     () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? [], new Date(),
       d.summaryError != null ? 'Not available. See the message at the top.' : ''),

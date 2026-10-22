@@ -7,6 +7,7 @@ import { STATUS_TONE, hms, lakh, longDate, pct, price, shortName, signedRupees, 
 import { api, type Chain, type Order, type Position } from './logic/api';
 import { changePct, chainWindow, itm, spotGapAfter } from './logic/chain';
 import { keyOf, type InstrumentKey } from './logic/feed';
+import { shiftText, zoneText } from './logic/levels';
 import type { TicketTarget } from './OrderTicket';
 import type { Paper } from './usePaper';
 
@@ -26,7 +27,7 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
   paper: Paper;
   chain: Chain;
   onTicket: (t: TicketTarget) => void;
-  onNotice: (kind: 'info' | 'error', text: string) => void;
+  onNotice: (kind: 'info' | 'warn' | 'error', text: string) => void;
 }) {
   const spotKey = keyOf(chain.spot.segment, chain.spot.securityId);
   const spot = paper.ticks.get(spotKey)?.ltp ?? null;
@@ -143,7 +144,15 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
                     const pnl = p.realized + liveUnrealized(paper, p);
                     return (
                       <tr key={p.security_id} className={p.open_qty ? '' : 'pt-closed'}>
-                        <td title={p.name}>{shortName(p)}</td>
+                        <td title={p.name}>
+                          {shortName(p)}
+                          {p.open_qty > 0 && p.entryZone && (
+                            <span className="pt-zone" title={`S/R level nearest spot (${inr(2)(p.entryZone.spot)}) when the position was opened`}>
+                              {zoneText(p.entryZone)}
+                              {p.levelShifts?.[0] && <Pill tone="warn">{shiftText(p.levelShifts[0])}</Pill>}
+                            </span>
+                          )}
+                        </td>
                         <td className="num">{p.open_qty ? <>{p.open_qty} <span className="muted">({p.open_lots} lot{p.open_lots === 1 ? '' : 's'})</span></> : 'Closed'}</td>
                         <td>{price(p.avg_buy)}</td>
                         <td>{price(liveLtp(paper, p))}</td>

@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-22 (Dashboard on `feature/dashboard`)_
+_Last updated: 2026-10-22 (S/R level history on `feature/sr-level-history`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -24,12 +24,10 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   day, cached 60 s open / 15 min closed, aggregated to 09:15-aligned IST buckets in `backend/candles.py`). The live
   1-minute candle comes as `{"type":"candle"}` on `/ws/paper` (paper feed's single Dhan connection, built from index
   ticks by IST receive time). Colours read from the tokens and follow the theme without a reload.
-- S1–S3 / R1–R3 = OI Support & Resistance Live's `analyzeChain` + `topLevels` (range 500) on the summary's chain;
-  six price lines created once and updated in place (`logic/levelLines.ts`); the price scale includes all six.
-  The lines move at most once an hour (`LEVELS_REFRESH_SEC`, `takeNewLevels`); Refresh or a new index / expiry
-  redraws them at once. The cards keep the summary's 1-minute refresh; the OI S&R card measures the latest spot
-  against the chart's (hourly) S1 / R1. The levels row shows "Levels 10:05 IST · next 11:05".
-  Levels row under the chart with CopyValue + "Copy levels for chart". Chart: 620px (480px on short screens).
+- S1–S3 / R1–R3: the backend's recorded levels (stability rule, see "S/R level history" below), drawn as step
+  segments over the time each was in effect. Before anything is recorded today, the raw `topLevels` ranking of the
+  summary's chain is drawn across the bars (and said so under the chart). Levels row with CopyValue + "Copy levels for
+  chart". Chart: 560px (480px on short screens).
 - `GET /api/dashboard/summary?symbol=&expiry=&stocks=` (`backend/dashboard_api.py`): the cached chain, newest Trending
   OI rows and component quotes + daily candles (previous closes warm up in a background thread → `warming`), each
   section with its own status (ok / stale / warming / empty / token / error). Auto-refresh 1 min (Settings: 30 s–5 min).
@@ -55,6 +53,43 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   intraday data has no 09:15 candle for the index (first is 09:16), so the first bar of the day comes from the live
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
+
+## S/R level history (branch `feature/sr-level-history`, ADR 0004)
+Levels used to be re-ranked on every chain, so they jumped around and old lines vanished. Now the backend decides them
+once a minute with a stability rule and records every change; the Dashboard, OI S&R Live and Paper Trading all read
+the same levels.
+- Backend `sr_levels.py` (pure, parity-tested with `topLevels` on the 21-Oct fixture): per side, the strongest
+  outsider replaces the weakest level only when its OI leads by `leadPct` % (10) on `confirmRefreshes` (3) refreshes in
+  a row; a level spot crosses or that leaves the range (500) is replaced at once; empty slots are filled at once; slots
+  are renumbered nearest first. The tracker runs it on each minute poll of each tracked expiry (`_record_levels`;
+  failures are logged, never break Trending OI; failed writes retry). Rows only on change: table `sr_levels`
+  (slot, strike, oi in units, valid_from, valid_to, reason open / oi / crossed / range / fill / renumber), or
+  `data/sr_<sym>_<expiry>_<date>.json`. A restart resumes from the open rows.
+- `GET /api/sr/history?symbol=&expiry=&date=` (current, segments, changes newest first), `GET/PUT /api/sr/settings`
+  (shared rule, table `sr_settings` / `data/sr_settings.json`; used from the next refresh).
+- Dashboard chart (`logic/levelHistory.ts`, `logic/segmentLayer.ts`, tested): one line series per history row, created
+  once and updated in place. Current levels as before (R `--down`, S `--up`, R1/S1 solid, others dashed, axis label);
+  earlier ones thin and faded. A marker per shift ("S1 ↑ 22,800 · 12:41", renumbering included). Toggles under the
+  chart (per browser): History (on), Morning (off; the set in effect at the Settings time, default 09:30, dotted),
+  Pin levels (one pinned set per index + expiry, `--accent`, "S1 22,900 · pinned 10:00"). "Level changes today" list
+  (time, slot, old → new, points, reason). Settings has the shared rule (lead %, refreshes, range) and the morning time.
+  Recorded segments are drawn only on the bars of their own day.
+- OI S&R Live: each Refresh also fetches the history and shows the recorded levels (OI from that refresh); the range is
+  the shared rule's. Falls back to its own ranking (with a note) when nothing is recorded.
+- Paper Trading (`backend/paper_levels.py`, `frontend/src/apps/paper-trade/logic/levels.ts`): every order saves the
+  index's current levels and the spot of that refresh (table `pt_order_levels`, or `order_levels` in `paper.json`;
+  nearest tracked expiry when the option's own is not tracked). An open position shows its entry zone, the level
+  nearest spot (either side) on the order that opened it: "Zone S1 22,900 · 10:00" under the instrument. When a level
+  whose old strike was within 100 pts of the zone changes later (renumbering not counted twice), the row gets a warn
+  pill "Level shifted → 22,800" and the page shows one notice per shift (seen ids per day in localStorage). The
+  service re-checks open positions every 20 s and pushes a `position` message when a shift appears. Never exits.
+  The Dashboard draws open positions' entry zones on the chart ("Entry S1 22,900", `--accent`, from `/ws/paper`).
+- Tests: `test_sr_levels.py`, `test_sr_api.py`, `test_paper_levels.py`, `test_paper_store.py` (order levels),
+  `test_pg_store.py`; `dashboard/logic/levelHistory.test.ts`, `dashboard.test.ts`, OSR `levels.test.ts`,
+  `paper-trade/logic/logic.test.ts`.
+- Known limits: never run against a live market yet (the Dhan token was expired when it was built; screenshots used
+  fixture data). Levels exist only for tracked expiries (`--track`) and only while the backend runs. The spot saved with
+  an order is from the last minute poll, up to a minute old. Several shifts in one minute stack their markers.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

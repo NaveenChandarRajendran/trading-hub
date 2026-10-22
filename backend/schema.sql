@@ -98,6 +98,21 @@ CREATE TABLE IF NOT EXISTS pt_trades (                -- one row per fill
     PRIMARY KEY (account_id, id)
 );
 
+CREATE TABLE IF NOT EXISTS pt_order_levels (         -- the S/R levels at order time (paper_levels.py)
+    account_id   integer          NOT NULL REFERENCES pt_accounts(id),
+    order_id     text             NOT NULL,
+    trade_date   date             NOT NULL,
+    symbol       text             NOT NULL,
+    expiry       date             NOT NULL,           -- the expiry whose levels were used
+    spot         double precision NOT NULL,
+    levels_at    text             NOT NULL,           -- 'YYYY-MM-DD HH:MM' IST, the level refresh used
+    levels       jsonb            NOT NULL,           -- {"R1": 23000, ..., "S3": 22600}
+    zone_slot    text,                                -- entry zone: the level nearest spot
+    zone_strike  double precision,
+    created_at   timestamptz      NOT NULL,
+    PRIMARY KEY (account_id, order_id)
+);
+
 CREATE TABLE IF NOT EXISTS pt_positions (             -- day position per instrument, for the P&L report
     account_id   integer          NOT NULL REFERENCES pt_accounts(id),
     trade_date   date             NOT NULL,

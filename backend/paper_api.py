@@ -31,6 +31,7 @@ from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
 from paper_charges import RATES as CHARGE_RATES
 from paper_engine import OPEN_STATES, OrderError, PaperEngine
+from paper_levels import opening_order, order_snapshot, shifts_near
 from store import IST
 
 log = logging.getLogger("paper")
@@ -42,6 +43,9 @@ FNO = "NSE_FNO"
 IDX = "IDX_I"
 SESSION_CLOSE = (15, 30)
 CLIENT_QUEUE = 2000  # messages buffered per WebSocket client; ticks are dropped first when it is full
+
+
+SHIFT_CHECK_SEC = 20  # how often open positions are checked for new S/R level shifts
 
 
 def now_ist():
@@ -64,8 +68,12 @@ class _Client:
 
 
 class PaperService:
-    def __init__(self, store, feed, instruments, clock=now_ist, holidays=NSE_HOLIDAYS):
+    def __init__(self, store, feed, instruments, clock=now_ist, holidays=NSE_HOLIDAYS, levels=None):
         self.store, self.feed, self.instruments, self.clock, self.holidays = store, feed, instruments, clock, holidays
+        self.levels = levels  # paper_levels.TrackerLevels: S/R levels saved with each order (optional)
+        self._order_levels = {}  # order id -> pt_order_levels row, today
+        self._shift_ids = {}  # security id -> level shift ids last sent, to push a position when a new shift appears
+        self._next_shift_check = None
         self.lock = threading.RLock()
         self.clients = set()
         self.last_error = ""
@@ -104,6 +112,9 @@ class PaperService:
         with self.lock:
             self._ensure_day(now)
             self._publish(self.engine.on_time(now))
+            if self._next_shift_check is None or now >= self._next_shift_check:
+                self._next_shift_check = now + timedelta(seconds=SHIFT_CHECK_SEC)
+                self._push_new_shifts()
         status = self.feed_status()
         if status != self._feed_status:
             self._feed_status = status
@@ -118,6 +129,8 @@ class PaperService:
         engine = PaperEngine(max(opening, 0.01), holidays=self.holidays, day=today)
         engine.restore(self.store.orders(acc, day), self.store.trades(acc, day))
         self.engine, self.day = engine, today
+        self._order_levels = {r["order_id"]: r for r in self.store.order_levels(acc, day)}
+        self._shift_ids = {}
         self._traded = set()  # instruments an order was tried on today
         self._sync_feed()
 
@@ -171,7 +184,57 @@ class PaperService:
 
     def positions(self):
         with self.lock:
-            return [self._with_instrument(p.to_dict(self.engine._ltp(sid))) for sid, p in self.engine.positions.items()]
+            return [self._with_zone(self._with_instrument(p.to_dict(self.engine._ltp(sid))))
+                    for sid, p in self.engine.positions.items()]
+
+    # ---------- S/R levels at entry (paper_levels.py; information only, never exits) ----------
+    def _with_zone(self, pos):
+        """Adds entryZone (the level nearest spot when the opening BUY was placed) and levelShifts (levels within
+        100 pts of it that moved since) to an open position. Call with self.lock held."""
+        pos = {**pos, "entryZone": None, "levelShifts": []}
+        if pos["open_qty"] <= 0:
+            self._shift_ids.pop(pos["security_id"], None)
+            return pos
+        opener = opening_order([t.to_dict() for t in self.engine.trades], pos["security_id"])
+        lv = self._order_levels.get(opener)
+        if not lv or not lv["zone"]:
+            return pos
+        pos["entryZone"] = {**lv["zone"], "symbol": lv["symbol"], "expiry": lv["expiry"], "spot": lv["spot"],
+                            "at": lv["levelsAt"], "orderId": opener}
+        try:
+            changes = self.levels.changes(lv["symbol"], lv["expiry"], lv["date"]) if self.levels else []
+        except Exception as e:  # level history unreadable: the zone still shows
+            log.warning("level history for %s %s: %s", lv["symbol"], lv["expiry"], e)
+            changes = []
+        pos["levelShifts"] = shifts_near(changes, lv["zone"], lv["levelsAt"])
+        self._shift_ids[pos["security_id"]] = [s["id"] for s in pos["levelShifts"]]
+        return pos
+
+    def _push_new_shifts(self):
+        """Levels are recorded every minute by the tracker: push a position again when its shifts changed."""
+        if not self.levels:
+            return
+        for sid, p in self.engine.positions.items():
+            if p.open_qty <= 0:
+                continue
+            before = self._shift_ids.get(sid)
+            pos = self._with_zone(self._with_instrument(p.to_dict(self.engine._ltp(sid))))
+            if before is not None and [s["id"] for s in pos["levelShifts"]] != before:
+                self._broadcast({"type": "position", "data": pos})
+
+    def _save_order_levels(self, order, inst, now):
+        """Keeps the index's current S/R levels with the order. Never blocks the order."""
+        if not self.levels or not order.get("id"):
+            return
+        try:
+            snap = self.levels.snapshot(inst["symbol"], inst["expiry"])
+        except Exception as e:
+            log.warning("S/R levels for order %s: %s", order["id"], e)
+            return
+        if snap:
+            row = order_snapshot(order["id"], snap, now.isoformat())
+            self._order_levels[order["id"]] = row
+            self._unsaved.append(("levels", self.day.isoformat(), row))
 
     def orders(self, day=None):
         with self.lock:
@@ -205,13 +268,15 @@ class PaperService:
         self._unsaved += [(ev.kind, day, ev.data) for ev in events]
         self._flush()
         for ev in events:
-            self._broadcast({"type": ev.kind, "data": self._with_instrument(ev.data)})
+            data = self._with_instrument(ev.data)
+            self._broadcast({"type": ev.kind, "data": self._with_zone(data) if ev.kind == "position" else data})
         self._broadcast({"type": "funds", "data": self.funds()})
         self._sync_feed()
 
     def _flush(self):
         acc = self.account["id"]
-        save = {"order": self.store.save_order, "trade": self.store.save_trade, "position": self.store.save_position}
+        save = {"order": self.store.save_order, "trade": self.store.save_trade, "position": self.store.save_position,
+                "levels": self.store.save_order_levels}
         while self._unsaved:
             kind, day, data = self._unsaved[0]
             try:
@@ -290,7 +355,9 @@ class PaperService:
                 self._sync_feed()
             order, events = self.engine.place_order(security_id, side, lots, inst["lotSize"], order_type, now,
                                                     price=price, trigger_price=trigger_price)
+            self._save_order_levels(order.to_dict(), inst, now)  # before the events, so the position shows its zone
             self._publish(events)
+            self._flush()
             return self._with_instrument(order.to_dict())
 
     def modify_order(self, order_id, **changes):
