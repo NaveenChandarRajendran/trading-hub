@@ -175,4 +175,13 @@ describe('buildView', () => {
   ])('%s', (_, snaps) => {
     for (const range of [300, 500]) expect(buildView(a, snaps, range)).toEqual(inline(snaps, range));
   });
+
+  it('recorded levels (backend stability rule) replace the ranking; OI comes from this snapshot', () => {
+    const top = inline([], 500).levels;
+    const recorded = { R: [top.R[1], top.R[0]], S: [{ strike: 1, oi: 7 }] }; // a strike not in the snapshot keeps its own OI
+    const v = buildView(a, [], 500, recorded);
+    expect(v.levels.R.map((l) => l.strike)).toEqual([top.R[1].strike, top.R[0].strike]);
+    expect(v.levels.R[0].oi).toBe(a.snapshot.rows[top.R[1].strike][0]);
+    expect(v.levels.S).toEqual([{ strike: 1, oi: 7 }]);
+  });
 });

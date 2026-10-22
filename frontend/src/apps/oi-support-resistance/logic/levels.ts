@@ -208,9 +208,17 @@ export function levelsText(sn: Snapshot, time: string, levels: Record<Side, Leve
 }
 
 /** What the result screen shows for one analysed chain, given today's snapshots (baseline = first). */
-export function buildView(result: Analysis, snaps: Snapshot[], range: number) {
+/**
+ * recorded: the levels accepted by the backend's stability rule (Dashboard and OI S&R Live agree on them); their OI
+ * is taken from this snapshot where the strike is in it. Without it the snapshot's own top-OI ranking is used.
+ */
+export function buildView(result: Analysis, snaps: Snapshot[], range: number, recorded: Record<Side, Level[]> | null = null) {
   const cur = result.snapshot;
-  const levels = { R: topLevels(cur.rows, cur.spot, 'R', range), S: topLevels(cur.rows, cur.spot, 'S', range) };
+  const withOi = (side: Side) =>
+    recorded![side].map((l) => ({ strike: l.strike, oi: cur.rows[l.strike] ? cur.rows[l.strike][side === 'R' ? 0 : 1] : l.oi }));
+  const levels = recorded
+    ? { R: withOi('R'), S: withOi('S') }
+    : { R: topLevels(cur.rows, cur.spot, 'R', range), S: topLevels(cur.rows, cur.spot, 'S', range) };
   const earlier = snaps.filter((s) => s.t !== cur.t);
   const base = earlier[0];
   const prev = earlier[earlier.length - 1];

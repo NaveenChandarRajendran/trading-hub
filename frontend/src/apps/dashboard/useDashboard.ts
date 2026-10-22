@@ -7,10 +7,13 @@ import { liveStatus } from '../../shared/live/liveStatus';
 import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
-import { DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, type IndicatorToggles, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
+import {
+  DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_LEVEL_VIEW, DEFAULT_REFRESH_SEC, INDEX_IDS, REFRESH_OPTIONS, STORAGE_PREFIX,
+  type IndicatorToggles, type LevelView,
+} from './config/settings';
 import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
 import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
-import { takeNewLevels, type LevelsBasis } from './logic/levels';
+import { fetchSrHistory, type PinnedSet, type SrHistory } from './logic/levelHistory';
 
 const read = (k: string) => {
   try {
@@ -56,10 +59,34 @@ export function useDashboard() {
   const expiry = expiries.includes(expiryPick) ? expiryPick : expiries[0] ?? '';
 
   const [summary, setSummary] = useState<Summary | null>(null);
-  // S/R lines are drawn from this chain and replaced at most hourly (cards use every summary)
-  const [levelsBasis, setLevelsBasis] = useState<LevelsBasis | null>(null);
-  const levelsRef = useRef<LevelsBasis | null>(null);
-  const forceLevels = useRef(false);
+  // recorded S/R levels (backend stability rule): current set, the day's segments and changes
+  const [history, setHistory] = useState<SrHistory | null>(null);
+  const [historyError, setHistoryError] = useState<unknown>(null);
+  // chart level options, per browser: history / morning toggles, morning time, one pinned set
+  const [levelView, setLevelViewState] = useState<LevelView>(() => {
+    try {
+      return { ...DEFAULT_LEVEL_VIEW, ...JSON.parse(read('levelView') ?? '{}') };
+    } catch {
+      return DEFAULT_LEVEL_VIEW;
+    }
+  });
+  const setLevelView = (patch: Partial<LevelView>) =>
+    setLevelViewState((p) => {
+      const next = { ...p, ...patch };
+      write('levelView', JSON.stringify(next));
+      return next;
+    });
+  const [pinned, setPinnedState] = useState<PinnedSet | null>(() => {
+    try {
+      return JSON.parse(read('pinned') ?? 'null');
+    } catch {
+      return null;
+    }
+  });
+  const setPinned = (p: PinnedSet | null) => {
+    write('pinned', JSON.stringify(p));
+    setPinnedState(p);
+  };
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [minutes, setMinutes] = useState<Candle[]>([]); // 1-minute candles: history + live
@@ -85,8 +112,7 @@ export function useDashboard() {
     const ac = new AbortController();
     setExpiries([]);
     setSummary(null);
-    levelsRef.current = null;
-    setLevelsBasis(null); // never show one index's levels on another
+    setHistory(null); // never show one index's levels on another
     fetchDhanExpiries(symbol, ac.signal).then(setExpiries).catch((e) => e.name !== 'AbortError' && setSummaryError(e));
     return () => ac.abort();
   }, [symbol]);
@@ -95,16 +121,15 @@ export function useDashboard() {
     if (!expiry) return;
     setLoading(true);
     try {
+      // the level history is independent: if it fails, the cards and the raw levels still show
+      const hist = fetchSrHistory(symbol, expiry, signal).then(
+        (h) => { setHistory(h); setHistoryError(null); },
+        (e) => { if ((e as Error).name !== 'AbortError') setHistoryError(e); },
+      );
       const r = await fetchSummary(symbol, expiry, stocksOf(symbol), signal);
       setSummary(r);
       setSummaryError(null);
-      const key = `${symbol}|${expiry}`;
-      const chainOk = r.chain.data && (r.chain.status === 'ok' || r.chain.status === 'stale');
-      if (chainOk && takeNewLevels(levelsRef.current, key, Date.now(), LEVELS_REFRESH_SEC, forceLevels.current)) {
-        levelsRef.current = { key, at: Date.now(), chain: r.chain.data! };
-        setLevelsBasis(levelsRef.current);
-        forceLevels.current = false;
-      }
+      await hist;
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setSummaryError(e);
     } finally {
@@ -182,7 +207,6 @@ export function useDashboard() {
   }, []);
 
   const refresh = () => {
-    forceLevels.current = true; // Refresh redraws the S/R lines at once
     void loadSummary();
     void loadCandles();
   };
@@ -190,7 +214,8 @@ export function useDashboard() {
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh,
+    summary, summaryError, loading, history, historyError, levelView, setLevelView, pinned, setPinned,
+    bars, volumeInfo, volumeError, candlesError, feedState, refresh, reloadHistory: () => void loadSummary(),
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

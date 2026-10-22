@@ -1,18 +1,19 @@
-// Candlestick chart (TradingView Lightweight Charts) with S1-S3 / R1-R3 as price lines and optional indicators
-// (EMA and futures volume on the candles, RSI in its own pane). Colours come from the design tokens and follow the light / dark switch
-// without a reload; level lines are updated in place (LevelLines); indicators update live with the last candle.
+// Candlestick chart (TradingView Lightweight Charts) with the recorded S1-S3 / R1-R3 levels as step segments over the
+// time each was in effect (SegmentLayer), a marker at every shift, optional reference lines (morning set, a pinned set,
+// an open position's entry zone) and indicators (EMA and futures volume on the candles, RSI in its own pane).
+// Colours come from the design tokens and follow the light / dark switch without a reload; levels update in place.
 import { useEffect, useRef } from 'react';
 import {
-  CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart,
-  type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type Time, type UTCTimestamp,
+  CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart, createSeriesMarkers,
+  type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type Time, type UTCTimestamp,
 } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { useTheme } from '../../shared/theme';
-import type { Level, Side } from '../oi-support-resistance/logic/levels';
 import { EMA_PERIOD, RSI_LEVELS, RSI_PANE_PX, RSI_PERIOD, type IndicatorToggles } from './config/settings';
 import type { Candle } from './logic/candles';
 import { ema, rsi, toPoints } from './logic/indicators';
-import { LevelLines, withAlpha, type LevelColors } from './logic/levelLines';
+import type { RefLine, Segment, ShiftMarker } from './logic/levelHistory';
+import { SegmentLayer, withAlpha, type LevelColors, type SegHandle, type SegStyle } from './logic/segmentLayer';
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const IST = 'Asia/Kolkata';
@@ -40,7 +41,15 @@ const candleColors = () => {
   return { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false };
 };
 const levelColors = (): LevelColors => ({ up: token('--up'), down: token('--down') });
-const levelPrices = (levels: Record<Side, Level[]> | null) => (levels ? [...levels.R, ...levels.S].map((l) => l.strike) : []);
+function refStyle(r: RefLine) {
+  if (r.kind === 'morning') {
+    return { color: withAlpha(token(r.side === 'R' ? '--down' : '--up'), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true } as const;
+  }
+  const accent = token('--accent'); // pinned and entry lines stand apart from the live levels
+  return r.kind === 'pinned'
+    ? ({ color: accent, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true } as const)
+    : ({ color: accent, lineWidth: 2, lineStyle: LineStyle.LargeDashed, axisLabelVisible: true } as const);
+}
 const rsiColors = () => ({ line: token('--accent'), guide: token('--text-3') });
 const emaColor = () => token('--text-2');
 const asTime = <T extends { time: number }>(p: T) => ({ ...p, time: p.time as UTCTimestamp });
@@ -59,9 +68,12 @@ function indicatorData(bars: Candle[]) {
   return { rsi: toPoints(times, rsi(closes, RSI_PERIOD)), ema: toPoints(times, ema(closes, EMA_PERIOD)) };
 }
 
-export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: {
+export function PriceChart({ bars, segments, markers, showHistory, refLines, resetKey, indicators, volumeLabel }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
-  levels: Record<Side, Level[]> | null;
+  segments: Segment[]; // recorded levels on the bars (current + earlier)
+  markers: ShiftMarker[]; // one per level shift
+  showHistory: boolean; // earlier segments and the markers
+  refLines: RefLine[];
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
@@ -70,9 +82,11 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const lines = useRef<LevelLines | null>(null);
-  const levelsRef = useRef(levels);
-  levelsRef.current = levels;
+  const layer = useRef<SegmentLayer | null>(null);
+  const markerApi = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const refs = useRef(new Map<string, { line: IPriceLine; ref: RefLine }>());
+  const view = useRef({ segments, showHistory, refLines });
+  view.current = { segments, showHistory, refLines };
   const fitted = useRef('');
   const all = useRef<Candle[]>([]); // history + live candles, for the indicators
   const rsiSeries = useRef<ISeriesApi<'Line'> | null>(null);
@@ -117,20 +131,28 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
     });
     const s = c.addSeries(CandlestickSeries, {
       ...candleColors(),
-      // keep every S/R line on screen: widen the price scale to the levels, not just the candles
+      // keep the reference lines on screen too (the level segments are series, so they count already)
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
         const r = original();
-        const prices = levelPrices(levelsRef.current);
+        const prices = view.current.refLines.map((x) => x.price);
         if (!r?.priceRange || !prices.length) return r;
         return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...prices), maxValue: Math.max(r.priceRange.maxValue, ...prices) } };
       },
     });
     chart.current = c;
     series.current = s;
-    lines.current = new LevelLines(s);
+    layer.current = new SegmentLayer({
+      add: (style: SegStyle) => {
+        const line = c.addSeries(LineSeries, { ...style, priceLineVisible: false, crosshairMarkerVisible: false }, 0);
+        return { line, setData: (p) => line.setData(p.map(asTime)), applyOptions: (o) => line.applyOptions(o) } as SegHandle;
+      },
+      remove: (h: SegHandle) => c.removeSeries((h as SegHandle & { line: ISeriesApi<'Line'> }).line),
+    });
+    markerApi.current = createSeriesMarkers(s, []);
     return () => {
       c.remove();
-      chart.current = series.current = lines.current = rsiSeries.current = emaSeries.current = volSeries.current = null;
+      chart.current = series.current = layer.current = markerApi.current = rsiSeries.current = emaSeries.current = volSeries.current = null;
+      refs.current.clear();
       shown.current = { bars: [], key: '' };
       rsiGuides.current = [];
     };
@@ -200,7 +222,8 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
     const id = requestAnimationFrame(() => {
       chart.current?.applyOptions(themeOptions());
       series.current?.applyOptions(candleColors());
-      lines.current?.update(levelsRef.current, levelColors());
+      layer.current?.update(view.current.segments, levelColors(), view.current.showHistory);
+      refs.current.forEach(({ line, ref }) => line.applyOptions(refStyle(ref)));
       const col = rsiColors();
       rsiSeries.current?.applyOptions({ color: col.line });
       rsiGuides.current.forEach((g) => g.applyOptions({ color: col.guide }));
@@ -232,9 +255,40 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
     }
   }, [bars, resetKey]);
 
+  // recorded levels: created once, then grown / restyled in place
   useEffect(() => {
-    lines.current?.update(levels, levelColors());
-  }, [levels]);
+    layer.current?.update(segments, levelColors(), showHistory);
+  }, [segments, showHistory]);
+
+  // a marker at each shift ("S1 ↓ 22,800 · 10:47"), on bars that exist
+  useEffect(() => {
+    const times = new Set(all.current.map((b) => b.time));
+    const col = levelColors();
+    markerApi.current?.setMarkers(showHistory ? markers.filter((m) => times.has(m.time)).map((m) => ({
+      time: m.time as UTCTimestamp, position: m.side === 'R' ? 'aboveBar' : 'belowBar', shape: 'circle', size: 0.5,
+      color: m.side === 'R' ? col.down : col.up, text: m.text,
+    } as const)) : []);
+  }, [markers, showHistory, bars.length, resetKey, mode]);
+
+  // reference lines: added, moved or removed by id
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    const keep = new Set(refLines.map((r) => r.id));
+    for (const [id, x] of refs.current) {
+      if (!keep.has(id)) {
+        s.removePriceLine(x.line);
+        refs.current.delete(id);
+      }
+    }
+    for (const r of refLines) {
+      const opts = { price: r.price, title: r.title, ...refStyle(r) };
+      const have = refs.current.get(r.id);
+      if (have) have.line.applyOptions(opts);
+      else refs.current.set(r.id, { line: s.createPriceLine(opts), ref: r });
+      refs.current.get(r.id)!.ref = r;
+    }
+  }, [refLines]);
 
   return <div className="db-chart" ref={box} />;
 }

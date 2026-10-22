@@ -100,7 +100,7 @@ export function srPosition(sr: SrLevels, spot = sr.spot): string {
   return [above, below].filter(Boolean).join(' · ') || 'No S1 / R1 within range';
 }
 
-/** sr: the levels drawn on the chart (refreshed hourly); the position uses the latest spot from the summary's chain. */
+/** sr: the levels drawn on the chart (backend stability rule); the position uses the latest spot from the summary's chain. */
 export function srCard(s: Summary['chain'] | undefined, sr: SrLevels | null): CardModel {
   const c = shell('sr', 'OI Support & Resistance Live', '/oi-support-resistance-live', s);
   c.tag = 'Levels';

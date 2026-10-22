@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { toOptionChain, nseDate } from '../../shared/dhan/chainAdapter';
-import { istMs } from '../../shared/live/liveStatus';
+import { errorText, istMs } from '../../shared/live/liveStatus';
 import { useLiveChain } from '../../shared/live/useLiveChain';
 import { Alert, EmptyState, Pill } from '../../shared/ui';
 import { LiveToolbar } from '../../shared/ui/LiveToolbar';
@@ -10,6 +10,7 @@ import { analyzeChain, buildView, type Analysis, type Snapshot } from '../oi-sup
 import { dayKey } from '../oi-support-resistance/logic/snapshots';
 import { OsrResult, hm } from '../oi-support-resistance/OsrResult';
 import { createStore } from '../oi-support-resistance/storage';
+import { currentLevels, fetchSrHistory, type SrHistory } from '../dashboard/logic/levelHistory';
 import { LIVE_PREFIX, liveSaveCheck } from './logic/saveRule';
 import '../oi-support-resistance/oi-sr.css';
 
@@ -26,6 +27,8 @@ export default function OiSupportResistanceLiveApp() {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [notice, setNotice] = useState<{ kind: 'warn' | 'info'; text: string } | null>(null);
   const [cleared, setCleared] = useState(0); // bumps after "Clear today's data" so the snapshot list re-reads storage
+  // levels accepted by the backend's stability rule, the same ones the Dashboard draws (fetched with every Refresh)
+  const [hist, setHist] = useState<{ h: SrHistory | null; lotSize: number; error: string } | null>(null);
 
   const key = live.expiry ? dayKey(live.symbol, nseDate(live.expiry)) : '';
   // Snapshots for the analysed chain, or for the index + expiry picked in the toolbar before any refresh.
@@ -35,12 +38,16 @@ export default function OiSupportResistanceLiveApp() {
     setResult(null);
     setSnaps([]);
     setNotice(null);
+    setHist(null);
   }, [live.symbol, live.expiry]);
 
   const refresh = async () => {
     setNotice(null);
+    const histP = live.expiry ? fetchSrHistory(live.symbol, live.expiry).then((h) => ({ h, error: '' }), (e) => ({ h: null, error: errorText(e) })) : null;
     const r = await live.refresh();
     if (!r) return; // the toolbar shows the error
+    const got = histP ? await histP : { h: null, error: '' };
+    setHist({ ...got, lotSize: r.meta.lotSize });
     const chain = toOptionChain(r, live.expiries);
     if (!chain.strikes.length || chain.underlying <= 0) {
       setNotice({ kind: 'warn', text: 'Dhan returned no strikes or no spot price for this expiry. Nothing was saved.' });
@@ -79,7 +86,12 @@ export default function OiSupportResistanceLiveApp() {
     (k === 'range' ? setRange : setThreshold)(v);
   };
 
-  const view = useMemo(() => (result ? buildView(result, snaps, range) : null), [result, snaps, range]);
+  const recorded = useMemo(() => (hist?.h ? currentLevels(hist.h, hist.lotSize) : null), [hist]);
+  const effRange = hist?.h?.meta.settings.range ?? range; // the shared rule's range when the backend has one
+  const view = useMemo(() => (result ? buildView(result, snaps, effRange, recorded) : null), [result, snaps, effRange, recorded]);
+  const sourceText = !result || !hist ? '' : recorded
+    ? `Levels: recorded by the backend (OI lead ${hist.h!.meta.settings.leadPct}% for ${hist.h!.meta.settings.confirmRefreshes} refreshes, as of ${hist.h!.meta.asOf.slice(11, 16)} IST), same as the Dashboard.`
+    : `Levels: top OI of this refresh (nothing recorded by the backend for today${hist.error ? `: ${hist.error}` : ''}).`;
 
   return (
     <div className="ds osr">
@@ -88,9 +100,13 @@ export default function OiSupportResistanceLiveApp() {
           <button className="btn ghost" onClick={() => setShowSettings((s) => !s)} aria-expanded={showSettings}>Settings</button>
           {showSettings && (
             <div className="card osr-pop">
-              <label className="field">Range around spot (points)
-                <input type="number" min={100} step={50} value={range} onChange={(e) => setSetting('range', Number(e.target.value))} />
-              </label>
+              {hist?.h ? (
+                <span className="muted">Range around spot: {inr(0)(effRange)} pts (shared S/R rule, change it in Dashboard → Settings)</span>
+              ) : (
+                <label className="field">Range around spot (points)
+                  <input type="number" min={100} step={50} value={range} onChange={(e) => setSetting('range', Number(e.target.value))} />
+                </label>
+              )}
               <label className="field">Change threshold (%)
                 <input type="number" min={1} step={1} value={threshold} onChange={(e) => setSetting('threshold', Number(e.target.value))} />
               </label>
@@ -101,6 +117,7 @@ export default function OiSupportResistanceLiveApp() {
       </LiveToolbar>
 
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
+      {sourceText && <p className="muted osr-source">{sourceText}</p>}
 
       {todays.length > 0 && (
         <div className="osr-chips">
@@ -120,7 +137,7 @@ export default function OiSupportResistanceLiveApp() {
           </EmptyState>
         )
       ) : (
-        <OsrResult result={result} view={view} range={range} threshold={threshold} source="live" />
+        <OsrResult result={result} view={view} range={effRange} threshold={threshold} source="live" />
       )}
     </div>
   );
