@@ -389,6 +389,8 @@ def main():
     except Exception as e:  # the dashboard still works without the watcher
         logging.getLogger("main").warning("signal watcher off: could not read autopaper.json: %s", e)
         signal_config = None
+    from keep_awake import KeepAwake
+    KeepAwake().start()  # Windows: no sleep until 16:00 IST while the backend runs (owner, 24-Oct-2026)
     uvicorn.run(create_app(tracker, track, paper=paper, signal_config=signal_config), host=a.host, port=a.port, log_level="info")
 
 

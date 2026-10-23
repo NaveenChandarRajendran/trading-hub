@@ -118,6 +118,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   live on Dhan data (OI & OI Change Live), so no separate NSE fetch is needed (same exchange OI).
 - Dashboard "OI views side by side" has a third column, Trending OI (`sig_oi.trending_view`: the rule's test on the
   last 3 completed rows, ±50%), and a count in the header ("3 of 3 Bearish"). Record only; the rules are unchanged.
+- `keep_awake.py`: on Windows the backend stops the PC from sleeping until 16:00 IST (SetThreadExecutionState, like
+  call apps); the screen may still lock. Owner 24-Oct-2026.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
