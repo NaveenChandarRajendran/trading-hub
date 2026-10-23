@@ -18,12 +18,22 @@ export const INDEX_IDS: Record<string, number> = { NIFTY: 13, BANKNIFTY: 25 };
 
 // Chart indicators (approved 2026-10-22). Toggles are remembered per browser.
 export const RSI_PERIOD = 14;
-export const RSI_LEVELS = [80, 20] as const; // overbought / oversold guide lines
+/** RSI zones of the Trading Hub rule (docs/strategies/trading-hub-trend.md): put 30-45, call 55-70. */
+export const RSI_ZONES = { put: [30, 45], call: [55, 70] } as const;
 export const EMA_PERIOD = 20;
 export const RSI_PANE_PX = 130;
+export const ST_PERIOD = 10; // SuperTrend (10, 2), Bollinger (20, 2): the rules' settings (23-Oct-2026)
+export const ST_FACTOR = 2;
+export const BB_PERIOD = 20;
+export const BB_MULT = 2;
 export interface IndicatorToggles {
   rsi: boolean;
   ema: boolean;
   volume: boolean;
+  supertrend: boolean;
+  bollinger: boolean;
+  vwap: boolean;
 }
-export const DEFAULT_INDICATORS: IndicatorToggles = { rsi: true, ema: false, volume: true };
+export const DEFAULT_INDICATORS: IndicatorToggles = { rsi: true, ema: true, volume: true, supertrend: true, bollinger: true, vwap: true };
+/** Signal state (rule cards, OI section, paper card) refresh. The watcher itself runs every 5 minutes on the backend. */
+export const SIGNALS_REFRESH_SEC = 20;

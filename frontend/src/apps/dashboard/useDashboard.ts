@@ -28,7 +28,8 @@ const write = (k: string, v: string) => {
 };
 const stocksOf = (symbol: string) => ((constituents as Record<string, { symbol: string }[]>)[symbol] ?? []).map((c) => c.symbol);
 
-export function useDashboard() {
+/** optionIds: option security IDs whose live premium the page shows (the paper trade card). */
+export function useDashboard(optionIds: number[] = []) {
   const [symbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
   const [interval, setIntervalState] = useState(() => {
     const v = Number(read('interval'));
@@ -69,6 +70,7 @@ export function useDashboard() {
   const [volumeError, setVolumeError] = useState('');
   const [candlesError, setCandlesError] = useState<unknown>(null);
   const [feedState, setFeedState] = useState<ConnState>('connecting');
+  const [optionLtp, setOptionLtp] = useState<Record<number, number>>({}); // live premium per option security ID
   const [now, setNow] = useState(() => Date.now());
   const putMinutes = (m: Candle[]) => {
     minutesRef.current = m;
@@ -155,10 +157,18 @@ export function useDashboard() {
   // live: the index's 1-minute candle and the near-month future's volume, over /ws/paper (the backend's single Dhan feed)
   const spotId = INDEX_IDS[symbol];
   const futId = volumeInfo?.securityId ?? null;
+  const optionKey = [...optionIds].sort((a, b) => a - b).join(',');
   useEffect(() => {
+    const ids = optionKey ? optionKey.split(',').map(Number) : [];
     const feed = new PaperFeed(PAPER_WS, {
       onState: setFeedState,
-      onTicks: () => {},
+      onTicks: (ticks) => {
+        const next: Record<number, number> = {};
+        ticks.forEach((t) => {
+          if (t.segment === 'NSE_FNO' && ids.includes(t.securityId) && t.ltp > 0) next[t.securityId] = t.ltp;
+        });
+        if (Object.keys(next).length) setOptionLtp((p) => ({ ...p, ...next }));
+      },
       onMessage: (m) => {
         if (m.type === 'candle' && m.data.securityId === spotId) {
           const pending = pendingVolume.current.get(m.data.time);
@@ -171,10 +181,11 @@ export function useDashboard() {
         }
       },
     });
-    feed.setSubscriptions(futId ? [keyOf('IDX_I', spotId), keyOf('NSE_FNO', futId)] : [keyOf('IDX_I', spotId)]);
+    const keys = [keyOf('IDX_I', spotId), ...(futId ? [keyOf('NSE_FNO', futId)] : []), ...ids.map((id) => keyOf('NSE_FNO', id))];
+    feed.setSubscriptions(keys);
     feed.connect();
     return () => feed.close();
-  }, [spotId, futId]);
+  }, [spotId, futId, optionKey]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 5000);
@@ -190,7 +201,7 @@ export function useDashboard() {
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh,
+    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

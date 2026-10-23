@@ -1,0 +1,12 @@
+{
+  "_note": "Auto paper trading settings (PAPER ONLY). Paths are relative to the backend folder. No keys here: the MegaBull key lives in keysFile, outside the Trading Journey folder and outside git.",
+  "logDir": "../../../Auto Paper Logs",
+  "keysFile": "~/TradingHubKeys/megabull.json",
+  "keyMaxAgeDays": 25,
+  "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
+  "tradingHub": {"enabled": true, "lots": 1, "stopPct": 15, "targetPct": 20},
+  "megabull": {"enabled": false, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
+  "rollOnExpiryDay": true,
+  "timeExit": "15:14",
+  "evaluateAfterCloseSeconds": 35
+}

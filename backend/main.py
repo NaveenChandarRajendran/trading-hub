@@ -17,11 +17,13 @@ Endpoints:
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
     /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
+    /api/signals/*, /api/autopaper/*            (signal watcher + auto PAPER trading: see sig_service.py, autopaper.py)
 
 Storage: set DATABASE_URL (e.g. postgresql://USER:PASSWORD@localhost:5432/algo_trading) to keep every snapshot in
 Postgres. Without it the backend falls back to JSON files in ./data.
 """
 import argparse
+import json
 import logging
 import os
 import re
@@ -37,11 +39,14 @@ from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
+import autopaper
 import dashboard_api
 import paper_api
+import sig_service
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
+from megabull_client import MegaBullClient
 from store import IST, JsonStore, PaperJsonStore, PaperPgStore, PgStore
 from tracker import Tracker
 
@@ -56,8 +61,9 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None):
+def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, signal_config=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
+    signal_config: autopaper.json settings; when given, the signal watcher + auto paper trader run (sig_service.py).
     instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either)."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
@@ -122,13 +128,19 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             except Exception as e:  # token missing/expired etc. - page can still register later
                 logging.getLogger("main").warning("could not auto-track %s: %s", sym, e)
 
+    signals = None  # set below once the routes exist
+
     @asynccontextmanager
     async def lifespan(_app):
         tracker.start()
         if paper:
             paper.start()
         threading.Thread(target=start_default_tracking, daemon=True).start()
+        if signals:
+            signals.start()
         yield
+        if signals:
+            signals.stop()
         if paper:
             paper.stop()
         tracker.stop()
@@ -288,7 +300,41 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
     if paper:
         paper_api.register(app, paper)
+    if signal_config is not None:
+        signals = build_signals(signal_config, tracker, app.state.candles, get_expiries, lot_size, trending_oi_body, paper)
+        sig_service.register(app, signals)
+        app.state.signals = signals
     return app
+
+
+def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_body, paper):
+    """Signal watcher + auto PAPER trader (Trading Hub paper account; MegaBull paper API when enabled)."""
+    trader = None
+    svc_ref = {}
+    alert = lambda kind, msg: svc_ref["svc"].alert(kind, msg)  # noqa: E731
+    on_order = lambda trade, event: svc_ref["svc"].on_order(trade, event)  # noqa: E731
+    if paper:
+        mb_cfg = cfg["megabull"]
+        accounts = [autopaper.TradingHubAccount(paper),
+                    autopaper.MegaBullAccount(lambda: MegaBullClient(cfg["keysFile"], request_log=megabull_logger(cfg["logDir"])),
+                                              mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2))]
+        trader = autopaper.AutoTrader(cfg, accounts, alert=alert, on_order=on_order,
+                                      state_path=os.path.join("data", "autopaper_state.json"))
+    sources = sig_service.MarketSources(tracker, candles, get_expiries, lot_size, trending_oi_body, trader)
+    svc = sig_service.SignalService(cfg, sources, trader)
+    svc_ref["svc"] = svc
+    return svc
+
+
+def megabull_logger(log_dir):
+    """One JSON line per MegaBull request / response (the key is never part of it)."""
+    lock = threading.Lock()
+
+    def write(entry):
+        os.makedirs(log_dir, exist_ok=True)
+        with lock, open(os.path.join(log_dir, f"megabull_requests_{datetime.now(IST).date()}.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    return write
 
 
 def main():
@@ -322,7 +368,12 @@ def main():
     paper = paper_api.PaperService(
         paper_store, DhanFeed(client.client_id, client.token),
         OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")))
-    uvicorn.run(create_app(tracker, track, paper=paper), host=a.host, port=a.port, log_level="info")
+    try:
+        signal_config = sig_service.load_config()
+    except Exception as e:  # the dashboard still works without the watcher
+        logging.getLogger("main").warning("signal watcher off: could not read autopaper.json: %s", e)
+        signal_config = None
+    uvicorn.run(create_app(tracker, track, paper=paper, signal_config=signal_config), host=a.host, port=a.port, log_level="info")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import requests
 BASE = "https://api.dhan.co/v2"
 SEGMENT = "IDX_I"
 SCRIP = {"NIFTY": 13, "BANKNIFTY": 25}
+INDIA_VIX = 21  # IDX_I security ID of INDIA VIX in Dhan's instrument list (record only on the dashboard)
 STRIKE_STEP = {"NIFTY": 50, "BANKNIFTY": 100}
 MIN_GAP_SECONDS = 3.1
 QUOTE_GAP_SECONDS = 1.1
@@ -95,6 +96,20 @@ class DhanClient:
         Market quote allows 1 request / second and up to 1000 instruments per request."""
         payload = self._post("/marketfeed/ohlc", {"NSE_EQ": [int(i) for i in security_ids]}, gap=QUOTE_GAP_SECONDS)
         return parse_ohlc(payload)
+
+    def index_ltp(self, security_ids):
+        """Last prices of indices (segment IDX_I), e.g. INDIA_VIX: {"21": 13.42}. Same 1 request / second limit."""
+        payload = self._post("/marketfeed/ltp", {"IDX_I": [int(i) for i in security_ids]}, gap=QUOTE_GAP_SECONDS)
+        data = ((payload or {}).get("data") or {}).get("IDX_I") or {}
+        out = {}
+        for sid, v in data.items():
+            try:
+                ltp = float((v or {}).get("last_price") or 0)
+            except (TypeError, ValueError):
+                continue
+            if ltp > 0:
+                out[str(sid)] = ltp
+        return out
 
     def historical(self, security_id, from_date, to_date):
         """Daily candles for one NSE stock: {"timestamp": [epoch seconds at 00:00 IST, ...], "close": [...]}.

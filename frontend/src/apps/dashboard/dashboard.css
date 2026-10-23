@@ -53,3 +53,47 @@
 .db .db-glance-foot .warn { color: var(--warn); }
 .db .db-glance-foot a { color: var(--accent); text-decoration: none; font-weight: 500; }
 .db .db-glance-foot a:hover { text-decoration: underline; }
+
+/* Signals layout (brief 23-Oct-2026): chart full width, then two-column sections */
+.db .db-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; align-self: center; }
+.db .db-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; }
+@media (max-width: 1100px) { .db .db-two { grid-template-columns: 1fr; } }
+.db .db-scroll { overflow-x: auto; }
+.db .db-level.warn { color: var(--warn); }
+.db .db-eval { margin: calc(-1 * var(--sp-2)) 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+
+/* rule cards */
+.db .db-rule.go { border-color: var(--accent); }
+.db .db-banner { font-size: var(--fs-xs); font-weight: 600; padding: 2px var(--sp-2); border-radius: var(--r-sm); white-space: nowrap; }
+.db .db-banner.go { background: var(--up-soft); color: var(--up); }
+.db .db-banner.nogo { background: var(--down-soft); color: var(--down); }
+.db .db-rule-note { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.db .db-rule-note .warn { color: var(--warn); }
+.db .db-rule-note .down { color: var(--down); }
+.db .db-checks { list-style: none; margin: 0; padding: 0; }
+.db .db-checks li { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--border); }
+.db .db-checks li:last-child { border-bottom: 0; }
+.db .db-check-label { display: block; font-weight: 500; color: var(--text); }
+.db .db-check-detail { display: block; font-size: var(--fs-sm); color: var(--text-3); }
+.db .db-must { font-weight: 400; color: var(--text-3); font-size: var(--fs-xs); }
+
+/* OI views */
+.db .db-agree { display: flex; justify-content: space-between; align-items: center; margin-top: var(--sp-3); font-size: var(--fs-sm); }
+
+/* paper card */
+.db .db-acct { display: block; }
+.db .db-trade { border-top: 1px solid var(--border); padding-top: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); max-width: 560px; }
+.db .db-trade-figs { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
+.db .db-trade-figs > span { display: flex; flex-direction: column; font-size: var(--fs-sm); }
+.db .db-trade-figs b { font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.db .db-trade-figs b.up { color: var(--up); }
+.db .db-trade-figs b.down { color: var(--down); }
+.db .db-bar { height: 6px; border-radius: var(--r-sm); background: var(--surface-2); overflow: hidden; }
+.db .db-bar-fill { display: block; height: 100%; background: var(--accent); }
+.db .db-bar-labels { display: flex; justify-content: space-between; font-size: var(--fs-xs); }
+.db .db-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.db .db-trade .btn { align-self: flex-start; }
+
+/* snapshot bar */
+.db .db-snap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.db .db-snap .btn { margin-left: auto; }

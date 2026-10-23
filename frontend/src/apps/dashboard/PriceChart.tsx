@@ -1,6 +1,8 @@
-// Candlestick chart (TradingView Lightweight Charts) with S1-S3 / R1-R3 as price lines and optional indicators
-// (EMA and futures volume on the candles, RSI in its own pane). Colours come from the design tokens and follow the light / dark switch
-// without a reload; level lines are updated in place (LevelLines); indicators update live with the last candle.
+// Candlestick chart (TradingView Lightweight Charts) with S1-S3 / R1-R3 and the pivot as dashed price lines and optional
+// indicators: SuperTrend (red = bearish, green = bullish), Bollinger (20, 2), EMA 20, VWAP and futures volume on the
+// candles, RSI 14 in its own pane with the rule zones (put 30-45, call 55-70). Colours come from the design tokens and
+// follow the light / dark switch without a reload; level lines are updated in place (LevelLines); indicators update
+// live with the last candle. The indicator maths is shared with the signal watcher (logic/indicators.ts).
 import { useEffect, useRef } from 'react';
 import {
   CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart,
@@ -9,9 +11,9 @@ import {
 import { inr } from '../../shared/grid';
 import { useTheme } from '../../shared/theme';
 import type { Level, Side } from '../oi-support-resistance/logic/levels';
-import { EMA_PERIOD, RSI_LEVELS, RSI_PANE_PX, RSI_PERIOD, type IndicatorToggles } from './config/settings';
+import { BB_MULT, BB_PERIOD, EMA_PERIOD, RSI_PANE_PX, RSI_PERIOD, RSI_ZONES, ST_FACTOR, ST_PERIOD, type IndicatorToggles } from './config/settings';
 import type { Candle } from './logic/candles';
-import { ema, rsi, toPoints } from './logic/indicators';
+import { bollinger, ema, rsi, supertrend, toPoints, vwap } from './logic/indicators';
 import { LevelLines, withAlpha, type LevelColors } from './logic/levelLines';
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -40,28 +42,46 @@ const candleColors = () => {
   return { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false };
 };
 const levelColors = (): LevelColors => ({ up: token('--up'), down: token('--down') });
-const levelPrices = (levels: Record<Side, Level[]> | null) => (levels ? [...levels.R, ...levels.S].map((l) => l.strike) : []);
-const rsiColors = () => ({ line: token('--accent'), guide: token('--text-3') });
+const levelPrices = (levels: Record<Side, Level[]> | null, pivot: number | null) =>
+  [...(levels ? [...levels.R, ...levels.S].map((l) => l.strike) : []), ...(pivot ? [pivot] : [])];
 const emaColor = () => token('--text-2');
 const asTime = <T extends { time: number }>(p: T) => ({ ...p, time: p.time as UTCTimestamp });
 const ohlc = (b: Candle) => ({ time: b.time as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close });
 const VOLUME_ALPHA = 0.45; // soft bars: volume is context, not a signal
+const BB_ALPHA = 0.7;
 const volumePoint = (b: Candle) => ({
   time: b.time as UTCTimestamp, value: b.volume ?? 0,
   color: withAlpha(token(b.close >= b.open ? '--up' : '--down'), VOLUME_ALPHA),
 });
-const thinLine = { lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false } as const;
+const thinLine = { lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false, lastValueVisible: false } as const;
+
+interface Pt { time: number; value: number }
+interface ColorPt extends Pt { color: string }
 
 /** Indicator points for the bars, oldest first. */
 function indicatorData(bars: Candle[]) {
   const times = bars.map((b) => b.time);
   const closes = bars.map((b) => b.close);
-  return { rsi: toPoints(times, rsi(closes, RSI_PERIOD)), ema: toPoints(times, ema(closes, EMA_PERIOD)) };
+  const st = supertrend(bars, ST_PERIOD, ST_FACTOR);
+  const bb = bollinger(closes, BB_PERIOD, BB_MULT);
+  const up = token('--up');
+  const down = token('--down');
+  const stPts: ColorPt[] = [];
+  st.line.forEach((v, i) => {
+    if (v != null) stPts.push({ time: times[i], value: v, color: st.direction[i] === -1 ? up : down });
+  });
+  return {
+    rsi: toPoints(times, rsi(closes, RSI_PERIOD)), ema: toPoints(times, ema(closes, EMA_PERIOD)), vwap: toPoints(times, vwap(bars)),
+    st: stPts, bbBasis: toPoints(times, bb.basis), bbUpper: toPoints(times, bb.upper), bbLower: toPoints(times, bb.lower),
+  };
 }
+type Data = ReturnType<typeof indicatorData>;
+type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: {
+export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
   levels: Record<Side, Level[]> | null;
+  pivot: number | null; // day pivot (Traditional, previous session), dashed
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
@@ -71,30 +91,31 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const lines = useRef<LevelLines | null>(null);
+  const pivotLine = useRef<IPriceLine | null>(null);
   const levelsRef = useRef(levels);
   levelsRef.current = levels;
+  const pivotRef = useRef(pivot);
+  pivotRef.current = pivot;
   const fitted = useRef('');
   const all = useRef<Candle[]>([]); // history + live candles, for the indicators
-  const rsiSeries = useRef<ISeriesApi<'Line'> | null>(null);
+  const lineSeries = useRef<Partial<Record<LineKey, ISeriesApi<'Line'>>>>({});
   const rsiGuides = useRef<IPriceLine[]>([]);
-  const emaSeries = useRef<ISeriesApi<'Line'> | null>(null);
   const volSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
   const shown = useRef<{ bars: Candle[]; key: string }>({ bars: [], key: '' });
 
   /** Whole indicator series (after history loads or an indicator is switched on). */
   const fillIndicators = () => {
     const d = indicatorData(all.current);
-    rsiSeries.current?.setData(d.rsi.map(asTime));
-    emaSeries.current?.setData(d.ema.map(asTime));
+    for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) s.setData((d[k] as Pt[]).map(asTime));
     volSeries.current?.setData(all.current.map(volumePoint));
   };
   /** Only the last point (each live tick). */
   const updateIndicators = () => {
-    const d = indicatorData(all.current);
-    const lastRsi = d.rsi.at(-1);
-    const lastEma = d.ema.at(-1);
-    if (lastRsi) rsiSeries.current?.update(asTime(lastRsi));
-    if (lastEma) emaSeries.current?.update(asTime(lastEma));
+    const d: Data = indicatorData(all.current);
+    for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) {
+      const last = (d[k] as Pt[]).at(-1);
+      if (last) s.update(asTime(last));
+    }
     const last = all.current.at(-1);
     if (last) volSeries.current?.update(volumePoint(last));
   };
@@ -117,10 +138,10 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
     });
     const s = c.addSeries(CandlestickSeries, {
       ...candleColors(),
-      // keep every S/R line on screen: widen the price scale to the levels, not just the candles
+      // keep every S/R line and the pivot on screen: widen the price scale to them, not just the candles
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
         const r = original();
-        const prices = levelPrices(levelsRef.current);
+        const prices = levelPrices(levelsRef.current, pivotRef.current);
         if (!r?.priceRange || !prices.length) return r;
         return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...prices), maxValue: Math.max(r.priceRange.maxValue, ...prices) } };
       },
@@ -130,47 +151,63 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
     lines.current = new LevelLines(s);
     return () => {
       c.remove();
-      chart.current = series.current = lines.current = rsiSeries.current = emaSeries.current = volSeries.current = null;
+      chart.current = series.current = lines.current = volSeries.current = pivotLine.current = null;
+      lineSeries.current = {};
       shown.current = { bars: [], key: '' };
       rsiGuides.current = [];
     };
   }, []);
 
-  // RSI in its own pane under the candles: fixed 0-100 scale, 80 / 20 guide lines
+  /** Adds or removes one overlay line on the candle pane. */
+  const toggleLine = (key: LineKey, on: boolean, opts: Record<string, unknown>) => {
+    const c = chart.current;
+    if (!c) return;
+    const have = lineSeries.current[key];
+    if (on && !have) {
+      lineSeries.current[key] = c.addSeries(LineSeries, { ...thinLine, ...opts }, 0);
+      fillIndicators();
+    } else if (!on && have) {
+      c.removeSeries(have);
+      delete lineSeries.current[key];
+    }
+  };
+
+  // RSI in its own pane under the candles: fixed 0-100 scale, the rule zones as dashed guide lines
   useEffect(() => {
     const c = chart.current;
     if (!c) return;
-    if (indicators.rsi && !rsiSeries.current) {
-      const col = rsiColors();
+    const have = lineSeries.current.rsi;
+    if (indicators.rsi && !have) {
       const s = c.addSeries(LineSeries, {
-        ...thinLine, color: col.line, title: `RSI ${RSI_PERIOD}`, lastValueVisible: true,
+        ...thinLine, color: token('--accent'), title: `RSI ${RSI_PERIOD}`, lastValueVisible: true,
         autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
       }, 1);
-      rsiGuides.current = RSI_LEVELS.map((price) =>
-        s.createPriceLine({ price, color: col.guide, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '' }));
+      const guide = (price: number, color: string, title: string) =>
+        s.createPriceLine({ price, color: withAlpha(color, 0.8), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title });
+      rsiGuides.current = [
+        guide(RSI_ZONES.put[0], token('--down'), ''), guide(RSI_ZONES.put[1], token('--down'), 'Put zone'),
+        guide(RSI_ZONES.call[0], token('--up'), 'Call zone'), guide(RSI_ZONES.call[1], token('--up'), ''),
+      ];
       c.panes()[1]?.setHeight(RSI_PANE_PX);
-      rsiSeries.current = s;
+      lineSeries.current.rsi = s;
       fillIndicators();
-    } else if (!indicators.rsi && rsiSeries.current) {
-      c.removeSeries(rsiSeries.current);
-      rsiSeries.current = null;
+    } else if (!indicators.rsi && have) {
+      c.removeSeries(have);
+      delete lineSeries.current.rsi;
       rsiGuides.current = [];
       if (c.panes().length > 1) c.removePane(1);
     }
   }, [indicators.rsi]);
 
-  // EMA on the candles
+  useEffect(() => toggleLine('ema', indicators.ema, { color: emaColor(), title: `EMA ${EMA_PERIOD}` }), [indicators.ema]);
+  useEffect(() => toggleLine('vwap', indicators.vwap, { color: token('--series-vwap'), title: 'VWAP' }), [indicators.vwap]);
+  useEffect(() => toggleLine('st', indicators.supertrend, { lineWidth: 2, title: `ST ${ST_PERIOD},${ST_FACTOR}` }), [indicators.supertrend]);
   useEffect(() => {
-    const c = chart.current;
-    if (!c) return;
-    if (indicators.ema && !emaSeries.current) {
-      emaSeries.current = c.addSeries(LineSeries, { ...thinLine, color: emaColor(), title: `EMA ${EMA_PERIOD}`, lastValueVisible: false }, 0);
-      fillIndicators();
-    } else if (!indicators.ema && emaSeries.current) {
-      c.removeSeries(emaSeries.current);
-      emaSeries.current = null;
-    }
-  }, [indicators.ema]);
+    const col = withAlpha(token('--series-bb'), BB_ALPHA);
+    toggleLine('bbUpper', indicators.bollinger, { color: col });
+    toggleLine('bbBasis', indicators.bollinger, { color: col, lineStyle: LineStyle.Dashed });
+    toggleLine('bbLower', indicators.bollinger, { color: col });
+  }, [indicators.bollinger]);
 
   // futures volume: soft bars along the bottom ~20% of the candle pane, on their own scale
   useEffect(() => {
@@ -201,11 +238,15 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
       chart.current?.applyOptions(themeOptions());
       series.current?.applyOptions(candleColors());
       lines.current?.update(levelsRef.current, levelColors());
-      const col = rsiColors();
-      rsiSeries.current?.applyOptions({ color: col.line });
-      rsiGuides.current.forEach((g) => g.applyOptions({ color: col.guide }));
-      emaSeries.current?.applyOptions({ color: emaColor() });
-      volSeries.current?.setData(all.current.map(volumePoint)); // per-bar colours
+      pivotLine.current?.applyOptions({ color: token('--warn') });
+      const ls = lineSeries.current;
+      ls.rsi?.applyOptions({ color: token('--accent') });
+      rsiGuides.current.forEach((g, k) => g.applyOptions({ color: withAlpha(token(k < 2 ? '--down' : '--up'), 0.8) }));
+      ls.ema?.applyOptions({ color: emaColor() });
+      ls.vwap?.applyOptions({ color: token('--series-vwap') });
+      const bb = withAlpha(token('--series-bb'), BB_ALPHA);
+      [ls.bbUpper, ls.bbBasis, ls.bbLower].forEach((s) => s?.applyOptions({ color: bb }));
+      fillIndicators(); // SuperTrend and volume carry per-point colours
     });
     return () => cancelAnimationFrame(id);
   }, [mode]);
@@ -235,6 +276,19 @@ export function PriceChart({ bars, levels, resetKey, indicators, volumeLabel }: 
   useEffect(() => {
     lines.current?.update(levels, levelColors());
   }, [levels]);
+
+  // pivot: one dashed line, moved in place
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    if (pivot == null) {
+      pivotLine.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+      return;
+    }
+    const spec = { price: pivot, color: token('--warn'), lineWidth: 1 as const, lineStyle: LineStyle.Dashed, lineVisible: true, axisLabelVisible: true, title: 'Pivot' };
+    if (pivotLine.current) pivotLine.current.applyOptions(spec);
+    else pivotLine.current = s.createPriceLine(spec);
+  }, [pivot]);
 
   return <div className="db-chart" ref={box} />;
 }
