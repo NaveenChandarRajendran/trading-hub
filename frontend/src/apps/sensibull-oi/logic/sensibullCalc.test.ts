@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import raw from './__fixtures__/nifty-2026-10-16.json?raw';
 import { parseSensibull } from './sensibull';
-import { availableWindows, buildAnticipated, buildBlocks, buildWindow, defaultSelection, makeBlock, type WindowSummary } from './sensibullCalc';
+import { analyzeSnapshot, availableWindows, buildAnticipated, buildBlocks, buildWindow, defaultSelection, makeBlock, maxRange, type Metric, type WindowSummary } from './sensibullCalc';
 
 // [strike, PUT, CALL] exactly as shown in the sheet (lakhs)
 const SHEET: [number, number, number][] = [
@@ -99,5 +99,24 @@ describe('Sensibull JSON', () => {
     expect(() => parseSensibull('')).toThrow();
     expect(() => parseSensibull('<html>')).toThrow();
     expect(() => parseSensibull('{"payload":{}}')).toThrow(/per_strike_data/);
+  });
+});
+
+describe('analyzeSnapshot', () => {
+  // Same steps the component used to run inline; the result must not change.
+  const inline = (metric: Metric, picked: number[] | null) => {
+    const s = parseSensibull(raw);
+    const b = buildBlocks(s, metric);
+    const windows = availableWindows(b, s.atmStrike);
+    const sizes = windows.map((w) => w.n);
+    const chosen = (picked ?? defaultSelection(sizes)).filter((n) => sizes.includes(n));
+    const used = chosen.length ? chosen : defaultSelection(sizes);
+    return { blocks: b, windows, used, range: maxRange(b, s.atmStrike), ...buildAnticipated(windows.filter((w) => used.includes(w.n)), 50) };
+  };
+
+  it.each([
+    ['oi', null], ['change', null], ['oi', [5, 15]], ['change', [99]],
+  ] as [Metric, number[] | null][])('metric %s, picked %j', (metric, picked) => {
+    expect(analyzeSnapshot(parseSensibull(raw), metric, picked)).toEqual(inline(metric, picked));
   });
 });

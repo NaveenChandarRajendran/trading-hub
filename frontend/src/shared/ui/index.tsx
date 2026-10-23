@@ -49,5 +49,7 @@ export function Status({ kind, children }: { kind: 'live' | 'stale' | 'error' | 
   return <span className="status"><span className={`dot ${kind === 'idle' ? '' : kind}`} />{children}</span>;
 }
 
+export { CopyValue } from './CopyValue';
+export { CheckIcon, CopyIcon } from './icons';
 export { Heatmap } from './Heatmap';
 export type { HeatCell, HeatLevel } from './Heatmap';

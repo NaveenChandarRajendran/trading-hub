@@ -1,0 +1,15 @@
+/* OI & OI Change Live: layout only. Colors and sizes come from tokens. */
+.ocl { display: flex; flex-direction: column; gap: var(--sp-4); }
+.ocl .ocl-grid { height: 600px; }
+.ocl .ocl-verdict.up { color: var(--up); }
+.ocl .ocl-verdict.down { color: var(--down); }
+.ocl .ocl-put-label { color: var(--up); font-weight: 500; }
+.ocl .ocl-call-label { color: var(--down); font-weight: 500; }
+.ocl .ag-header-group-cell.ocl-call { background: var(--call-soft); }
+.ocl .ag-header-group-cell.ocl-put { background: var(--put-soft); }
+.ocl .ag-cell.up { color: var(--up); }
+.ocl .ag-cell.down { color: var(--down); }
+.ocl .ag-cell.num { font-variant-numeric: tabular-nums; }
+.ocl .ag-cell.ocl-strike { font-weight: 600; text-align: left; }
+.ocl .ag-row.ocl-atm { background: var(--accent-soft); }
+.ocl .ag-row-pinned { font-weight: 600; }

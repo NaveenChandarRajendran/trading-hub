@@ -48,9 +48,18 @@ class FakeFeed:
         pass
 
 
+FUT = 52162  # NIFTY near-month future (Dashboard volume)
+
+
 class FakeInstruments:
     def get(self, sid):
         return INSTRUMENTS.get(int(sid))
+
+    def future_ids(self):
+        return {FUT}
+
+    def near_future(self, symbol, today=None):
+        return {"securityId": FUT, "symbol": "NIFTY", "expiry": "2026-10-27", "lotSize": 65, "name": "NIFTY OCT FUT"}
 
     def expiries(self, symbol, today=None):
         return ["2026-10-27", "2026-11-03"] if symbol == "NIFTY" else ["2026-10-27"]

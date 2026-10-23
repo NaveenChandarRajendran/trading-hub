@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from 'react';
+import { Fragment, useEffect, useMemo } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { EmptyState, Pill } from '../../shared/ui';
 import { STRIKES_EACH_SIDE } from './config/settings';
 import { STATUS_TONE, hms, lakh, longDate, pct, price, shortName, signedRupees, toneOf } from './format';
 import { api, type Chain, type Order, type Position } from './logic/api';
-import { changePct, chainWindow } from './logic/chain';
+import { changePct, chainWindow, itm, spotGapAfter } from './logic/chain';
 import { keyOf, type InstrumentKey } from './logic/feed';
 import type { TicketTarget } from './OrderTicket';
 import type { Paper } from './usePaper';
@@ -31,6 +31,7 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
   const spotKey = keyOf(chain.spot.segment, chain.spot.securityId);
   const spot = paper.ticks.get(spotKey)?.ltp ?? null;
   const win = useMemo(() => chainWindow(chain.rows, spot, STRIKES_EACH_SIDE), [chain.rows, spot]);
+  const gapAfter = spotGapAfter(win.rows, spot); // the live spot line sits below this row
 
   // subscribe to the index and the strikes on screen; the backend adds open positions and pending orders itself
   const keys = useMemo(() => {
@@ -59,7 +60,10 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
       <section className="card">
         <div className="card-head">
           <h3 className="card-title">Option chain · {chain.symbol} · {longDate(chain.expiry)}</h3>
-          <span className="muted num">Lot {lot} · ATM ±{STRIKES_EACH_SIDE}</span>
+          <span className="pt-chain-meta">
+            <span className="muted num">Lot {lot} · ATM ±{STRIKES_EACH_SIDE}</span>
+            <span className="pt-legend" title="In the money: calls below spot, puts above spot"><i className="pt-swatch" />ITM</span>
+          </span>
         </div>
         {!win.rows.length ? (
           <EmptyState>
@@ -69,35 +73,51 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
           <div className="pt-scroll">
             <table className="t pt-chain">
               <thead>
+                <tr className="pt-group">
+                  <th className="pt-call" colSpan={3}>CALLS</th>
+                  <th className="pt-strike" rowSpan={2}>Strike</th>
+                  <th className="pt-put" colSpan={3}>PUTS</th>
+                </tr>
                 <tr>
                   <th className="pt-call" title="Call open interest, lakh contracts">OI (L)</th><th className="pt-call">Chg %</th><th className="pt-call">LTP</th>
-                  <th className="pt-strike">Strike</th>
                   <th className="pt-put">LTP</th><th className="pt-put">Chg %</th><th className="pt-put" title="Put open interest, lakh contracts">OI (L)</th>
                 </tr>
               </thead>
               <tbody>
-                {win.rows.map((r) => {
+                {win.rows.map((r, i) => {
                   const ce = r.ce && paper.ticks.get(keyOf('NSE_FNO', r.ce.securityId));
                   const pe = r.pe && paper.ticks.get(keyOf('NSE_FNO', r.pe.securityId));
                   const cpc = changePct(ce?.ltp, ce?.close);
                   const ppc = changePct(pe?.ltp, pe?.close);
                   const ticket = (side: 'BUY' | 'SELL', leg: typeof r.ce) => leg && onTicket({ side, securityId: leg.securityId, name: leg.name, lotSize: lot });
+                  const money = spot != null ? itm(r.strike, spot) : { ce: false, pe: false };
+                  const ceItm = money.ce ? 'pt-itm' : '';
+                  const peItm = money.pe ? 'pt-itm' : '';
                   return (
-                    <tr key={r.strike} className={r.strike === win.atm ? 'hl' : ''}>
-                      <td>{lakh(ce?.oi)}</td>
-                      <td className={toneOf(cpc)}>{pct(cpc)}</td>
-                      <td className="pt-leg pt-leg-ce">
-                        {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
-                        {price(ce?.ltp)}
-                      </td>
-                      <td className="pt-strike">{inr(0)(r.strike)}</td>
-                      <td className="pt-leg pt-leg-pe">
-                        {price(pe?.ltp)}
-                        {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
-                      </td>
-                      <td className={toneOf(ppc)}>{pct(ppc)}</td>
-                      <td>{lakh(pe?.oi)}</td>
-                    </tr>
+                    <Fragment key={r.strike}>
+                      <tr className={r.strike === win.atm ? 'hl' : ''}>
+                        <td className={ceItm}>{lakh(ce?.oi)}</td>
+                        <td className={`${toneOf(cpc)} ${ceItm}`}>{pct(cpc)}</td>
+                        <td className={`pt-leg pt-leg-ce ${ceItm}`}>
+                          {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
+                          {price(ce?.ltp)}
+                        </td>
+                        <td className="pt-strike">{inr(0)(r.strike)}</td>
+                        <td className={`pt-leg pt-leg-pe ${peItm}`}>
+                          {price(pe?.ltp)}
+                          {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
+                        </td>
+                        <td className={`${toneOf(ppc)} ${peItm}`}>{pct(ppc)}</td>
+                        <td className={peItm}>{lakh(pe?.oi)}</td>
+                      </tr>
+                      {i === gapAfter && (
+                        <tr className="pt-spot-row" aria-label={`${chain.symbol} spot ${inr(2)(spot)}`}>
+                          <td colSpan={3} />
+                          <td className="pt-strike"><span className="pill accent pt-spot-pill">{chain.symbol} {inr(2)(spot)}</span></td>
+                          <td colSpan={3} />
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

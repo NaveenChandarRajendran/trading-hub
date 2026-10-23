@@ -2,6 +2,7 @@
 // Support / resistance from open interest, ported from the Strike Desk HTML (index3.html).
 // Consumes the parsed `OptionChain`, never the raw NSE shape. OI is in contracts, as NSE reports it.
 import type { OptionChain } from '../../option-strategy/logic/optionChain';
+import { rawNumber } from '../../../shared/clipboard';
 import { LEVEL_COUNT, NEAR_WINDOW } from '../config/settings';
 
 export type Side = 'R' | 'S'; // R = resistance (call OI above spot), S = support (put OI below spot)
@@ -200,8 +201,28 @@ export function levelTrend(levels: Level[], side: Side, snaps: Snapshot[]): Tren
 
 export const lakh = (n: number) => `${(n / 100000).toFixed(2)}L`;
 
-/** One line for pasting into chart notes: "BANKNIFTY 55844.0 at 15:40 | Res R1 55900 (1.23L), … | Sup S1 …". */
+/** One line for pasting into chart notes, raw numbers only: "BANKNIFTY 55844 at 15:40 | Res R1 55900 (1.23L), … | Sup S1 …". */
 export function levelsText(sn: Snapshot, time: string, levels: Record<Side, Level[]>): string {
-  const f = (side: Side) => levels[side].map((x, k) => `${side}${k + 1} ${x.strike} (${lakh(x.oi)})`).join(', ');
-  return `${sn.symbol} ${sn.spot.toFixed(1)} at ${time} | Res ${f('R')} | Sup ${f('S')}`;
+  const f = (side: Side) => levels[side].map((x, k) => `${side}${k + 1} ${rawNumber(x.strike)} (${lakh(x.oi)})`).join(', ');
+  return `${sn.symbol} ${rawNumber(sn.spot)} at ${time} | Res ${f('R')} | Sup ${f('S')}`;
 }
+
+/** What the result screen shows for one analysed chain, given today's snapshots (baseline = first). */
+export function buildView(result: Analysis, snaps: Snapshot[], range: number) {
+  const cur = result.snapshot;
+  const levels = { R: topLevels(cur.rows, cur.spot, 'R', range), S: topLevels(cur.rows, cur.spot, 'S', range) };
+  const earlier = snaps.filter((s) => s.t !== cur.t);
+  const base = earlier[0];
+  const prev = earlier[earlier.length - 1];
+  return {
+    cur,
+    levels,
+    base,
+    prev,
+    shifts: base ? levelShifts(levels, base, prev, range) : [],
+    step: strikeStep(cur.rows),
+    timeline: snaps.length ? snaps : [cur],
+  };
+}
+
+export type LevelView = ReturnType<typeof buildView>;

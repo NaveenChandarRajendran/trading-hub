@@ -96,3 +96,19 @@ export function buildAnticipated(windows: WindowSummary[], interval: number) {
   const anticipated = mean(windows.map((w) => w.average));
   return { anticipated, support: anticipated - interval, resistance: anticipated + interval, avgPcr: mean(windows.map((w) => w.pcr)) };
 }
+
+/**
+ * Everything the Sensibull OI screen shows, from one snapshot (paste or live).
+ * picked = windows the user ticked (null = default 10 + 20); unavailable ones are ignored.
+ */
+export function analyzeSnapshot(snap: SbSnapshot, metric: Metric, picked: number[] | null) {
+  const blocks = buildBlocks(snap, metric);
+  const windows = availableWindows(blocks, snap.atmStrike);
+  const sizes = windows.map((w) => w.n);
+  const chosen = (picked ?? defaultSelection(sizes)).filter((n) => sizes.includes(n));
+  const used = chosen.length ? chosen : defaultSelection(sizes);
+  const interval = INTERVAL_BY_SYMBOL[snap.symbol] ?? blocks[0]?.interval ?? 100;
+  return { blocks, windows, used, range: maxRange(blocks, snap.atmStrike), ...buildAnticipated(windows.filter((w) => used.includes(w.n)), interval) };
+}
+
+export type SnapshotAnalysis = ReturnType<typeof analyzeSnapshot>;

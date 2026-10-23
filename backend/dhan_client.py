@@ -81,9 +81,12 @@ class DhanClient:
 
     def option_chain(self, symbol, expiry):
         """Returns {"spot": float, "oc": {strike(float): {"ce": {...}|None, "pe": {...}|None}}}."""
+        return parse_chain(self.option_chain_raw(symbol, expiry))
+
+    def option_chain_raw(self, symbol, expiry):
+        """Dhan's /optionchain response as sent (capture_chain.py saves it as a test fixture)."""
         body = {"UnderlyingScrip": SCRIP[symbol], "UnderlyingSeg": SEGMENT, "Expiry": expiry}
-        payload = self._post("/optionchain", body)
-        return parse_chain(payload)
+        return self._post("/optionchain", body)
 
     def ohlc(self, security_ids):
         """Live prices for NSE equities: {"1333": {"ltp": 711.65}, ...}.
@@ -103,6 +106,18 @@ class DhanClient:
         if not isinstance(ts, list) or not isinstance(close, list):
             raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
         return {"timestamp": ts, "close": close}
+
+    def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None):
+        """1-minute (or 5/15/25/60) candles: {"timestamp": [epoch s], "open": [...], ..., "volume": [...]}.
+        The index by default (no volume); with future_id, that index future (NSE_FNO / FUTIDX, with volume).
+        from_dt / to_dt are 'YYYY-MM-DD HH:MM:SS' (IST). Same data-API limit as historical()."""
+        sid, seg, inst = (future_id, "NSE_FNO", "FUTIDX") if future_id else (SCRIP[symbol], SEGMENT, "INDEX")
+        body = {"securityId": str(sid), "exchangeSegment": seg, "instrument": inst,
+                "interval": str(interval), "oi": False, "fromDate": from_dt, "toDate": to_dt}
+        payload = self._post("/charts/intraday", body, gap=HISTORY_GAP_SECONDS)
+        if not isinstance(payload, dict) or not isinstance(payload.get("timestamp"), list):
+            raise DhanError(f"unexpected intraday response: {str(payload)[:200]}")
+        return payload
 
 
 def parse_ohlc(payload):

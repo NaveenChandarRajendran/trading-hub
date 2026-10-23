@@ -1,5 +1,7 @@
 """instruments.py option list, on real rows copied from Dhan's api-scrip-master.csv (20-Oct-2026)."""
-from instruments import OptionInstruments, parse_index_options
+import json
+
+from instruments import OptionInstruments, parse_index_futures, parse_index_options
 
 HEADER = ("SEM_EXM_EXCH_ID,SEM_SEGMENT,SEM_SMST_SECURITY_ID,SEM_INSTRUMENT_NAME,SEM_EXPIRY_CODE,SEM_TRADING_SYMBOL,"
           "SEM_LOT_UNITS,SEM_CUSTOM_SYMBOL,SEM_EXPIRY_DATE,SEM_STRIKE_PRICE,SEM_OPTION_TYPE,SEM_TICK_SIZE,"
@@ -10,6 +12,10 @@ ROWS = [
     "NSE,D,35009,OPTIDX,0,NIFTY-Nov2026-17350-PE,65.0,NIFTY 09 NOV 17350 PUT,2026-11-09 14:30:00,17350.00000,PE,5.0000,W,OP,,",
     "NSE,D,35010,OPTIDX,0,FINNIFTY-Nov2026-20000-CE,65.0,FINNIFTY 24 NOV 20000 CALL,2026-11-24 14:30:00,20000.00000,CE,5.0000,M,OP,,",
     "NSE,E,1333,EQUITY,0,HDFCBANK,1.0,HDFC Bank,,,,5.0000,,ES,EQ,HDFC BANK LTD",
+    "NSE,D,52162,FUTIDX,0,NIFTY-Oct2026-FUT,65.0,NIFTY OCT FUT,2026-10-27 14:30:00,-0.01000,XX,10.0000,M,FUTIDX,,",
+    "NSE,D,52170,FUTIDX,0,NIFTY-Nov2026-FUT,65.0,NIFTY NOV FUT,2026-11-24 14:30:00,-0.01000,XX,10.0000,M,FUTIDX,,",
+    "NSE,D,52175,FUTIDX,0,BANKNIFTY-Oct2026-FUT,30.0,BANKNIFTY OCT FUT,2026-10-27 14:30:00,-0.01000,XX,20.0000,M,FUTIDX,,",
+    "NSE,D,52180,FUTIDX,0,FINNIFTY-Oct2026-FUT,65.0,FINNIFTY OCT FUT,2026-10-27 14:30:00,-0.01000,XX,10.0000,M,FUTIDX,,",
 ]
 CSV = "\n".join([HEADER, *ROWS])
 
@@ -54,3 +60,33 @@ def test_expiries_and_chain(tmp_path):
     assert inst.expiries("NIFTY", today="2026-11-10") == []
     [row] = inst.chain("NIFTY", "2026-11-09")
     assert row["strike"] == 17350.0 and row["ce"]["securityId"] == 35008 and row["pe"]["securityId"] == 35009
+
+
+def test_parse_index_futures_kept_apart_from_options():
+    f = parse_index_futures(CSV)
+    assert [x["securityId"] for x in f] == [52175, 52162, 52170]  # BANKNIFTY, then NIFTY by expiry; FINNIFTY left out
+    assert f[1] == {"securityId": 52162, "symbol": "NIFTY", "expiry": "2026-10-27", "lotSize": 65, "name": "NIFTY OCT FUT"}
+    assert "52162" not in parse_index_options(CSV)  # never part of the option list / chain
+
+
+def test_near_future_rolls_the_day_after_expiry(tmp_path):
+    day = ["2026-10-21"]
+    inst = OptionInstruments(str(tmp_path / "opt.json"), session=FakeSession(), today=lambda: day[0])
+    assert inst.near_future("NIFTY")["securityId"] == 52162
+    day[0] = "2026-10-27"  # expiry day: still the October future
+    assert inst.near_future("NIFTY")["securityId"] == 52162
+    day[0] = "2026-10-28"  # the day after: November
+    assert inst.near_future("NIFTY")["securityId"] == 52170
+    assert inst.near_future("BANKNIFTY") is None  # no November BANKNIFTY future in this file
+    assert inst.future_ids() == {52162, 52170, 52175}
+
+
+def test_old_cache_without_futures_downloads_once(tmp_path):
+    path = tmp_path / "opt.json"
+    path.write_text(json.dumps({"day": "2026-10-21", "rows": parse_index_options(CSV)}))  # written before futures
+    s = FakeSession()
+    inst = OptionInstruments(str(path), session=s, today=lambda: "2026-10-21")
+    assert inst.future_ids() == set() and s.calls == 0  # future_ids never downloads
+    assert inst.near_future("NIFTY")["securityId"] == 52162 and s.calls == 1
+    inst.near_future("NIFTY")
+    assert s.calls == 1

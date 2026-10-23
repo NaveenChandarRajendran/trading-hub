@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { SbParseError, parseSensibull, type SbSnapshot } from './logic/sensibull';
-import { availableWindows, buildAnticipated, buildBlocks, defaultSelection, maxRange, type Block, type Metric } from './logic/sensibullCalc';
-import { INTERVAL_BY_SYMBOL } from '../option-strategy/logic/oiCalculation';
+import { analyzeSnapshot, type Block, type Metric } from './logic/sensibullCalc';
 import { inr } from '../../shared/grid';
 
 const f = (n: number, d = 2) => inr(d)(n);
@@ -32,16 +31,7 @@ export default function SensibullOiApp() {
   const [error, setError] = useState('');
   const [picked, setPicked] = useState<number[] | null>(null); // father's own choice of windows
 
-  const calc = useMemo(() => {
-    if (!snap) return null;
-    const blocks = buildBlocks(snap, metric);
-    const windows = availableWindows(blocks, snap.atmStrike);
-    const sizes = windows.map((w) => w.n);
-    const chosen = (picked ?? defaultSelection(sizes)).filter((n) => sizes.includes(n));
-    const used = chosen.length ? chosen : defaultSelection(sizes);
-    const interval = INTERVAL_BY_SYMBOL[snap.symbol] ?? blocks[0]?.interval ?? 100;
-    return { blocks, windows, used, range: maxRange(blocks, snap.atmStrike), ...buildAnticipated(windows.filter((w) => used.includes(w.n)), interval) };
-  }, [snap, metric, picked]);
+  const calc = useMemo(() => (snap ? analyzeSnapshot(snap, metric, picked) : null), [snap, metric, picked]);
 
   const toggle = (n: number) => {
     if (!calc) return;
