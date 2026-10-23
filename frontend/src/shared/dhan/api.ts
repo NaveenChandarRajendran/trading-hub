@@ -5,6 +5,7 @@ import { API_BASE, getJson } from '../api';
 export interface DhanLeg {
   oi: number;
   previous_oi: number; // settled OI of the previous trading day
+  open_oi?: number; // this leg's OI in the day's first chain from 09:15 (backend chain_cache.OpeningOi), if recorded
   last_price: number;
   previous_close_price: number;
   volume: number;
@@ -39,6 +40,7 @@ export interface ChainMeta {
   tokenExpired: boolean;
   lastError: string;
   message: string;
+  openOiAt?: string | null; // 'HH:MM:SS' of the 09:15 baseline for Sensibull-style change in OI; null = not recorded
 }
 
 export interface ChainResponse {

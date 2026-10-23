@@ -98,8 +98,10 @@ def sensibull_view(body, range_=SB_RANGE, picked=SB_DEFAULT):
     meta = body["meta"]
     spot = _num(meta.get("spot"))
     symbol = meta.get("symbol")
+    # from = the 09:15 OI like Sensibull ("open_oi", chain_cache.OpeningOi); previous-day settled OI if not recorded
+    base = lambda leg: _num(leg.get("open_oi") if leg.get("open_oi") is not None else leg.get("previous_oi"))  # noqa: E731
     strikes = [{"strike": _num(r["strike"]),
-                "fromCall": _num((r.get("ce") or {}).get("previous_oi")), "fromPut": _num((r.get("pe") or {}).get("previous_oi")),
+                "fromCall": base(r.get("ce") or {}), "fromPut": base(r.get("pe") or {}),
                 "toCall": _num((r.get("ce") or {}).get("oi")), "toPut": _num((r.get("pe") or {}).get("oi"))}
                for r in _rows(body)]
     if not strikes:
@@ -139,6 +141,7 @@ def sensibull_view(body, range_=SB_RANGE, picked=SB_DEFAULT):
         "average": anticipated, "points": points, "spot": spot,
         "support": anticipated - interval, "resistance": anticipated + interval,
         "pcr": _mean(w["pcr"] for w in chosen), "used": used, "unit": "lakh units",
+        "since": meta.get("openOiAt") or "previous close",  # what the change in OI counts from
     }
 
 

@@ -80,3 +80,15 @@ def test_top_levels_ties_keep_the_lower_strike_and_number_nearest_first():
     assert [x["strike"] for x in top_levels(rows, 95, "R", 100, 3)] == [100, 110, 120]
     rows = {80: (0, 7), 70: (0, 7), 60: (0, 9)}
     assert [x["strike"] for x in top_levels(rows, 95, "S", 100, 2)] == [70, 60]
+
+
+def test_sensibull_view_counts_from_the_0915_oi_when_recorded():
+    from sig_oi import sensibull_view
+    rows = [{"strike": k, "ce": {"oi": 1000, "previous_oi": 0, "open_oi": 900}, "pe": {"oi": 500, "previous_oi": 0, "open_oi": 500}}
+            for k in (22500, 22550, 22600, 22650, 22700)]
+    body = {"meta": {"symbol": "NIFTY", "spot": 22600, "openOiAt": "09:15:03"}, "rows": rows}
+    v = sensibull_view(body)
+    assert v["since"] == "09:15:03"
+    # only call OI rose since 09:15 -> every strike's average sits at strike - 0 -> anticipated = mean of strikes = spot
+    body2 = {"meta": {"symbol": "NIFTY", "spot": 22600}, "rows": [{**r, "ce": {"oi": 1000, "previous_oi": 0}, "pe": {"oi": 500, "previous_oi": 0}} for r in rows]}
+    assert sensibull_view(body2)["since"] == "previous close"

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from calc import pick_strikes, summarize
-from chain_cache import ChainCache
+from chain_cache import ChainCache, OpeningOi
 from dhan_client import STRIKE_STEP, DhanError
 from holidays import NSE_HOLIDAYS
 from store import IST, JsonStore
@@ -38,7 +38,7 @@ class DayData:
 
 class Tracker:
     def __init__(self, client, store=None, data_dir="data", each_side=7, force=False,
-                 session=((9, 15), (15, 40)), max_keys=8, clock=now_ist):
+                 session=((9, 15), (15, 40)), max_keys=8, clock=now_ist, opening_dir=None):
         self.client = client
         self.store = store or JsonStore(data_dir)
         self.each_side = each_side
@@ -47,7 +47,8 @@ class Tracker:
         self.max_keys = max_keys
         self.clock = clock
         # Shared with GET /api/option-chain: every fetch the tracker makes also refreshes the live pages' cache.
-        self.chains = ChainCache(client, market_open=self.market_open, clock=clock)
+        self.chains = ChainCache(client, market_open=self.market_open, clock=clock,
+                                 opening=OpeningOi(opening_dir) if opening_dir else None)
         self._days = {}
         self._lock = threading.Lock()
         self._wake = threading.Event()

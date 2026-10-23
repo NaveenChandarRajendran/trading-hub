@@ -74,15 +74,16 @@ export function toOptionChain(resp: ChainResponse, expiries: string[] = []): Opt
 
 /**
  * Dhan chain -> Sensibull's `SbSnapshot` (OI in units, as Sensibull sends it).
- * "From" OI is Dhan's previous-day settled OI; Sensibull's default "from" is the 09:15 OI, which is close to it.
+ * "From" OI = the 09:15 OI like Sensibull (open_oi, recorded by the backend each morning); Dhan's previous-day settled
+ * OI when that was not recorded (backend started after the close, or a strike added later).
  */
 export function toSbSnapshot(resp: ChainResponse): SbSnapshot {
   const { meta } = resp;
   const strikes = resp.rows
     .map((r) => ({
       strike: num(r.strike),
-      fromCallOi: num(r.ce?.previous_oi),
-      fromPutOi: num(r.pe?.previous_oi),
+      fromCallOi: num(r.ce?.open_oi ?? r.ce?.previous_oi),
+      fromPutOi: num(r.pe?.open_oi ?? r.pe?.previous_oi),
       toCallOi: num(r.ce?.oi),
       toPutOi: num(r.pe?.oi),
     }))
@@ -91,7 +92,7 @@ export function toSbSnapshot(resp: ChainResponse): SbSnapshot {
   return {
     symbol: meta.symbol,
     expiry: nseDate(meta.expiry),
-    fromTime: isoFromIst(`${meta.asOf.slice(0, 10)} 09:15:00`),
+    fromTime: isoFromIst(`${meta.asOf.slice(0, 10)} ${meta.openOiAt ?? '09:15:00'}`),
     toTime: isoFromIst(meta.asOf),
     spot: num(meta.spot),
     atmStrike: nearestStrike(strikes.map((s) => s.strike), num(meta.spot)),

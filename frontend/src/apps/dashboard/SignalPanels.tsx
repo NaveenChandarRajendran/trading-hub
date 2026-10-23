@@ -158,7 +158,7 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
         <span><b>Agreement</b><br /><span className="db-muted">Sensibull is record only. Trending OI needs Dhan OI and OI Change to agree.</span></span>
         <Pill tone={views?.agreement === 'Agree' ? 'up' : 'neutral'}>{views?.agreement ?? '—'}</Pill>
       </div>
-      <p className="card-foot">Dhan OI in contracts (units ÷ lot size). Sensibull: change in OI, windows 10 + 20, ATM ±25.</p>
+      <p className="card-foot">Dhan OI in contracts (units ÷ lot size). Sensibull: change in OI since {views?.sensibull?.since ? (views.sensibull.since === 'previous close' ? 'the previous close (09:15 not recorded today)' : views.sensibull.since.slice(0, 5)) : '09:15'}, windows 10 + 20, ATM ±25.</p>
     </section>
   );
 }

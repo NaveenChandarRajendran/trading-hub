@@ -56,6 +56,7 @@ export interface OiView {
   support?: number;
   resistance?: number;
   unit: string;
+  since?: string; // Sensibull view: '09:15:03' or 'previous close' (what the change in OI counts from)
 }
 
 export interface SrLevel {

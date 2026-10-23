@@ -379,7 +379,7 @@ def main():
         logging.getLogger("main").warning("DATABASE_URL is not set: using JSON files in %s (set it to use Postgres)", a.data_dir)
         paper_store = PaperJsonStore(a.data_dir)
     client = DhanClient()
-    tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force)
+    tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force, opening_dir=a.data_dir)
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]
     paper = paper_api.PaperService(
         paper_store, DhanFeed(client.client_id, client.token),

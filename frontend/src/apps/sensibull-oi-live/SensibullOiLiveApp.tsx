@@ -126,7 +126,9 @@ export default function SensibullOiLiveApp() {
           </div>
           <p className="card-foot">
             Live from Dhan, in lakhs of units like Sensibull. {metric === 'change'
-              ? "Change in OI = current OI − Dhan's previous-day settled OI (Sensibull's default compares with the 09:15 OI, so values can differ slightly)."
+              ? (live.data?.meta.openOiAt
+                ? `Change in OI = current OI − the OI at ${live.data.meta.openOiAt.slice(0, 5)} (first chain from 09:15, like Sensibull).`
+                : "Change in OI = current OI − Dhan's previous-day settled OI: today's 09:15 OI was not recorded (the backend was not running at 09:15), so values differ from Sensibull.")
               : 'Closing OI = current OI.'}
           </p>
         </section>
