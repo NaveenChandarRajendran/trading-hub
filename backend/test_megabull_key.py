@@ -41,3 +41,20 @@ def test_instrument_list_follows_the_download_link_without_sending_the_key(tmp_p
     assert c.instruments_csv().startswith("instrumentToken")
     assert s.calls[1][0].endswith("Instrument-default.csv") and not s.calls[1][1]  # no api-key on the file download
     assert c.instruments()[0]["token"] == "123"
+
+
+def test_megabull_instrument_file_layout_seen_on_23_oct():
+    from megabull_client import parse_instruments
+    text = ('"tradingSymbol","instrumentName","instrumentToken"\n"NIFTY 50","NIFTY 50","256265"\n'
+            '"NIFTY26OCTFUT","NIFTY 27 OCT  FUT","12468226"\n"NIFTY26OCT22900CE","NIFTY 27 OCT 22900 CE","13145090"\n'
+            '"NIFTY26N0322900PE","NIFTY 03 NOV 22900 PE","1"\n"BANKNIFTY26NOV52000CE","BANKNIFTY 23 NOV 52000 CE","2"\n')
+    rows = parse_instruments(text)
+    assert [(r["symbol"], r["expiry"], r["strike"], r["optionType"], r["token"]) for r in rows] == [
+        ("NIFTY", "2026-10-27", 22900.0, "CE", "13145090"), ("NIFTY", "2026-11-03", 22900.0, "PE", "1"),
+        ("BANKNIFTY", "2026-11-23", 52000.0, "CE", "2")]
+
+
+def test_megabull_lot_size_comes_from_dhan_with_a_fallback():
+    from autopaper import MegaBullAccount
+    assert MegaBullAccount(None, True, 2, lot_size=lambda s: 75)._lot("NIFTY") == 75
+    assert MegaBullAccount(None, True, 2, lot_size=lambda s: 1 / 0)._lot("BANKNIFTY") == 30

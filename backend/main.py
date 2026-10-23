@@ -319,9 +319,17 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
     on_order = lambda trade, event: svc_ref["svc"].on_order(trade, event)  # noqa: E731
     if paper:
         mb_cfg = cfg["megabull"]
+
+        def dhan_lot(symbol):  # MegaBull's instrument file has no lot size: use Dhan's for the same index
+            for exp in paper.option_expiries(symbol)[:1]:
+                for r in paper.instrument_chain(symbol, exp):
+                    leg = r.get("ce") or r.get("pe")
+                    if leg and leg.get("lotSize"):
+                        return leg["lotSize"]
+            return None
         accounts = [autopaper.TradingHubAccount(paper),
                     autopaper.MegaBullAccount(lambda: MegaBullClient(cfg["keysFile"], request_log=megabull_logger(cfg["logDir"])),
-                                              mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2))]
+                                              mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2), lot_size=dhan_lot)]
         trader = autopaper.AutoTrader(cfg, accounts, alert=alert, on_order=on_order,
                                       state_path=os.path.join("data", "autopaper_state.json"))
     flow = None

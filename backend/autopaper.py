@@ -147,8 +147,11 @@ class MegaBullAccount:
     key, rule = MB, "megabull"
     CHARGES_PCT = 0.37  # owner's tracker estimate: 0.37% of the money in the trade (MegaBull's Monthly Report, 9-Oct)
 
-    def __init__(self, make_client, enabled, sl_buffer_pct):
+    FALLBACK_LOT = {"NIFTY": 65, "BANKNIFTY": 30}  # only if Dhan's list cannot be read: MegaBull's file has no lot size
+
+    def __init__(self, make_client, enabled, sl_buffer_pct, lot_size=None):
         self.make_client, self.enabled, self.sl_buffer = make_client, enabled, sl_buffer_pct
+        self.lot_size = lot_size  # callable(symbol) -> exchange lot size from Dhan's instrument list, or None
         self._client, self._err = None, ""
 
     @property
@@ -175,7 +178,14 @@ class MegaBullAccount:
             raise AccountError(f"No MegaBull {symbol} {expiry} {side} options")
         r = min(rows, key=lambda x: (abs(x["strike"] - spot), x["strike"]))
         return {"id": r["token"], "name": f"{symbol} {expiry} {r['strike']:.0f} {side}", "strike": r["strike"], "expiry": expiry,
-                "optionType": side, "lotSize": r["lotSize"] or {"NIFTY": 65, "BANKNIFTY": 30}[symbol]}
+                "optionType": side, "lotSize": r["lotSize"] or self._lot(symbol)}
+
+    def _lot(self, symbol):
+        try:
+            lot = self.lot_size(symbol) if self.lot_size else None
+        except Exception:
+            lot = None
+        return int(lot) if lot else self.FALLBACK_LOT[symbol]
 
     def neighbours(self, symbol, expiry, spot):
         return []
