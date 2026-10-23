@@ -131,6 +131,18 @@ def parse_instruments(text):
     return out
 
 
+def _download_url(text):
+    """The downloadUrl of a {"downloadUrl": "https://..."} answer, or None (plain CSV)."""
+    t = (text or "").strip()
+    if not t.startswith("{"):
+        return None
+    try:
+        url = json.loads(t).get("downloadUrl")
+    except (ValueError, AttributeError):
+        return None
+    return url if isinstance(url, str) and url.startswith("https://") else None
+
+
 def _iso_date(s):
     s = s.strip()[:10]
     for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d-%b-%Y", "%d/%m/%Y", "%d%b%Y"):
@@ -194,10 +206,25 @@ class MegaBullClient:
     def me(self):
         return self._call("GET", "/api/user/my")
 
+    def instruments_csv(self):
+        """The instrument CSV text. MegaBull answers /api/marketwatch/instruments with {"downloadUrl": ...} (a public
+        file, seen 23-Oct-2026); that file is fetched WITHOUT the API key."""
+        text = self._call("GET", "/api/marketwatch/instruments", expect_json=False)
+        url = _download_url(text)
+        if not url:
+            return text
+        try:
+            r = self.session.get(url, timeout=60)
+        except requests.RequestException as e:
+            raise MegaBullError(f"MegaBull instrument file download failed: {e}") from e
+        if not r.ok:
+            raise MegaBullError(f"MegaBull instrument file HTTP {r.status_code}")
+        return r.content.decode("utf-8-sig", errors="replace")
+
     def instruments(self):
         today = date.today().isoformat()
         if not self._instruments or self._instruments[0] != today:
-            self._instruments = (today, parse_instruments(self._call("GET", "/api/marketwatch/instruments", expect_json=False)))
+            self._instruments = (today, parse_instruments(self.instruments_csv()))
         return self._instruments[1]
 
     def find_option(self, symbol, expiry, strike, option_type):
@@ -265,10 +292,16 @@ def _check(keys_file=DEFAULT_KEYS_FILE):
         lines.append(f"Key file OK. Key age: {c.key_age_days()} days (warning after 25).")
         me = c.me()
         lines.append(f"/api/user/my fields: {sorted(me.keys()) if isinstance(me, dict) else type(me).__name__}")
-        text = c._call("GET", "/api/marketwatch/instruments", expect_json=False)
-        head = text.splitlines()[:3]
+        text = c.instruments_csv()
+        all_lines = text.splitlines()
+        head = all_lines[:4]
+        lines.append(f"Instrument CSV: {len(all_lines)} lines")
         lines.append(f"Instrument CSV header: {head[0] if head else '(empty)'}")
         lines += [f"  sample: {h}" for h in head[1:]]
+        idx = [h for h in all_lines if ("NIFTY" in h.upper()) and (",CE" in h.upper() or ",PE" in h.upper() or "CE," in h.upper() or "PE," in h.upper())]
+        lines += [f"  index option sample: {h}" for h in idx[:3]]
+        bn = [h for h in idx if "BANKNIFTY" in h.upper()]
+        lines += [f"  banknifty sample: {h}" for h in bn[:2]]
         try:
             rows = parse_instruments(text)
             lines.append(f"Options parsed: {len(rows)} (NIFTY {sum(r['symbol'] == 'NIFTY' for r in rows)}, "
