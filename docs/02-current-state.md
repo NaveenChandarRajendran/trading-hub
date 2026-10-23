@@ -104,6 +104,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   levels. Order Flow page: same intervals up to 1 hour plus Date from the saved `data/orderflow_<day>.json` files
   (`GET /api/orderflow/days`, `/api/orderflow?date=`); Dext column is read-only for earlier days. Rule cards always use
   today's 5-min reading.
+- Start_Trading_Day.bat (owner, 23-Oct-2026): asks the Dhan client ID once and the token only when the saved one is
+  older than 23 hours or Dhan rejects it; both in `%USERPROFILE%\TradingHubKeys\dhan.json` (token DPAPI-encrypted,
+  this Windows user only). MegaBull key asked only when missing or older than 25 days.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

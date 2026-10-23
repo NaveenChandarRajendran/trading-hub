@@ -1,7 +1,8 @@
 # start_trading_day.ps1 - the owner's morning routine in one go (run by Start_Trading_Day.bat). PAPER ONLY.
-# Asks for today's Dhan client ID and access token (hidden; never shown, printed or saved), asks for the MegaBull key
-# only when it is missing or older than 25 days (saved in %USERPROFILE%\TradingHubKeys, outside the Trading Journey
-# folder and outside git), starts the backend (data, 5-minute signal watcher, auto paper trader) and the frontend,
+# Asks for the Dhan client ID once and the Dhan access token only when the saved one is missing, older than 23 hours or
+# rejected by Dhan (owner, 23-Oct-2026: the token is valid 24 hours). Both are kept in %USERPROFILE%\TradingHubKeys
+# (outside the Trading Journey folder and outside git); the token is encrypted with Windows (DPAPI, this user only) and
+# never shown or printed. Asks for the MegaBull key only when it is missing or older than 25 days (same folder), starts the backend (data, 5-minute signal watcher, auto paper trader) and the frontend,
 # checks that Dhan and MegaBull answer, and opens the dashboard. Auto stays ON / OFF as it was last left.
 $ErrorActionPreference = 'Continue'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -28,14 +29,40 @@ if ($ist.TimeOfDay -ge [TimeSpan]'15:15:00') {
     Say 'Warning: it is after 3:15 PM. No new trades are possible today; the app will only show data.' 'Yellow'
 }
 
-# ---- 1. Dhan (typed fresh every day, kept only in this window's memory) ----
-do { $cid = (Read-Host 'Dhan Client ID (numbers only)').Trim() } until ($cid -match '^\d+$')
-do { $tok = Plain (Read-Host "Paste today's Dhan access token (hidden), then press Enter" -AsSecureString) } until ($tok.Length -ge 20)
+# ---- 1. Dhan: client ID asked once; token reused for 23 hours (encrypted, this Windows user only) ----
+$keyDir = Join-Path $env:USERPROFILE 'TradingHubKeys'
+New-Item -ItemType Directory -Force -Path $keyDir | Out-Null
+$dhanFile = Join-Path $keyDir 'dhan.json'
+$saved = $null
+if (Test-Path $dhanFile) { try { $saved = Get-Content $dhanFile -Raw | ConvertFrom-Json } catch { $saved = $null } }
+function Save-Dhan($cid, $enc, $at) {
+    @{ clientId = $cid; token = $enc; savedAt = $at } | ConvertTo-Json | Set-Content -Path $dhanFile -Encoding UTF8
+}
+$cid = if ($saved -and $saved.clientId -match '^\d+$') { $saved.clientId } else { $null }
+if (-not $cid) { do { $cid = (Read-Host 'Dhan Client ID (numbers only, asked only once)').Trim() } until ($cid -match '^\d+$') }
+$tok = $null
+$reused = $false
+if ($saved -and $saved.token -and $saved.savedAt) {
+    try {
+        $hours = ((Get-Date) - [DateTime]::Parse($saved.savedAt)).TotalHours
+        if ($hours -lt 23) {
+            $tok = Plain ($saved.token | ConvertTo-SecureString)
+            $reused = $true
+            Say ("Using the Dhan token you gave {0:N0} hours ago (valid 24 hours)." -f $hours) 'Green'
+        }
+    } catch { $tok = $null }
+}
+if (-not $tok) {
+    $sec = $null
+    do { $sec = Read-Host "Paste today's Dhan access token (hidden), then press Enter" -AsSecureString; $tok = Plain $sec } until ($tok.Length -ge 20)
+    Save-Dhan $cid ($sec | ConvertFrom-SecureString) (Get-Date -Format 's')
+} else {
+    Save-Dhan $cid $saved.token $saved.savedAt
+}
 $env:DHAN_CLIENT_ID = $cid
 $env:DHAN_ACCESS_TOKEN = $tok
 
 # ---- 2. MegaBull key: only when missing or older than 25 days ----
-$keyDir = Join-Path $env:USERPROFILE 'TradingHubKeys'
 $keyFile = Join-Path $keyDir 'megabull.json'
 $needKey = $true
 if (Test-Path $keyFile) {
@@ -71,7 +98,10 @@ if (-not $status) {
 } else {
     $exp = Get-Api '/api/expiries?symbol=NIFTY'
     if ($exp -and $exp.expiries) { Say 'Dhan: OK.' 'Green' }
-    else { Say 'FAILED: Dhan did not answer. The client ID or today''s token is probably wrong or expired. Close the Backend window and start again.' 'Red' }
+    else {
+        Save-Dhan $cid $null $null  # forget the token so the next start asks for a fresh one
+        Say 'FAILED: Dhan did not answer. The token is probably expired or wrong. Close the Backend window and run Start_Trading_Day.bat again: it will ask for a new token.' 'Red'
+    }
     $chk = Get-Api '/api/autopaper/check'
     if ($chk) {
         $c = if ($chk.megabull.ok) { 'Green' } else { 'Yellow' }
