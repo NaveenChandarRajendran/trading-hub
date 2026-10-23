@@ -196,3 +196,33 @@ def sr_view(body, range_=SR_RANGE):
         "biggestPutBelow": {"strike": big_put, "oi": near[big_put][1]} if big_put is not None else None,
         "unit": "contracts",
     }
+
+
+# ------------------------------------------------------------------ Trending OI as a third view
+def trending_view(rows):
+    """Trending OI as a third OI view for the dashboard card (rows: completed 5-min rows, newest first). Verdict uses the
+    rule's threshold: every one of the last N rows at +strength or more = Bullish, at -strength or less = Bearish,
+    otherwise Neutral. Record only here; the Trading Hub rule applies the same test itself."""
+    import sig_rules
+    th, n = sig_rules.TH_TOI_STRENGTH, int(sig_rules.TH_TOI_ROWS)
+    last = (rows or [])[:n]
+    if not last:
+        return None
+    if len(last) == n and all(r["strengthPct"] >= th for r in last):
+        verdict = "Bullish"
+    elif len(last) == n and all(r["strengthPct"] <= -th for r in last):
+        verdict = "Bearish"
+    else:
+        verdict = "Neutral"
+    r0 = last[0]
+    return {"verdict": verdict, "time": r0.get("time"), "strength": [r["strengthPct"] for r in last], "threshold": th,
+            "callChg": r0.get("callChg"), "putChg": r0.get("putChg"), "pcr": r0.get("netPcr"), "unit": "units"}
+
+
+def votes(*views):
+    """'3 of 3 Bearish', '2 of 3 Bearish', ... over the views that have a verdict."""
+    vs = [v["verdict"] for v in views if v]
+    if not vs:
+        return None
+    top = max(set(vs), key=vs.count)
+    return f"{vs.count(top)} of {len(vs)} {top}"

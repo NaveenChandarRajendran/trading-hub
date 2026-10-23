@@ -136,29 +136,30 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
   const spot = views?.dhan?.spot ?? sr?.spot;
   const d = viewRows(views?.dhan ?? null, spot);
   const s = viewRows(views?.sensibull ?? null, spot);
+  const t = views?.trending ?? null;
   const dhanR = sr?.levels.R[0]?.strike;
   const dhanS = sr?.levels.S[0]?.strike;
   return (
     <section className="card">
-      <div className="card-head"><h3 className="card-title">OI views side by side</h3><Pill tone="neutral">Dhan vs Sensibull</Pill></div>
+      <div className="card-head"><h3 className="card-title">OI views side by side</h3><Pill tone={verdictTone(views?.votes?.split(' ').pop())}>{views?.votes ?? 'Dhan · Sensibull · Trending OI'}</Pill></div>
       <table className="t">
-        <thead><tr><th /><th>Dhan<br /><span className="db-muted">OI &amp; OI Change Live</span></th><th>Sensibull<br /><span className="db-muted">OI Change Live (record only)</span></th></tr></thead>
+        <thead><tr><th /><th>Dhan<br /><span className="db-muted">OI &amp; OI Change Live</span></th><th>Sensibull<br /><span className="db-muted">OI Change Live (record only)</span></th><th>Trending OI<br /><span className="db-muted">last {t?.strength.length ?? 3} rows{t?.time ? ` to ${t.time.slice(0, 5)}` : ''}</span></th></tr></thead>
         <tbody>
-          <tr><td>Verdict</td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td></tr>
-          <tr><td>Average (final / anticipated)</td><td className="num">{d?.average ?? '—'}</td><td className="num">{s?.average ?? '—'}</td></tr>
-          <tr><td>vs spot {spot ? n2(spot) : ''}</td><td className="num">{d?.vsSpot ?? '—'}</td><td className="num">{s?.vsSpot ?? '—'}</td></tr>
-          <tr><td>Support</td><td className="num">{n0(dhanS)}</td><td className="num">{n0(views?.sensibull?.support)}</td></tr>
-          <tr><td>Resistance</td><td className="num">{n0(dhanR)}</td><td className="num">{n0(views?.sensibull?.resistance)}</td></tr>
-          <tr><td>PCR</td><td className="num">{d?.pcr ?? '—'}</td><td className="num">{s ? `${s.pcr} (average)` : '—'}</td></tr>
-          <tr><td>Total call OI</td><td className="num">{views?.dhan?.callOi != null ? `${lakh(views.dhan.callOi)} (${signed(0)(views.dhan.callChg ?? 0)})` : '—'}</td><td className="num">—</td></tr>
-          <tr><td>Total put OI</td><td className="num">{views?.dhan?.putOi != null ? `${lakh(views.dhan.putOi)} (${signed(0)(views.dhan.putChg ?? 0)})` : '—'}</td><td className="num">—</td></tr>
+          <tr><td>Verdict</td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(t?.verdict)}>{t?.verdict ?? '—'}</Pill></td></tr>
+          <tr><td>Average (final / anticipated)</td><td className="num">{d?.average ?? '—'}</td><td className="num">{s?.average ?? '—'}</td><td className="num">{t ? `Strength ${t.strength.map((x) => `${signed(0)(x)}%`).join(' / ')}` : '—'}</td></tr>
+          <tr><td>vs spot {spot ? n2(spot) : ''}</td><td className="num">{d?.vsSpot ?? '—'}</td><td className="num">{s?.vsSpot ?? '—'}</td><td className="num">{t ? `needs ±${n0(t.threshold)}% on every row` : '—'}</td></tr>
+          <tr><td>Support</td><td className="num">{n0(dhanS)}</td><td className="num">{n0(views?.sensibull?.support)}</td><td className="num">—</td></tr>
+          <tr><td>Resistance</td><td className="num">{n0(dhanR)}</td><td className="num">{n0(views?.sensibull?.resistance)}</td><td className="num">—</td></tr>
+          <tr><td>PCR</td><td className="num">{d?.pcr ?? '—'}</td><td className="num">{s ? `${s.pcr} (average)` : '—'}</td><td className="num">{t?.pcr != null ? `${n2(t.pcr)} (net)` : '—'}</td></tr>
+          <tr><td>Total call OI</td><td className="num">{views?.dhan?.callOi != null ? `${lakh(views.dhan.callOi)} (${signed(0)(views.dhan.callChg ?? 0)})` : '—'}</td><td className="num">—</td><td className="num">{t ? `${signed(0)(t.callChg)} chg` : '—'}</td></tr>
+          <tr><td>Total put OI</td><td className="num">{views?.dhan?.putOi != null ? `${lakh(views.dhan.putOi)} (${signed(0)(views.dhan.putChg ?? 0)})` : '—'}</td><td className="num">—</td><td className="num">{t ? `${signed(0)(t.putChg)} chg` : '—'}</td></tr>
         </tbody>
       </table>
       <div className="db-agree">
         <span><b>Agreement</b><br /><span className="db-muted">Sensibull is record only. Trending OI needs Dhan OI and OI Change to agree.</span></span>
         <Pill tone={views?.agreement === 'Agree' ? 'up' : 'neutral'}>{views?.agreement ?? '—'}</Pill>
       </div>
-      <p className="card-foot">Dhan OI in contracts (units ÷ lot size). Sensibull: change in OI since {views?.sensibull?.since ? (views.sensibull.since === 'previous close' ? 'the previous close (09:15 not recorded today)' : views.sensibull.since.slice(0, 5)) : '09:15'}, windows 10 + 20, ATM ±25.</p>
+      <p className="card-foot">Dhan OI in contracts (units ÷ lot size). Trending OI: the tracker's fixed strikes, in units. Sensibull: change in OI since {views?.sensibull?.since ? (views.sensibull.since === 'previous close' ? 'the previous close (09:15 not recorded today)' : views.sensibull.since.slice(0, 5)) : '09:15'}, windows 10 + 20, ATM ±25.</p>
     </section>
   );
 }

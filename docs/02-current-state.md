@@ -116,6 +116,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   (backend started late or after the close); the page says which. Owner 23-Oct-2026: the old view read Bullish on a
   clearly bearish day because the put side counted from the previous close. The NSE paste app's formulas already run
   live on Dhan data (OI & OI Change Live), so no separate NSE fetch is needed (same exchange OI).
+- Dashboard "OI views side by side" has a third column, Trending OI (`sig_oi.trending_view`: the rule's test on the
+  last 3 completed rows, ±50%), and a count in the header ("3 of 3 Bearish"). Record only; the rules are unchanged.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
