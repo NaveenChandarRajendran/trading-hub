@@ -122,7 +122,8 @@ if ($front) { Start-Process 'http://localhost:5173/'; Say 'Dashboard opened in t
 else { Say 'FAILED: the frontend did not start. Look at the Frontend window for the error.' 'Red' }
 
 Write-Host ''
-Write-Host 'Keep the computer on and the two Trading Hub windows open from 9:15 AM to about 3:35 PM.' -ForegroundColor Cyan
+Write-Host 'The PC will not go to sleep until 4 PM while the Backend window is open (the screen may still lock: that is fine).' -ForegroundColor Cyan
+Write-Host 'Keep the two Trading Hub windows open. Do not shut down, and do not close a laptop lid.' -ForegroundColor Cyan
 Write-Host 'At the end of the day the logs are in:' $logDir -ForegroundColor Cyan
 Write-Host ''
 Read-Host 'Press Enter to close this window (the app keeps running)'
