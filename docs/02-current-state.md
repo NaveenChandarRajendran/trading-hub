@@ -107,6 +107,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - Start_Trading_Day.bat (owner, 23-Oct-2026): asks the Dhan client ID once and the token only when the saved one is
   older than 23 hours or Dhan rejects it; both in `%USERPROFILE%\TradingHubKeys\dhan.json` (token DPAPI-encrypted,
   this Windows user only). MegaBull key asked only when missing or older than 25 days.
+- Charts (dashboard + Order Flow): the mouse wheel scrolls the page until the chart is clicked; then it zooms the chart
+  until the mouse leaves it (`src/shared/chartWheel.ts`, owner 23-Oct-2026). Dragging works either way.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

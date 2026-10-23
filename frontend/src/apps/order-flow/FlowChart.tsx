@@ -1,6 +1,7 @@
 // Order flow page chart: index candles (pane 0), estimated delta per candle as bars (pane 1) and the cumulative delta
 // line (pane 2). TradingView Lightweight Charts, colours from the design tokens.
 import { useEffect, useRef } from 'react';
+import { wheelOnClick } from '../../shared/chartWheel';
 import {
   CandlestickSeries, ColorType, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp,
 } from 'lightweight-charts';
@@ -51,7 +52,9 @@ export function FlowChart({ bars, flow, resetKey }: { bars: Candle[]; flow: Flow
     c.panes()[1]?.setHeight(130);
     c.panes()[2]?.setHeight(130);
     paint();
+    const unwheel = wheelOnClick(c, box.current!);
     return () => {
+      unwheel();
       c.remove();
       chart.current = candles.current = deltaBars.current = cum.current = null;
     };
@@ -77,5 +80,10 @@ export function FlowChart({ bars, flow, resetKey }: { bars: Candle[]; flow: Flow
     }
   }, [bars, flow, resetKey]);
 
-  return <div className="of-chart" ref={box} />;
+  return (
+    <div className="chart-wrap">
+      <div className="of-chart" ref={box} />
+      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel</span>
+    </div>
+  );
 }
