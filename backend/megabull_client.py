@@ -17,8 +17,8 @@ Endpoints used (owner's brief, 23-Oct-2026):
     PUT  /api/order/bulk/cancel
     GET  /api/order/my, GET /api/position/my, GET /api/report/monthly/day/{date}
 
-NOT VERIFIED YET (no MegaBull access from the build machine): the instrument CSV's column names, the order / position
-response fields and the bulk-cancel body. The parsers below look for the usual names and fail loudly otherwise.
+Instrument file CONFIRMED 23-Oct-2026 (the endpoint returns {"downloadUrl"}; the file has tradingSymbol,
+instrumentName, instrumentToken). NOT VERIFIED YET: the order / position response fields and the bulk-cancel body. The parsers below look for the usual names and fail loudly otherwise.
 Run `python megabull_client.py check` once: it calls only read-only endpoints and writes what it found (field names,
 no key) to megabull_check.txt, so the parsers can be confirmed before Auto sends MegaBull orders.
 """
@@ -96,6 +96,8 @@ def parse_instruments(text):
     """MegaBull's instrument CSV -> option rows {token, symbol, expiry, strike, optionType, lotSize}.
     Column names are matched loosely (see module doc). Raises MegaBullError if the needed columns are missing."""
     reader = csv.DictReader(io.StringIO(text))
+    if [c.strip() for c in (reader.fieldnames or [])][:3] == ["tradingSymbol", "instrumentName", "instrumentToken"]:
+        return _parse_named(reader)
     cols = {c.lower().replace(" ", "").replace("_", ""): c for c in (reader.fieldnames or [])}
 
     def col(*names):
@@ -128,6 +130,35 @@ def parse_instruments(text):
             continue
         out.append({"token": str(r.get(c_token)).strip(), "symbol": sym, "expiry": exp, "strike": strike,
                     "optionType": typ, "lotSize": int(float(r.get(c_lot) or 0)) if c_lot and r.get(c_lot) else None})
+    return out
+
+
+_MONTHS = {m: i for i, m in enumerate(("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"), 1)}
+
+
+def _parse_named(reader):
+    """MegaBull's file as seen 23-Oct-2026: three columns, everything in the names.
+        "NIFTY26OCT22900CE","NIFTY 27 OCT 22900 CE","13145090"     (monthly)
+        "NIFTY26N0322900CE","NIFTY 03 NOV 22900 CE",...             (weekly)
+    instrumentName = symbol, day, month, strike, CE/PE; the year is the 2 digits after the symbol in tradingSymbol.
+    No lot size in the file (the caller falls back to the exchange lot size)."""
+    out = []
+    for r in reader:
+        parts = (r.get("instrumentName") or "").split()
+        if len(parts) != 5 or parts[4].upper() not in ("CE", "PE"):
+            continue
+        sym, day, mon, strike, typ = parts[0].upper(), parts[1], parts[2].upper(), parts[3], parts[4].upper()
+        ts = (r.get("tradingSymbol") or "").strip().upper()
+        yy = ts[len(sym):len(sym) + 2]
+        if not ts.startswith(sym) or not yy.isdigit() or mon not in _MONTHS:
+            continue
+        try:
+            exp = date(2000 + int(yy), _MONTHS[mon], int(day)).isoformat()
+            k = float(strike)
+        except ValueError:
+            continue
+        out.append({"token": str(r.get("instrumentToken") or "").strip(), "symbol": sym, "expiry": exp, "strike": k,
+                    "optionType": typ, "lotSize": None})
     return out
 
 
@@ -294,6 +325,8 @@ def _check(keys_file=DEFAULT_KEYS_FILE):
         lines.append(f"/api/user/my fields: {sorted(me.keys()) if isinstance(me, dict) else type(me).__name__}")
         text = c.instruments_csv()
         all_lines = text.splitlines()
+        os.makedirs("data", exist_ok=True)  # public file (no key): saved so its layout can be read
+        open(os.path.join("data", "megabull_instruments.csv"), "w", encoding="utf-8").write(text)
         head = all_lines[:4]
         lines.append(f"Instrument CSV: {len(all_lines)} lines")
         lines.append(f"Instrument CSV header: {head[0] if head else '(empty)'}")

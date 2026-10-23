@@ -94,7 +94,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   older than 25 days (`%USERPROFILE%\TradingHubKeys`), starts both windows, checks Dhan (`/api/expiries`) and MegaBull
   (`GET /api/autopaper/check`, read-only), opens the dashboard. 30-minute chart interval.
 - Known limits / open: MegaBull is off until the owner confirms the ⚠ numbers in `megabull.md` and the API check has run
-  (instrument CSV columns, order fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
+  (instrument file confirmed 23-Oct: a downloadUrl to a 3-column CSV, names parsed, lot size taken from Dhan; order
+  fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
   VIX ID 21 is from Dhan's list, not yet checked live. Nothing has run against a live session yet: check the first
   watcher rows at 09:20-09:35. Alerts show on the dashboard and in `alerts.log`, not on the phone.
 - Date picker + interval dropdowns (owner, 23-Oct-2026): dashboard chart card has Interval (1, 3, 5, 10, 15, 20, 30,
