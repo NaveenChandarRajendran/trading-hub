@@ -328,7 +328,7 @@ class SignalService:
         if not self.orderflow:
             return None
         fut, bars = self.orderflow.series(symbol, 5)
-        if not fut:
+        if not fut or not bars:  # nothing recorded yet today: the card shows "No order flow yet"
             return None
         now = self.clock().timestamp()
         done = [b for b in bars if b["time"] + 300 <= now]
