@@ -110,6 +110,14 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   this Windows user only). MegaBull key asked only when missing or older than 25 days.
 - Charts (dashboard + Order Flow): the mouse wheel scrolls the page until the chart is clicked; then it zooms the chart
   until the mouse leaves it (`src/shared/chartWheel.ts`, owner 23-Oct-2026). Dragging works either way.
+- Sensibull-style views (Sensibull OI Change Live page, dashboard "OI views side by side"): change in OI now counts
+  from the day's first chain at or after 09:15, like Sensibull (`chain_cache.OpeningOi`, `data/open_oi_<day>.json`,
+  legs carry `open_oi`, meta `openOiAt`). Falls back to the previous-day settled OI when 09:15 was not recorded
+  (backend started late or after the close); the page says which. Owner 23-Oct-2026: the old view read Bullish on a
+  clearly bearish day because the put side counted from the previous close. The NSE paste app's formulas already run
+  live on Dhan data (OI & OI Change Live), so no separate NSE fetch is needed (same exchange OI).
+- Dashboard "OI views side by side" has a third column, Trending OI (`sig_oi.trending_view`: the rule's test on the
+  last 3 completed rows, ±50%), and a count in the header ("3 of 3 Bearish"). Record only; the rules are unchanged.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

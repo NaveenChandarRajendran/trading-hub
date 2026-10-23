@@ -34,6 +34,7 @@ from chain_cache import chain_response
 from dhan_client import INDIA_VIX
 from sig_indicators import IST
 from sig_market import build_state
+from sig_oi import trending_view, votes
 from sig_rules import PASS, megabull_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
@@ -543,7 +544,9 @@ def register(app, svc):
             "context": [_context_row(recs[s]["state"]) for s in SYMBOLS],
             "rules": rec["results"],
             "trendingOi": (st.get("toiAll") or [])[:5] if st else [],
-            "oiViews": {"dhan": st.get("oi"), "sensibull": st.get("sb"), "agreement": agreement(st.get("oi"), st.get("sb"))} if st else None,
+            "oiViews": {"dhan": st.get("oi"), "sensibull": st.get("sb"), "agreement": agreement(st.get("oi"), st.get("sb")),
+                        "trending": trending_view(st.get("toi")),
+                        "votes": votes(st.get("oi"), st.get("sb"), trending_view(st.get("toi")))} if st else None,
             "sr": st.get("sr") if st else None,
             "auto": svc.trader.status() if svc.trader else None,
             "alerts": svc.alerts[-10:],

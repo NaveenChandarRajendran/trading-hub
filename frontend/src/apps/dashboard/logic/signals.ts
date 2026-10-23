@@ -43,6 +43,18 @@ export interface ContextRow {
   spot: number | null;
 }
 
+/** Trending OI as the third OI view (backend sig_oi.trending_view): last N completed 5-min rows, newest first. */
+export interface TrendingView {
+  verdict: 'Bullish' | 'Bearish' | 'Neutral';
+  time: string;
+  strength: number[];
+  threshold: number;
+  callChg: number;
+  putChg: number;
+  pcr: number | null;
+  unit: string;
+}
+
 export interface OiView {
   verdict: 'Bullish' | 'Bearish' | 'Neutral';
   average: number;
@@ -56,6 +68,7 @@ export interface OiView {
   support?: number;
   resistance?: number;
   unit: string;
+  since?: string; // Sensibull view: '09:15:03' or 'previous close' (what the change in OI counts from)
 }
 
 export interface SrLevel {
@@ -142,7 +155,10 @@ export interface SignalsState {
   context: (ContextRow | null)[];
   rules: { tradingHub?: RuleResult; megabull?: RuleResult };
   trendingOi: ToiRow[];
-  oiViews: { dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null } | null;
+  oiViews: {
+    dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null;
+    trending?: TrendingView | null; votes?: string | null; // e.g. "3 of 3 Bearish"
+  } | null;
   sr: SrView | null;
   auto: AutoStatus | null;
   alerts: AlertRow[];

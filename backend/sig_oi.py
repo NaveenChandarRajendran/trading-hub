@@ -98,8 +98,10 @@ def sensibull_view(body, range_=SB_RANGE, picked=SB_DEFAULT):
     meta = body["meta"]
     spot = _num(meta.get("spot"))
     symbol = meta.get("symbol")
+    # from = the 09:15 OI like Sensibull ("open_oi", chain_cache.OpeningOi); previous-day settled OI if not recorded
+    base = lambda leg: _num(leg.get("open_oi") if leg.get("open_oi") is not None else leg.get("previous_oi"))  # noqa: E731
     strikes = [{"strike": _num(r["strike"]),
-                "fromCall": _num((r.get("ce") or {}).get("previous_oi")), "fromPut": _num((r.get("pe") or {}).get("previous_oi")),
+                "fromCall": base(r.get("ce") or {}), "fromPut": base(r.get("pe") or {}),
                 "toCall": _num((r.get("ce") or {}).get("oi")), "toPut": _num((r.get("pe") or {}).get("oi"))}
                for r in _rows(body)]
     if not strikes:
@@ -139,6 +141,7 @@ def sensibull_view(body, range_=SB_RANGE, picked=SB_DEFAULT):
         "average": anticipated, "points": points, "spot": spot,
         "support": anticipated - interval, "resistance": anticipated + interval,
         "pcr": _mean(w["pcr"] for w in chosen), "used": used, "unit": "lakh units",
+        "since": meta.get("openOiAt") or "previous close",  # what the change in OI counts from
     }
 
 
@@ -193,3 +196,33 @@ def sr_view(body, range_=SR_RANGE):
         "biggestPutBelow": {"strike": big_put, "oi": near[big_put][1]} if big_put is not None else None,
         "unit": "contracts",
     }
+
+
+# ------------------------------------------------------------------ Trending OI as a third view
+def trending_view(rows):
+    """Trending OI as a third OI view for the dashboard card (rows: completed 5-min rows, newest first). Verdict uses the
+    rule's threshold: every one of the last N rows at +strength or more = Bullish, at -strength or less = Bearish,
+    otherwise Neutral. Record only here; the Trading Hub rule applies the same test itself."""
+    import sig_rules
+    th, n = sig_rules.TH_TOI_STRENGTH, int(sig_rules.TH_TOI_ROWS)
+    last = (rows or [])[:n]
+    if not last:
+        return None
+    if len(last) == n and all(r["strengthPct"] >= th for r in last):
+        verdict = "Bullish"
+    elif len(last) == n and all(r["strengthPct"] <= -th for r in last):
+        verdict = "Bearish"
+    else:
+        verdict = "Neutral"
+    r0 = last[0]
+    return {"verdict": verdict, "time": r0.get("time"), "strength": [r["strengthPct"] for r in last], "threshold": th,
+            "callChg": r0.get("callChg"), "putChg": r0.get("putChg"), "pcr": r0.get("netPcr"), "unit": "units"}
+
+
+def votes(*views):
+    """'3 of 3 Bearish', '2 of 3 Bearish', ... over the views that have a verdict."""
+    vs = [v["verdict"] for v in views if v]
+    if not vs:
+        return None
+    top = max(set(vs), key=vs.count)
+    return f"{vs.count(top)} of {len(vs)} {top}"

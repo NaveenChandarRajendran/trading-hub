@@ -86,3 +86,15 @@ describe('toSbSnapshot (Sensibull model, OI in units)', () => {
     expect(snap.strikes).toHaveLength(261);
   });
 });
+
+describe('toSbSnapshot uses the 09:15 OI when the backend recorded it', () => {
+  it('open_oi replaces previous_oi as the "from" OI', () => {
+    const resp = {
+      meta: { ...nifty.meta, openOiAt: '09:15:04' },
+      rows: [{ strike: 22600, ce: { ...nifty.rows[0].ce!, oi: 1000, previous_oi: 100, open_oi: 900 }, pe: { ...nifty.rows[0].pe!, oi: 500, previous_oi: 50 } }],
+    };
+    const s = toSbSnapshot(resp as typeof nifty).strikes[0];
+    expect(s.fromCallOi).toBe(900);
+    expect(s.fromPutOi).toBe(50); // no open_oi on this leg: previous-day OI
+  });
+});
