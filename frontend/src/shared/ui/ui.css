@@ -126,3 +126,14 @@
   padding: 2px var(--sp-2); border-radius: var(--r-sm); background: var(--text); color: var(--bg);
   font-size: var(--fs-xs); font-weight: 500; line-height: 16px; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-pop);
 }
+
+/* charts: the mouse wheel scrolls the page until the chart is clicked (shared/chartWheel.ts) */
+.ds .chart-wrap { position: relative; min-width: 0; }
+.ds .chart-wheel-hint {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
+  padding: 2px 10px; border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); font-size: var(--fs-xs); opacity: 0; transition: opacity 0.15s;
+}
+.ds .chart-wrap:hover .chart-wheel-hint { opacity: 0.95; }
+.ds .chart-wrap:has(.chart-wheel-on) .chart-wheel-hint { opacity: 0; }
+.ds .chart-wheel-on { outline: 1px solid var(--accent); outline-offset: -1px; }

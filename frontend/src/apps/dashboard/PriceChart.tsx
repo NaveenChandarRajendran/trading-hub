@@ -4,6 +4,7 @@
 // follow the light / dark switch without a reload; level lines are updated in place (LevelLines); indicators update
 // live with the last candle. The indicator maths is shared with the signal watcher (logic/indicators.ts).
 import { useEffect, useRef } from 'react';
+import { wheelOnClick } from '../../shared/chartWheel';
 import {
   CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart,
   type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type Time, type UTCTimestamp,
@@ -152,7 +153,9 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     chart.current = c;
     series.current = s;
     lines.current = new LevelLines(s);
+    const unwheel = wheelOnClick(c, box.current!);
     return () => {
+      unwheel();
       c.remove();
       chart.current = series.current = lines.current = volSeries.current = pivotLine.current = deltaSeries.current = null;
       lineSeries.current = {};
@@ -315,5 +318,10 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     else pivotLine.current = s.createPriceLine(spec);
   }, [pivot]);
 
-  return <div className="db-chart" ref={box} />;
+  return (
+    <div className="chart-wrap">
+      <div className="db-chart" ref={box} />
+      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel</span>
+    </div>
+  );
 }
