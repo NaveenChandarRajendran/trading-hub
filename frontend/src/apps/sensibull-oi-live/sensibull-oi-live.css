@@ -1,0 +1,20 @@
+/* Sensibull OI Change Live: layout only. Colors and sizes come from tokens. */
+.sbl { display: flex; flex-direction: column; gap: var(--sp-4); }
+.sbl table.t td.up, .sbl .sbl-sup { color: var(--up); }
+.sbl table.t td.down, .sbl .sbl-res { color: var(--down); }
+.sbl table.t td input { margin: 0; }
+
+.sbl .sbl-blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); }
+.sbl .sbl-block { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; font-size: var(--fs-sm); }
+.sbl .sbl-block.atm { border-color: var(--accent); }
+.sbl .sbl-block-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2); background: var(--surface-2); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.sbl .sbl-block.atm .sbl-block-head { background: var(--accent-soft); }
+.sbl .sbl-block dl { display: grid; grid-template-columns: auto 1fr; margin: 0; padding: var(--sp-1) var(--sp-2); row-gap: 2px; }
+.sbl .sbl-block dt { color: var(--text-3); }
+.sbl .sbl-block dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.sbl .sbl-block dd.up { color: var(--up); }
+.sbl .sbl-block dd.down { color: var(--down); }
+.sbl .sbl-block .sbl-avg { font-weight: 600; color: var(--text); }

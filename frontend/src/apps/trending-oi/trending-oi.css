@@ -1,0 +1,7 @@
+/* Trending OI grid: soft design-system pills (the grid sits in `.ds`). Colors come from tokens. */
+.ag-cell.toi-center { display: flex; align-items: center; justify-content: center; padding: 0 var(--sp-2); }
+.toi-center-header .ag-header-cell-label { justify-content: center; }
+.ds .pill.toi-pill { justify-content: center; min-width: 64px; }
+.ds .pill.toi-pill.wide { min-width: 108px; }
+.ds .pill.toi-live { margin-left: var(--sp-2); }
+.toi-empty { color: var(--text-3); }

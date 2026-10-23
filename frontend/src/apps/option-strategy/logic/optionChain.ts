@@ -57,9 +57,10 @@ function toLeg(x: any): LegData | null {
     ltp: num(x.lastPrice),
     change: num(x.change),
     pChange: num(x.pChange),
-    bidPrice: num(x.buyPrice1),
+    // option-chain-v3 sends buyPrice1 / sellPrice1; the older option-chain-indices API sends bidprice / askPrice
+    bidPrice: num(x.buyPrice1 ?? x.bidprice),
     bidQty: num(x.buyQuantity1),
-    askPrice: num(x.sellPrice1),
+    askPrice: num(x.sellPrice1 ?? x.askPrice),
     askQty: num(x.sellQuantity1),
     totalBuyQty: num(x.totalBuyQuantity),
     totalSellQty: num(x.totalSellQuantity),

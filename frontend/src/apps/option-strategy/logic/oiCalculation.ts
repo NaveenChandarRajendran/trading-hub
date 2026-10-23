@@ -115,3 +115,13 @@ export function getVerdict(finalAverage: number, spot: number): { verdict: Verdi
   const points = finalAverage - spot; // e.g. +114.76 means "target" is 114 points above spot
   return { verdict: points > 0 ? 'BULLISH' : points < 0 ? 'BEARISH' : 'NEUTRAL', points };
 }
+
+/** Everything the OI & OI Change screen shows, from one parsed chain (paste or live). */
+export function analyzeOptionChain(chain: OptionChain) {
+  const { rows, totals } = buildMainTable(chain);
+  const summary = buildSummary(totals, chain.underlying);
+  const win = buildWindowAverages(rows, chain.underlying);
+  return { rows, totals, summary, win, verdict: getVerdict(win.overallAverage, chain.underlying) };
+}
+
+export type ChainAnalysis = ReturnType<typeof analyzeOptionChain>;

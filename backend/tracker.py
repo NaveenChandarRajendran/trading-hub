@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from calc import pick_strikes, summarize
+from chain_cache import ChainCache
 from dhan_client import STRIKE_STEP, DhanError
 from holidays import NSE_HOLIDAYS
 from store import IST, JsonStore
@@ -45,6 +46,8 @@ class Tracker:
         self.session = session
         self.max_keys = max_keys
         self.clock = clock
+        # Shared with GET /api/option-chain: every fetch the tracker makes also refreshes the live pages' cache.
+        self.chains = ChainCache(client, market_open=self.market_open, clock=clock)
         self._days = {}
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -127,7 +130,8 @@ class Tracker:
                 d.date, d.strikes, d.snaps, d.unsaved = today, [], [], []
             have_strikes = list(d.strikes)
 
-        chain = self.client.option_chain(symbol, expiry)  # network call, no lock held
+        # Always a fresh fetch (max_age=0) and never an older chain on failure, exactly as before the shared cache.
+        chain = self.chains.get(symbol, expiry, max_age=0, allow_stale=False)[0].chain  # network call, no lock held
         spot, oc = chain["spot"], chain["oc"]
         strikes = have_strikes or pick_strikes(oc.keys(), spot, STRIKE_STEP[symbol], self.each_side)
         totals, used = summarize(oc, strikes)

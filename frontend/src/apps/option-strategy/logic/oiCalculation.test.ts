@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import raw from './__fixtures__/banknifty-2026-10-16.json?raw';
 import { parseOptionChain } from './optionChain';
-import { buildMainTable, buildSummary, buildWindowAverages, getVerdict } from './oiCalculation';
+import { analyzeOptionChain, buildMainTable, buildSummary, buildWindowAverages, getVerdict } from './oiCalculation';
 
 const chain = parseOptionChain(raw);
 const { rows, totals } = buildMainTable(chain);
@@ -68,5 +68,15 @@ describe('strike windows', () => {
   it('verdict compares final average with spot', () => {
     expect(getVerdict(55958.76, 55844).verdict).toBe('BULLISH');
     expect(getVerdict(w.overallAverage, chain.underlying).verdict).toBe('BEARISH');
+  });
+});
+
+describe('analyzeOptionChain', () => {
+  it('returns exactly what the separate steps return (moved out of the component unchanged)', () => {
+    const win = buildWindowAverages(rows, chain.underlying);
+    expect(analyzeOptionChain(chain)).toEqual({
+      rows, totals, summary: buildSummary(totals, chain.underlying), win,
+      verdict: getVerdict(win.overallAverage, chain.underlying),
+    });
   });
 });

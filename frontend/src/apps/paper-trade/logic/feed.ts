@@ -15,7 +15,20 @@ export type ServerMessage =
   | { type: 'trade'; data: Trade }
   | { type: 'position'; data: Position }
   | { type: 'tick'; data: Tick }
+  | { type: 'candle'; data: LiveCandle } // current 1-minute candle of a subscribed index (Dashboard chart)
+  | { type: 'volume'; data: { segment: string; securityId: number; time: number; volume: number } } // index future, this minute
   | { type: 'error'; data: { message: string } };
+
+export interface LiveCandle {
+  segment: string;
+  securityId: number;
+  interval: 1;
+  time: number; // epoch seconds of the minute start
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
 
 export type ConnState = 'connecting' | 'open' | 'reconnecting';
 
