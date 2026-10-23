@@ -294,6 +294,8 @@ def _check(keys_file=DEFAULT_KEYS_FILE):
         lines.append(f"/api/user/my fields: {sorted(me.keys()) if isinstance(me, dict) else type(me).__name__}")
         text = c.instruments_csv()
         all_lines = text.splitlines()
+        os.makedirs("data", exist_ok=True)  # public file (no key): saved so its layout can be read
+        open(os.path.join("data", "megabull_instruments.csv"), "w", encoding="utf-8").write(text)
         head = all_lines[:4]
         lines.append(f"Instrument CSV: {len(all_lines)} lines")
         lines.append(f"Instrument CSV header: {head[0] if head else '(empty)'}")
