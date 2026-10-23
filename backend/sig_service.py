@@ -566,18 +566,30 @@ def register(app, svc):
         return PlainTextResponse(open(path, encoding="utf-8").read(), media_type="text/csv",
                                  headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'})
 
+    @app.get("/api/orderflow/days")
+    def orderflow_days():
+        if not svc.orderflow:
+            raise HTTPException(503, "Order flow is not running (paper trading feed is off).")
+        return {"days": svc.orderflow.days()}
+
     @app.get("/api/orderflow")
-    def orderflow(symbol: str = "NIFTY", interval: int = 5):
+    def orderflow(symbol: str = "NIFTY", interval: int = 5, date: str = ""):
         symbol = symbol.upper()
         if symbol not in SYMBOLS:
             raise HTTPException(400, f"symbol must be one of {list(SYMBOLS)}")
-        if interval not in (1, 3, 5, 15, 30):
-            raise HTTPException(400, "interval must be 1, 3, 5, 15 or 30")
+        if interval not in (1, 3, 5, 10, 15, 20, 30, 45, 60):
+            raise HTTPException(400, "interval must be 1, 3, 5, 10, 15, 20, 30, 45 or 60")
         if not svc.orderflow:
             raise HTTPException(503, "Order flow is not running (paper trading feed is off).")
+        day = None
+        if date:
+            try:
+                day = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(400, "date must look like 2026-10-21")
         from orderflow import dext_match
-        fut, bars = svc.orderflow.series(symbol, interval)
-        typed = svc.orderflow.typed(symbol, interval)
+        fut, bars = svc.orderflow.series(symbol, interval, day)
+        typed = svc.orderflow.typed(symbol, interval, day)
         jump = svc.cfg.get("orderFlow", {}).get("deltaJump", {}).get(symbol)
         rows = []
         for b in bars:
@@ -586,9 +598,11 @@ def register(app, svc):
             rows.append({**b, "hhmm": hhmm, "dext": v, "match": dext_match(b["delta"], v),
                          "jump": bool(jump) and abs(b["delta"]) >= jump})
         return {"meta": {"symbol": symbol, "interval": interval, "future": fut["name"] if fut else None,
+                         "date": (day or svc.clock().date()).isoformat(), "live": day is None or day == svc.clock().date(),
                          "asOf": svc.clock().strftime("%Y-%m-%d %H:%M:%S"), "deltaJump": jump,
                          "usedInRules": bool(svc.cfg.get("orderFlow", {}).get("useEstimatedDelta")),
-                         "message": "" if fut else "No index future in Dhan's instrument list yet."},
+                         "message": "" if fut else ("Nothing was recorded on that day (the backend was not running)." if day
+                                                    else "No index future in Dhan's instrument list yet.")},
                 "rows": rows}
 
     @app.post("/api/orderflow/dext")

@@ -97,6 +97,13 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   (instrument CSV columns, order fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
   VIX ID 21 is from Dhan's list, not yet checked live. Nothing has run against a live session yet: check the first
   watcher rows at 09:20-09:35. Alerts show on the dashboard and in `alerts.log`, not on the phone.
+- Date picker + interval dropdowns (owner, 23-Oct-2026): dashboard chart card has Interval (1, 3, 5, 10, 15, 20, 30,
+  45 min, 1 hour, 1 day) and Date (today live, or one of the last 60 trading days, `GET /api/dashboard/sessions`); with
+  1 day it shows Range (15 / 30 / 90 / 180 days, 1 year; index daily candles, `GET /api/dashboard/daily`). An earlier day:
+  `GET /api/dashboard/candles?date=` (fetched once, cached; meta.prevSession gives that day's pivot), no live feed, no OI
+  levels. Order Flow page: same intervals up to 1 hour plus Date from the saved `data/orderflow_<day>.json` files
+  (`GET /api/orderflow/days`, `/api/orderflow?date=`); Dext column is read-only for earlier days. Rule cards always use
+  today's 5-min reading.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

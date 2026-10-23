@@ -16,7 +16,7 @@ from store import IST
 
 SESSION_OPEN = time(9, 15)
 SESSION_CLOSE = time(15, 30)
-INTERVALS = (1, 3, 5, 15)  # minutes
+INTERVALS = (1, 3, 5, 10, 15, 20, 30, 45, 60)  # minutes
 
 
 def in_session(t: datetime) -> bool:

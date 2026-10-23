@@ -173,6 +173,24 @@ def test_candles_endpoint_market_closed_shows_the_last_two_sessions():
     assert fake.args[1:3] == ("2026-10-22 09:15:00", "2026-10-24 09:15:00")
 
 
+def test_candles_endpoint_for_an_earlier_day_is_fetched_once():
+    fake, clock, c = candle_app("2026-10-23 10:00:00")
+    body = c.get("/api/dashboard/candles?symbol=NIFTY&interval=5&date=2026-10-21").json()
+    assert fake.args[1:3] == ("2026-10-19 09:15:00", "2026-10-22 09:15:00")  # that day and the session before it
+    assert body["meta"]["live"] is False and body["meta"]["sessions"] == ["2026-10-19", "2026-10-21"]
+    assert body["meta"]["prevSession"] == {"date": "2026-10-19", "high": 22912, "low": 22897, "close": 22910}
+    clock.t = ist("2026-10-23 11:00:00")
+    c.get("/api/dashboard/candles?symbol=NIFTY&interval=1&date=2026-10-21")
+    assert fake.calls == 1  # an earlier day never changes
+    assert c.get("/api/dashboard/candles?symbol=NIFTY&date=2026-10-30").status_code == 400
+    assert c.get("/api/dashboard/candles?symbol=NIFTY&date=21-10-2026").status_code == 400
+
+
+def test_sessions_for_the_date_picker_skip_holidays():
+    _, _, c = candle_app("2026-10-21 10:00:00")
+    assert c.get("/api/dashboard/sessions?n=3").json()["days"] == ["2026-10-21", "2026-10-19", "2026-10-16"]
+
+
 # ---------- live candle over /ws/paper ----------
 def test_index_ticks_push_the_live_candle_to_subscribed_clients():
     tmp = tempfile.mkdtemp()
