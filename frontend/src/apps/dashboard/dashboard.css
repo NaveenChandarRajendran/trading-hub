@@ -97,3 +97,30 @@
 /* snapshot bar */
 .db .db-snap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .db .db-snap .btn { margin-left: auto; }
+
+/* evening update 23-Oct: order flow card, two account cards */
+.db .db-three { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 0.8fr); gap: var(--sp-4); align-items: start; }
+@media (max-width: 1300px) { .db .db-three { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1100px) { .db .db-three { grid-template-columns: 1fr; } }
+.db .db-flow { display: flex; flex-direction: column; gap: var(--sp-2); }
+.db .db-flow .btn { align-self: flex-start; }
+.db .db-flow-big { margin: 0; font-size: var(--fs-xl); font-weight: 600; }
+.db .db-flow-big.up { color: var(--up); }
+.db .db-flow-big.down { color: var(--down); }
+.db .db-flow-bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--sp-2); height: 84px; align-items: end; }
+.db .db-flow-bar { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 2px; }
+.db .db-flow-fill { display: block; min-height: 2px; border-radius: var(--r-sm); }
+.db .db-flow-fill.up { background: var(--up); }
+.db .db-flow-fill.down { background: var(--down); }
+.db .db-flow-time { font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
+.db .db-rule-note b.up { color: var(--up); }
+.db .db-rule-note b.down { color: var(--down); }
+.db .db-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.db .db-account { display: flex; flex-direction: column; gap: var(--sp-2); }
+.db .db-trade-name { margin: 0; font-weight: 600; color: var(--text); }
+.db .db-trade-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-4); margin: var(--sp-2) 0; }
+.db .db-trade-grid dt { font-size: var(--fs-xs); color: var(--text-3); }
+.db .db-trade-grid dd { margin: 0; font-weight: 500; }
+.db .db-wait { text-align: center; padding: var(--sp-5) 0; }
+.db .db-account .btn { align-self: flex-start; }
+.db .db-rule-note.warn { color: var(--warn); }

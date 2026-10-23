@@ -104,6 +104,9 @@ export interface AutoTrade {
   exitPrice?: number | null;
   exitReason?: string;
   netPnl?: number;
+  grossPnl?: number;
+  spotAtEntry?: number | null;
+  invested?: number;
 }
 
 export interface AccountStatus {
@@ -145,6 +148,33 @@ export interface SignalsState {
   alerts: AlertRow[];
   snapshots: { rowsToday: number; lastSaved: string | null; path: string };
   paperPositions: Position[]; // hand-placed Trading Hub paper positions on this index without a stop / target
+  shadow: { skipped: number; wouldHaveWorked: number } | null;
+  orderFlow: FlowSummary | null;
+}
+
+/** "Order flow, last 30 min" card: estimated delta of the last 6 completed 5-minute candles. */
+export interface FlowSummary {
+  future: string;
+  cumulative: number;
+  change30: number;
+  last6: { time: string; delta: number }[];
+  negative: number;
+  positive: number;
+  side: 'CE' | 'PE' | null;
+  agrees: boolean | null;
+  dext: { typed: number; matched: number };
+  usedInRules: boolean;
+}
+
+export const fetchAccountOrders = (account: 'tradingHub' | 'megabull') =>
+  getJson<{ account: string; rows: Record<string, unknown>[] }>(API_BASE, `/api/autopaper/orders?account=${account}`);
+export const shadowCsvNote = 'shadow_skips.csv in the Auto Paper Logs folder';
+
+/** Minutes between "10:05:12" and now (IST clock). */
+export function minutesSince(hhmmss: string, now: Date): number {
+  const ist = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60000);
+  const [h, m] = hhmmss.split(':').map(Number);
+  return Math.max(0, ist.getHours() * 60 + ist.getMinutes() - (h * 60 + m));
 }
 
 export const fetchSignals = (symbol: string, signal?: AbortSignal) =>

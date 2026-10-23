@@ -81,6 +81,18 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   trigger levels = pivot, previous high / low, OI R1 / S1.
 - Tests: `test_sig_indicators.py`, `test_sig_oi.py`, `test_sig_rules.py`, `test_sig_market.py`, `test_autopaper.py`;
   frontend `logic/indicatorsShared.test.ts`, `logic/signals.test.ts`.
+- Evening update (23-Oct): order flow (`orderflow.py`: delta estimated per tick from the near-month future's Full
+  packets vs the previous best bid / ask, tick rule in between; per minute, saved in `data/orderflow_<day>.json`;
+  `GET /api/orderflow`, `POST /api/orderflow/dext`); main chart: cumulative delta (est.) pane under RSI, no per-candle
+  bars; "Order flow, last 30 min" card beside the rule cards; new page **Order Flow (est.)** (`src/apps/order-flow/`:
+  price, delta bars, cumulative line, 1/3/5/15/30m, last 12 candles with a typed Dext column, match tick, delta jump).
+  Rule thresholds in `autopaper.json` "rules" (`sig_rules.configure`); PCR 0.9; Dharani SuperTrend flip trigger;
+  MegaBull Grade A only. Shadow logging (record only): after every exit to 15:30 (trade log columns, rewritten at
+  15:31) and skipped setups (`shadow_skips.csv`). Paper section: MEGABULL ACCOUNT and TRADING HUB ACCOUNT cards, today's
+  trades for both accounts with day P&L, order book lists (`GET /api/autopaper/orders`), shadow line.
+  `Start_Trading_Day.bat` (+ `scripts/start_trading_day.ps1`): hidden Dhan prompts, MegaBull key only when missing or
+  older than 25 days (`%USERPROFILE%\TradingHubKeys`), starts both windows, checks Dhan (`/api/expiries`) and MegaBull
+  (`GET /api/autopaper/check`, read-only), opens the dashboard. 30-minute chart interval.
 - Known limits / open: MegaBull is off until the owner confirms the ⚠ numbers in `megabull.md` and the API check has run
   (instrument CSV columns, order fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
   VIX ID 21 is from Dhan's list, not yet checked live. Nothing has run against a live session yet: check the first

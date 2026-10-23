@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { banner, distance, minutesToExit, tick, type Check, type RuleResult } from './signals';
+import { banner, distance, minutesSince, minutesToExit, tick, type Check, type RuleResult } from './signals';
 
 const check = (state: Check['state']): Check => ({ id: 'x', label: 'x', detail: '', state, must: false, exempt: false });
 
@@ -18,6 +18,10 @@ describe('signals helpers', () => {
     expect(tick(check('pass'))).toEqual({ text: 'Yes', tone: 'up' });
     expect(tick(check('notChecked')).text).toBe('Not checked');
     expect(tick(check('borderline')).tone).toBe('warn');
+  });
+
+  it('time in trade', () => {
+    expect(minutesSince('14:50:55', new Date('2026-10-23T15:09:30+05:30'))).toBe(19);
   });
 
   it('distance from spot', () => {

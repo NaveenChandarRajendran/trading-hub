@@ -53,6 +53,7 @@ const volumePoint = (b: Candle) => ({
   time: b.time as UTCTimestamp, value: b.volume ?? 0,
   color: withAlpha(token(b.close >= b.open ? '--up' : '--down'), VOLUME_ALPHA),
 });
+const DELTA_PANE_PX = 110;
 const thinLine = { lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false, lastValueVisible: false } as const;
 
 interface Pt { time: number; value: number }
@@ -78,13 +79,14 @@ function indicatorData(bars: Candle[]) {
 type Data = ReturnType<typeof indicatorData>;
 type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel }: {
+export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [] }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
+  delta?: { time: number; cumulative: number }[]; // estimated cumulative delta at each candle's end (own pane under RSI)
 }) {
   const { mode } = useTheme();
   const box = useRef<HTMLDivElement>(null);
@@ -101,6 +103,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   const lineSeries = useRef<Partial<Record<LineKey, ISeriesApi<'Line'>>>>({});
   const rsiGuides = useRef<IPriceLine[]>([]);
   const volSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const deltaSeries = useRef<ISeriesApi<'Line'> | null>(null);
   const shown = useRef<{ bars: Candle[]; key: string }>({ bars: [], key: '' });
 
   /** Whole indicator series (after history loads or an indicator is switched on). */
@@ -151,7 +154,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     lines.current = new LevelLines(s);
     return () => {
       c.remove();
-      chart.current = series.current = lines.current = volSeries.current = pivotLine.current = null;
+      chart.current = series.current = lines.current = volSeries.current = pivotLine.current = deltaSeries.current = null;
       lineSeries.current = {};
       shown.current = { bars: [], key: '' };
       rsiGuides.current = [];
@@ -231,6 +234,27 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     volSeries.current?.applyOptions({ title: volumeLabel });
   }, [volumeLabel]);
 
+  // estimated cumulative delta: one line in the last pane (under RSI); moved when RSI is switched on / off
+  useEffect(() => {
+    const c = chart.current;
+    if (!c) return;
+    if (deltaSeries.current) {
+      c.removeSeries(deltaSeries.current);
+      deltaSeries.current = null;
+      const extra = c.panes().length - 1;
+      if (extra >= (indicators.rsi ? 2 : 1)) c.removePane(extra);
+    }
+    if (!indicators.delta) return;
+    const pane = indicators.rsi ? 2 : 1;
+    deltaSeries.current = c.addSeries(LineSeries, { ...thinLine, lineWidth: 2, color: token('--accent'), title: 'Cum. delta (est.)', lastValueVisible: true }, pane);
+    c.panes()[pane]?.setHeight(DELTA_PANE_PX);
+    deltaSeries.current.setData(delta.map((d) => ({ time: d.time as UTCTimestamp, value: d.cumulative })));
+  }, [indicators.delta, indicators.rsi]);
+
+  useEffect(() => {
+    deltaSeries.current?.setData(delta.map((d) => ({ time: d.time as UTCTimestamp, value: d.cumulative })));
+  }, [delta]);
+
   // theme: recolour everything in place. Wait a frame: this child effect runs before the ThemeProvider's effect
   // switches data-theme, so the tokens would still hold the old theme's colours.
   useEffect(() => {
@@ -243,6 +267,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
       ls.rsi?.applyOptions({ color: token('--accent') });
       rsiGuides.current.forEach((g, k) => g.applyOptions({ color: withAlpha(token(k < 2 ? '--down' : '--up'), 0.8) }));
       ls.ema?.applyOptions({ color: emaColor() });
+      deltaSeries.current?.applyOptions({ color: token('--accent') });
       ls.vwap?.applyOptions({ color: token('--series-vwap') });
       const bb = withAlpha(token('--series-bb'), BB_ALPHA);
       [ls.bbUpper, ls.bbBasis, ls.bbLower].forEach((s) => s?.applyOptions({ color: bb }));

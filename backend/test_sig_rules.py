@@ -122,7 +122,8 @@ def test_four_pillar_needs_confirmation_vix_and_pcr():
     r = megabull_rule(s)
     assert states(r)["confirmation"] == FAIL and not r["go"]
     assert not megabull_rule(four_pillar_call(vix=15.2))["go"]
-    assert not megabull_rule(four_pillar_call(pcr=0.9))["go"]
+    assert not megabull_rule(four_pillar_call(pcr=0.85))["go"]  # call needs PCR >= 0.9 (owner, 23-Oct evening)
+    assert megabull_rule(four_pillar_call(pcr=0.9))["go"]
 
 
 def test_four_pillar_trigger_in_first_15_minutes_is_skipped():
@@ -150,3 +151,27 @@ def test_dharani_put_go():
     assert r["go"]
     s["ind"]["rsi"][-1] = 50  # 45-55 = no trade
     assert not megabull_rule(s)["go"]
+
+
+def test_dharani_supertrend_flip_is_a_trigger():
+    # no level crossed; SuperTrend flips green on the 10:05 candle (line 22,640), 10:10 closes above it -> trigger + confirmation
+    prev = {"high": 22812.30, "low": 22521.10, "close": 22687.65}
+    s = state([22650, 22655, 22660], symbol="NIFTY", rsi=58, bb_upper=22655, bb_lower=22550, bb_basis=22600)
+    s["ind"]["st_dir"] = [1, -1, -1]
+    s["ind"]["st_line"] = [22700, 22640, 22645]
+    s.update(prev=prev, piv=pivots(**prev), sr={"levels": {"R": [{"strike": 22800, "oi": 1}], "S": []}})
+    r = megabull_rule(s)
+    c = {x["id"]: x for x in r["checks"]}
+    assert r["side"] == "CE" and c["trigger"]["state"] == PASS and "SuperTrend flip" in c["trigger"]["detail"]
+    assert c["confirmation"]["state"] == PASS
+
+
+def test_settings_are_easy_to_change():
+    import sig_rules
+    old = sig_rules.MB_WALL_ROOM
+    try:
+        sig_rules.configure({"wallRoom": {"BANKNIFTY": 450}, "ignored": 1})
+        assert sig_rules.MB_WALL_ROOM == {"NIFTY": 50.0, "BANKNIFTY": 450}
+        assert not megabull_rule(four_pillar_call())["go"]  # 400 pts to 55,300 < 450
+    finally:
+        sig_rules.MB_WALL_ROOM = old

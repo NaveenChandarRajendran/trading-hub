@@ -1,13 +1,15 @@
 // Dashboard sections fed by GET /api/signals/state (backend sig_service.py): day levels, the two rule cards, the OI
 // section, the paper trade card and the snapshot log bar. Display only: every number and tick comes from the backend's
 // evaluation, which is what the signal watcher trades on.
+import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { inr, signed } from '../../shared/grid';
 import { Pill, type Tone } from '../../shared/ui';
 import type { ToiRow } from '../trending-oi/logic/api';
 import type { Position } from '../paper-trade/logic/api';
 import {
-  banner, distance, snapshotsCsvUrl, tick, type AutoStatus, type AutoTrade, type ContextRow, type OiView, type RuleResult,
-  type SignalsState, type SrView,
+  banner, distance, fetchAccountOrders, minutesSince, shadowCsvNote, snapshotsCsvUrl, tick, type AutoStatus, type AutoTrade,
+  type ContextRow, type FlowSummary, type OiView, type RuleResult, type SignalsState, type SrView,
 } from './logic/signals';
 
 const n2 = (v: number | null | undefined) => (v == null ? '—' : inr(2)(v));
@@ -153,7 +155,7 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
         </tbody>
       </table>
       <div className="db-agree">
-        <span><b>Agreement</b><br /><span className="db-muted">{views?.agreement === 'Agree' ? 'Both point the same way' : views?.agreement === 'Mixed' ? 'They disagree (display only; the rule uses Dhan)' : '—'}</span></span>
+        <span><b>Agreement</b><br /><span className="db-muted">Sensibull is record only. Trending OI needs Dhan OI and OI Change to agree.</span></span>
         <Pill tone={views?.agreement === 'Agree' ? 'up' : 'neutral'}>{views?.agreement ?? '—'}</Pill>
       </div>
       <p className="card-foot">Dhan OI in contracts (units ÷ lot size). Sensibull: change in OI, windows 10 + 20, ATM ±25.</p>
@@ -189,86 +191,210 @@ export function SrCard({ sr, components }: { sr: SrView | null; components: stri
   );
 }
 
-// ---------------------------------------------------------------- paper trade card
-function TradeRow({ t, ltp, onExit, busy }: { t: AutoTrade; ltp: number | undefined; onExit: () => void; busy: boolean }) {
+// ---------------------------------------------------------------- order flow card (next to the rule cards)
+export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined; symbol: string }) {
+  const kfmt = (v: number) => (Math.abs(v) >= 1000 ? `${signed(1)(v / 1000)}K` : signed(0)(v));
+  const max = Math.max(1, ...(f?.last6 ?? []).map((b) => Math.abs(b.delta)));
+  const side = f?.side === 'PE' ? 'put' : f?.side === 'CE' ? 'call' : '';
+  return (
+    <section className="card db-flow">
+      <div className="card-head">
+        <h3 className="card-title">Order flow · last 30 min (est.)</h3>
+        {f?.agrees != null && <Pill tone={f.agrees ? 'up' : 'neutral'}>{f.agrees ? `Delta agrees (${side})` : `Delta does not agree (${side})`}</Pill>}
+      </div>
+      {!f ? <p className="db-muted">No order flow yet. It builds from the live feed of the {NAMES[symbol]} future.</p> : (
+        <>
+          <p className="db-rule-note">Cumulative delta (estimated, {f.future})</p>
+          <p className={`db-flow-big num ${f.cumulative >= 0 ? 'up' : 'down'}`}>{kfmt(f.cumulative)} {f.change30 >= 0 ? '▲' : '▼'}</p>
+          <div className="db-flow-bars" role="img" aria-label="Delta of the last 6 five-minute candles">
+            {f.last6.map((b) => (
+              <span key={b.time} className="db-flow-bar">
+                <span className={`db-flow-fill ${b.delta >= 0 ? 'up' : 'down'}`} style={{ height: `${Math.round((Math.abs(b.delta) / max) * 100)}%` }} />
+                <span className="db-flow-time">{b.time}</span>
+              </span>
+            ))}
+          </div>
+          <p className="db-rule-note">
+            Last 6 candles: <b className="down">{f.negative} of 6 negative</b> · <b className="up">{f.positive} positive</b>
+            {f.dext.typed > 0 && <> · Dext match {f.dext.matched} of {f.dext.typed}</>}
+          </p>
+          <p className="db-rule-note">{f.usedInRules ? 'The rules use this estimate.' : 'Not used by the rules yet (delta tick: not checked).'}</p>
+        </>
+      )}
+      <Link className="btn" to="/order-flow">Open full order flow page</Link>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- paper trading: both accounts
+const ACCOUNT_TITLE: Record<'tradingHub' | 'megabull', [string, string]> = {
+  megabull: ['MEGABULL ACCOUNT', 'Paper trade from the MegaBull rule (via MegaBull API)'],
+  tradingHub: ['TRADING HUB ACCOUNT', 'Paper trade from the Trading Hub rule (Grade A / B)'],
+};
+
+function OpenTrade({ t, ltp, now, busy, onExit }: { t: AutoTrade; ltp: number | undefined; now: Date; busy: boolean; onExit: () => void }) {
   const live = ltp ?? t.ltp ?? t.entryPrice;
   const pnl = (live - t.entryPrice) * t.qty;
   const pct = (live / t.entryPrice - 1) * 100;
   const span = t.target - t.stop;
   const at = span > 0 ? Math.min(100, Math.max(0, ((live - t.stop) / span) * 100)) : 0;
-  const account = t.account === 'megabull' ? 'MegaBull' : 'Trading Hub';
+  const stopPct = (t.stop / t.entryPrice - 1) * 100;
+  const tgtPct = (t.target / t.entryPrice - 1) * 100;
   return (
-    <div className="db-trade">
-      <div className="db-trade-head">
-        <span className="db-muted">{account} · {t.rule}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''} · {t.instrument.name} · {t.qty} qty · avg {n2(t.entryPrice)} · {t.entryTime}</span>
-      </div>
+    <>
+      <p className="db-trade-name">{t.instrument.name} · {t.instrument.expiry} · {t.qty} qty{t.rule === 'Manual' ? ' · manual' : ''}</p>
       <div className="db-trade-figs">
         <span><span className="db-muted">Live premium</span><b className="num">{n2(live)}</b></span>
         <span><span className="db-muted">P&amp;L</span><b className={`num ${tone(pnl)}`}>{signed(2)(pnl)} · {signed(1)(pct)}%</b></span>
-        <span><span className="db-muted">High / low</span><b className="num">{n2(t.high)} / {n2(t.low)}</b></span>
       </div>
       <div className="db-bar" role="img" aria-label={`Premium ${at.toFixed(0)}% of the way from stop to target`}>
         <span className="db-bar-fill" style={{ width: `${at}%` }} />
       </div>
-      <div className="db-bar-labels"><span className="down">Stop {n2(t.stop)}</span><span className="up">Target {n2(t.target)}</span></div>
+      <div className="db-bar-labels"><span className="down">Stop {n2(t.stop)} ({signed(0)(stopPct)}%)</span><span className="up">Target {n2(t.target)} ({signed(0)(tgtPct)}%)</span></div>
+      <dl className="db-trade-grid">
+        <div><dt>ATM at entry</dt><dd className="num">{n0(t.instrument.strike)}{t.spotAtEntry ? ` (spot ${n0(t.spotAtEntry)})` : ''}</dd></div>
+        <div><dt>Entry</dt><dd className="num">{n2(t.entryPrice)} at {t.entryTime}</dd></div>
+        <div><dt>Invested</dt><dd className="num">₹{n0(t.invested ?? t.entryPrice * t.qty)}</dd></div>
+        <div><dt>Highest / lowest</dt><dd className="num">{n2(t.high)} / {n2(t.low)}</dd></div>
+        <div><dt>Time in trade</dt><dd className="num">{minutesSince(t.entryTime, now)} min</dd></div>
+        <div><dt>Exit by</dt><dd>3:15 PM</dd></div>
+      </dl>
       <button className="btn" disabled={busy} onClick={onExit}>Exit position</button>
-    </div>
+    </>
   );
 }
 
-export function PaperCard({ auto, positions, symbol, ltp, onAuto, onBracket, onExit, onExitManual, busy, notice }: {
-  auto: AutoStatus | null; positions: Position[]; symbol: string; ltp: Record<number, number>;
-  onAuto: (on: boolean) => void; onBracket: (id: number) => void; onExit: (id: string) => void; onExitManual: (id: number) => void;
-  busy: boolean; notice: string;
+export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, children }: {
+  account: 'tradingHub' | 'megabull'; auto: AutoStatus | null; symbol: string; ltp: Record<number, number>; now: Date;
+  busy: boolean; onExit: (id: string) => void; children?: ReactNode;
 }) {
-  const open = (auto?.open ?? []).filter((t) => t.symbol === symbol);
+  const [orders, setOrders] = useState<Record<string, unknown>[] | null>(null);
+  const [ordersError, setOrdersError] = useState('');
+  const a = auto?.accounts[account];
+  const open = (auto?.open ?? []).filter((t) => t.account === account && t.symbol === symbol);
+  const [title, sub] = ACCOUNT_TITLE[account];
+  const status = !auto ? 'Not running' : !a?.available ? 'Auto off for this account' : a.halted ? 'Stopped today' : open.length ? 'Open'
+    : auto.auto ? 'Auto ON · waiting' : 'Auto OFF';
+  const statusTone: Tone = open.length ? 'up' : a?.halted ? 'down' : auto?.auto && a?.available ? 'accent' : 'neutral';
+  const toggleOrders = async () => {
+    if (orders) {
+      setOrders(null);
+      return;
+    }
+    try {
+      setOrders((await fetchAccountOrders(account)).rows);
+      setOrdersError('');
+    } catch (e) {
+      setOrdersError((e as Error).message);
+    }
+  };
   return (
-    <section className="card">
-      <div className="card-head">
-        <h3 className="card-title">Paper trade · {NAMES[symbol]}</h3>
-        <span className="db-head-end">
-          {notice && <span className="db-muted">{notice}</span>}
-          {auto && (
-            <button className={`btn ${auto.auto ? 'primary' : ''}`} disabled={busy} onClick={() => onAuto(!auto.auto)}
-              title="Kill switch: with Auto OFF the program sends no orders">
-              Auto {auto.auto ? 'ON' : 'OFF'}
-            </button>
-          )}
-        </span>
-      </div>
-      {auto && (
-        <p className="db-rule-note">
-          {(['tradingHub', 'megabull'] as const).map((k) => {
-            const a = auto.accounts[k];
-            if (!a) return null;
-            return (
-              <span key={k} className="db-acct">
-                <b>{a.name}</b>: {a.tradesToday} / {a.maxTrades} trades, net {signed(0)(a.netToday)} (limit −{n0(a.maxLoss)})
-                {!a.available && <span className="warn"> · {a.message}</span>}
-                {a.halted && <span className="down"> · stopped: {a.halted}</span>}
-              </span>
-            );
-          })}
-        </p>
-      )}
+    <section className="card db-account">
+      <div className="card-head"><h3 className="card-title">{title}</h3><Pill tone={statusTone}>{status}</Pill></div>
+      <p className="db-rule-note">{sub}{a && !a.available && a.message ? ` · ${a.message}` : ''}{a?.halted ? ` · ${a.halted}` : ''}</p>
       {open.map((t) => (
-        <TradeRow key={t.id} t={t} ltp={typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined} busy={busy} onExit={() => onExit(t.id)} />
+        <OpenTrade key={t.id} t={t} now={now} busy={busy} onExit={() => onExit(t.id)}
+          ltp={typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined} />
       ))}
+      {!open.length && (
+        <p className="db-muted db-wait">No open trade. Waiting for a GO.<br />Today: {a?.tradesToday ?? 0} trades · P&amp;L ₹{signed(0)(a?.netToday ?? 0)}</p>
+      )}
+      {children}
+      <span className="db-actions">
+        <button className="btn ghost" onClick={() => void toggleOrders()}>{orders ? 'Hide order book' : 'Open order book'}</button>
+      </span>
+      {ordersError && <p className="db-rule-note warn">{ordersError}</p>}
+      {orders && (orders.length ? (
+        <div className="db-scroll">
+          <table className="t">
+            <thead><tr><th>Order</th><th>Instrument</th><th>Side</th><th>Type</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead>
+            <tbody>
+              {orders.map((o, i) => (
+                <tr key={String(o.id ?? o.orderId ?? i)}>
+                  <td>{String(o.id ?? o.orderId ?? '')}</td><td>{String(o.name ?? o.instrumentToken ?? '')}</td><td>{String(o.side ?? o.type ?? '')}</td>
+                  <td>{String(o.order_type ?? o.orderType ?? '')}</td><td className="num">{String(o.qty ?? '')}</td>
+                  <td className="num">{String(o.avg_price ?? o.avgPrice ?? o.price ?? '—')}</td><td>{String(o.status ?? '')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="db-muted">No orders today.</p>)}
+    </section>
+  );
+}
+
+/** Hand-placed Trading Hub positions on this index: "Place stop + target together". */
+export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual }: {
+  positions: Position[]; ltp: Record<number, number>; busy: boolean; onBracket: (id: number) => void; onExitManual: (id: number) => void;
+}) {
+  return (
+    <>
       {positions.map((p) => (
         <div key={p.security_id} className="db-trade">
-          <div className="db-trade-head"><span className="db-muted">Trading Hub · manual · {p.name} · {p.open_qty} qty · avg {n2(p.avg_buy)}</span></div>
-          <div className="db-trade-figs">
-            <span><span className="db-muted">Live premium</span><b className="num">{n2(ltp[p.security_id] ?? p.ltp)}</b></span>
-            <span><span className="db-muted">P&amp;L</span><b className={`num ${tone(p.unrealized)}`}>{signed(2)(p.unrealized)}</b></span>
-          </div>
+          <p className="db-trade-name">Manual · {p.name} · {p.open_qty} qty · avg {n2(p.avg_buy)} · live {n2(ltp[p.security_id] ?? p.ltp)}</p>
           <span className="db-actions">
             <button className="btn primary" disabled={busy} onClick={() => onBracket(p.security_id)}
-              title="Stop at −15% (SL-M, pending) and target at +20% (watched), as in the Trading Hub rule">Place stop + target together</button>
+              title="Stop at −15% (pending SL-M) and target at +20% (watched), as in the Trading Hub rule">Place stop + target together</button>
             <button className="btn" disabled={busy} onClick={() => onExitManual(p.security_id)}>Exit position</button>
           </span>
         </div>
       ))}
-      {!open.length && !positions.length && <p className="db-muted">No open paper position on {NAMES[symbol]}.</p>}
+    </>
+  );
+}
+
+export function AutoSwitch({ auto, busy, notice, onAuto }: { auto: AutoStatus | null; busy: boolean; notice: string; onAuto: (on: boolean) => void }) {
+  if (!auto) return null;
+  const lim = auto.accounts.tradingHub ?? auto.accounts.megabull;
+  return (
+    <span className="db-head-end">
+      {notice && <span className="db-muted">{notice}</span>}
+      {lim && <span className="db-muted">Limits per account: {lim.maxTrades} trades · loss ₹{n0(lim.maxLoss)} a day</span>}
+      <button className={`btn ${auto.auto ? 'primary' : ''}`} disabled={busy} onClick={() => onAuto(!auto.auto)}
+        title="Kill switch: with Auto OFF the program sends no orders">Auto {auto.auto ? 'ON' : 'OFF'}</button>
+    </span>
+  );
+}
+
+export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow: SignalsState['shadow'] }) {
+  const rows = auto?.today ?? [];
+  const net = (k: 'tradingHub' | 'megabull') => rows.filter((t) => t.account === k).reduce((s, t) => s + (t.status === 'closed' ? t.netPnl ?? 0 : t.pnl ?? 0), 0);
+  const mb = net('megabull');
+  const th = net('tradingHub');
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h3 className="card-title">Today&apos;s paper trades · both accounts</h3>
+        <span className="db-muted">Day P&amp;L: <b className={tone(mb + th)}>{signed(2)(mb + th)}</b> (MegaBull {signed(2)(mb)} · Trading Hub {signed(2)(th)})</span>
+      </div>
+      {!rows.length ? <p className="db-muted">No paper trades today.</p> : (
+        <div className="db-scroll">
+          <table className="t">
+            <thead><tr><th>Account</th><th>Rule</th><th>Instrument</th><th>Entry time</th><th>Entry</th><th>Exit</th><th>Exit reason</th><th>P&amp;L (₹)</th><th>P&amp;L %</th></tr></thead>
+            <tbody>
+              {rows.map((t) => {
+                const pnl = t.status === 'closed' ? t.grossPnl ?? 0 : t.pnl ?? 0;
+                const exit = t.status === 'closed' ? t.exitPrice : null;
+                const pct = t.entryPrice ? (((exit ?? t.ltp ?? t.entryPrice) / t.entryPrice) - 1) * 100 : 0;
+                return (
+                  <tr key={t.id}>
+                    <td>{t.account === 'megabull' ? 'MegaBull' : 'Trading Hub'}</td>
+                    <td>{t.rule}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
+                    <td>{t.instrument.name}</td><td className="num">{t.entryTime}</td><td className="num">{n2(t.entryPrice)}</td>
+                    <td className="num">{exit != null ? n2(exit) : 'open'}</td><td>{t.exitReason ?? '—'}</td>
+                    <td className={`num ${tone(pnl)}`}>{signed(2)(pnl)}</td><td className={`num ${tone(pct)}`}>{signed(1)(pct)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="card-foot">
+        Shadow log today: {shadow ? `${shadow.skipped} skipped setups, ${shadow.wouldHaveWorked} would have worked` : '—'} ({shadowCsvNote}).
+        Shadow rows are record only: not in the P&amp;L.
+      </p>
     </section>
   );
 }

@@ -10,7 +10,7 @@ Evaluated on every completed 5-minute candle (09:15-aligned, IST). Put side show
 |---|---|---|---|
 | supertrend | SuperTrend (10, 2) | red (down) and close below the line | green (up) and close above the line |
 | trendingOi | Trending OI, last 3 completed 5-min rows, **and** Dhan OI & OI Change Live agrees | every row Strength % ≤ −50, and the OI & OI Change verdict is Bearish | every row ≥ +50, verdict Bullish |
-| delta | cumulative delta agrees | not readable yet: **not checked**, does not block, trade tagged "delta not checked" (owner, 23-Oct) | same |
+| delta | cumulative delta agrees | estimated from Dhan ticks (Order flow page); **not checked** until the estimate matches Dext most of the time; does not block, trade tagged "delta not checked" | same |
 
 Sensibull OI Change Live is **record only** (shown and logged, never a tick). The "Agreement" row compares Dhan with Sensibull for display only.
 
@@ -41,4 +41,9 @@ One position per index on this account; no new entries after 14:30; market close
 - Signal exit on a completed 5-min candle: Trending OI strength back inside −50% (put: > −50; call: < +50), or a candle
   closing beyond SuperTrend (put: close above the line; call: close below it).
 - Exit by 15:15. Highest and lowest premium recorded.
+- Shadow after every exit (record only, no order): the same option's premium until 15:30: highest after exit and its
+  time, lowest, premium and spot at 15:15, SuperTrend still on the trade's side at 15:15 (Y/N), missed profit
+  = (highest after exit − exit) ÷ entry. Trade log columns; owner's brief 23-Oct evening.
+- Skipped setups (Trending OI or SuperTrend fired, but a must-have was missed or two or more other checks were off) go to
+  `shadow_skips.csv` with the ATM option that would have been bought, tracked to 15:15 (target / stop first, Y / N).
 - Volume Oscillator, VIX and PCR are recorded only.

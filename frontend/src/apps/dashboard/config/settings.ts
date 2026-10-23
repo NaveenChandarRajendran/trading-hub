@@ -7,6 +7,7 @@ export const INTERVALS = [
   { value: '3', label: '3m' },
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
+  { value: '30', label: '30m' },
 ] as const;
 export const DEFAULT_INTERVAL = 5;
 export const REFRESH_OPTIONS = [30, 60, 120, 300] as const; // seconds; summary auto-refresh (Settings)
@@ -33,7 +34,8 @@ export interface IndicatorToggles {
   supertrend: boolean;
   bollinger: boolean;
   vwap: boolean;
+  delta: boolean; // estimated cumulative delta of the near-month future, in its own pane under RSI
 }
-export const DEFAULT_INDICATORS: IndicatorToggles = { rsi: true, ema: true, volume: true, supertrend: true, bollinger: true, vwap: true };
+export const DEFAULT_INDICATORS: IndicatorToggles = { rsi: true, ema: true, volume: true, supertrend: true, bollinger: true, vwap: true, delta: true };
 /** Signal state (rule cards, OI section, paper card) refresh. The watcher itself runs every 5 minutes on the backend. */
 export const SIGNALS_REFRESH_SEC = 20;

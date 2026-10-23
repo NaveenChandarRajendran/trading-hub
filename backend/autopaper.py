@@ -39,7 +39,18 @@ TRADE_LOG_FIELDS = [
     "date", "index", "account", "rule", "grade", "side", "instrument", "entry_time", "entry_price", "qty", "stop", "target",
     "exit_time", "exit_price", "exit_reason", "gross_pnl", "charges", "net_pnl", "highest_premium", "lowest_premium",
     "rsi_at_entry", "vix", "pcr", "trending_oi_strength", "delta_status", "checks",
+    # shadow after the exit (record only, filled at the end of the day)
+    "highest_premium_after_exit", "time_of_high_after_exit", "lowest_premium_after_exit", "premium_at_1515",
+    "spot_at_1515", "trend_still_held_at_1515", "missed_profit_pct_of_entry",
 ]
+SHADOW_SKIP_FIELDS = [
+    "date", "index", "candle_time", "setup", "rule", "filters_missed", "why_skipped", "instrument", "reference_premium",
+    "stop_level", "target_level", "highest_premium", "time_of_high", "lowest_premium", "time_of_low", "target_reached",
+    "target_time", "stop_hit_first", "stop_time", "what_happened_next", "would_it_have_worked", "skip_verdict",
+]
+SHADOW_EXIT_UNTIL = "15:30"
+SHADOW_SKIP_UNTIL = "15:15"
+SKIP_REPEAT_MINUTES = 30  # one skip row per rule / index / side within this window
 
 
 def floor_tick(p):
@@ -234,6 +245,7 @@ class AutoTrader:
         self._thread = None
         self._last_stop_poll = {}
         self._watch = {}  # symbol -> neighbour ids for the Trading Hub account
+        self._last_state = {}  # symbol -> the latest 5-minute state (spot and SuperTrend at 15:15 for the shadows)
         self.state = self._load()
 
     # ---------- persistence ----------
@@ -247,6 +259,8 @@ class AutoTrader:
         s.setdefault("trades", [])
         s.setdefault("halted", {})
         s.setdefault("unknown", {})
+        s.setdefault("shadows", [])
+        s.setdefault("finished", "")
         return s
 
     def _save(self):
@@ -264,7 +278,7 @@ class AutoTrader:
             still_open = [t for t in self.state["trades"] if t["status"] == "open"]
             for t in still_open:  # intraday only: anything left from an earlier day was squared off by the platform
                 t.update(status="closed", exitReason="Time", exitTime=None, exitPrice=None)
-            self.state.update(day=today, trades=[], halted={}, unknown={})
+            self.state.update(day=today, trades=[], halted={}, unknown={}, shadows=[], finished="")
             self._save()
 
     # ---------- switches ----------
@@ -355,7 +369,7 @@ class AutoTrader:
             self._watch[symbol] = acc.neighbours(symbol, exp, spot)
             ids = [i for v in self._watch.values() for i in v]
             open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
-            acc.paper.watch(ids + open_ids)
+            acc.paper.watch(ids + open_ids + self.shadow_ids())
         except Exception as e:
             log.warning("could not subscribe ATM options for %s: %s", symbol, e)
 
@@ -400,7 +414,7 @@ class AutoTrader:
             exp = self._try(account, "expiry list", lambda: self._expiry(acc, symbol))
             inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, state["spot"], side))
             if account == TH:
-                acc.paper.watch([i for v in self._watch.values() for i in v] + [inst["id"]])
+                acc.paper.watch([i for v in self._watch.values() for i in v] + [inst["id"]] + self.shadow_ids())
                 for _ in range(30):  # up to 15 s for the first price
                     if acc.ready(inst):
                         break
@@ -423,6 +437,7 @@ class AutoTrader:
                 "qty": qty, "lots": lots, "entryOrderId": entry_id, "entryTime": self.clock().strftime("%H:%M:%S"),
                 "entryPrice": fill, "stop": stop, "target": target, "stopOrderId": None, "status": "open",
                 "high": fill, "low": fill, "signalTime": result.get("at"),
+                "spotAtEntry": state.get("spot"), "invested": round(fill * qty, 2),
                 "rsi": state["ind"]["rsi"][state["i"]], "vix": state.get("vix"), "pcr": state.get("pcr"),
                 "toiStrength": (state.get("toi") or [{}])[0].get("strengthPct"),
                 "deltaStatus": "not checked", "tags": result.get("tags", []),
@@ -453,8 +468,190 @@ class AutoTrader:
                 self._save()
 
     # ---------- exits ----------
+    # ---------- shadow logging (record only: never places or changes an order) ----------
+    def shadow_ids(self):
+        return [sh["dhanId"] for sh in self.state.get("shadows", []) if sh.get("dhanId") and not sh.get("done")]
+
+    def _dhan_option(self, symbol, expiry, strike, side):
+        """The Dhan security ID of an option (shadows always read Dhan's live premium, whichever account traded)."""
+        acc = self.accounts.get(TH)
+        if not acc:
+            return None
+        for r in acc.paper.instrument_chain(symbol, expiry):
+            if abs(r["strike"] - strike) < 1e-6 and r[side.lower()]:
+                return r[side.lower()]["securityId"]
+        return None
+
+    def _premium(self, dhan_id):
+        acc = self.accounts.get(TH)
+        try:
+            return acc.paper.ltp(dhan_id) if acc and dhan_id else None
+        except Exception:
+            return None
+
+    def _start_exit_shadow(self, trade):
+        inst = trade["instrument"]
+        dhan_id = inst["id"] if trade["account"] == TH else self._dhan_option(trade["symbol"], inst["expiry"], inst["strike"], inst["optionType"])
+        with self.lock:
+            self.state["shadows"].append({
+                "kind": "exit", "tradeId": trade["id"], "symbol": trade["symbol"], "side": trade["side"], "dhanId": dhan_id,
+                "high": None, "highTime": None, "low": None, "at1515": None, "spot1515": None, "trendHeld": None,
+                "until": SHADOW_EXIT_UNTIL, "done": False,
+            })
+            self._save()
+        self._refresh_watch()
+
+    def add_skip(self, result, state, missed, why):
+        """A setup the rule skipped (docs: owner's brief 7b). Tracks the ATM option that WOULD have been bought."""
+        symbol, side, rule = result["symbol"], result["side"], result.get("setup") or "Trend"
+        now = self.clock()
+        self._roll_day()
+        if now.strftime("%H:%M") >= SHADOW_SKIP_UNTIL:
+            return
+        for sh in self.state["shadows"]:
+            if sh["kind"] == "skip" and sh["rule"] == rule and sh["symbol"] == symbol and sh["side"] == side \
+                    and (now - datetime.fromisoformat(sh["createdAt"])).total_seconds() < SKIP_REPEAT_MINUTES * 60:
+                return
+        acc = self.accounts.get(TH)
+        if not acc:
+            return
+        try:
+            exp = self._expiry(acc, symbol)
+            inst = acc.instrument(symbol, exp, state["spot"], side)
+        except Exception as e:
+            log.warning("shadow skip %s %s: no instrument: %s", symbol, side, e)
+            inst = None
+        pct = self.cfg[MB if result["rule"] == "megabull" else TH]
+        with self.lock:
+            self.state["shadows"].append({
+                "kind": "skip", "createdAt": now.isoformat(), "symbol": symbol, "side": side, "rule": rule,
+                "candle": result.get("at"), "missed": missed, "why": why, "dhanId": inst["id"] if inst else None,
+                "instrument": inst["name"] if inst else "", "stopPct": pct["stopPct"], "targetPct": pct["targetPct"],
+                "ref": None, "high": None, "highTime": None, "low": None, "lowTime": None, "targetTime": None, "stopTime": None,
+                "until": SHADOW_SKIP_UNTIL, "done": False,
+            })
+            self._save()
+        self._refresh_watch()
+
+    def _refresh_watch(self):
+        acc = self.accounts.get(TH)
+        if acc:
+            ids = [i for v in self._watch.values() for i in v]
+            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
+            try:
+                acc.paper.watch(ids + open_ids + self.shadow_ids())
+            except Exception:
+                pass
+
+    def _shadow_tick(self, now):
+        hm = now.strftime("%H:%M:%S")
+        for sh in self.state.get("shadows", []):
+            if sh["done"]:
+                continue
+            if hm >= sh["until"] + ":00":
+                sh["done"] = True
+                continue
+            p = self._premium(sh["dhanId"])
+            if not p:
+                continue
+            t = now.strftime("%H:%M")
+            if sh["kind"] == "skip" and sh["ref"] is None:
+                sh["ref"] = p  # the premium the entry would have paid (first price after the next candle opened)
+                sh["stopLevel"] = floor_tick(p * (1 - sh["stopPct"] / 100))
+                sh["targetLevel"] = ceil_tick(p * (1 + sh["targetPct"] / 100))
+            if sh["high"] is None or p > sh["high"]:
+                sh["high"], sh["highTime"] = p, t
+            if sh["low"] is None or p < sh["low"]:
+                sh["low"], sh["lowTime"] = p, t
+            if sh["kind"] == "skip":
+                if sh["targetTime"] is None and sh["stopTime"] is None:
+                    if p >= sh["targetLevel"]:
+                        sh["targetTime"] = t
+                    elif p <= sh["stopLevel"]:
+                        sh["stopTime"] = t
+            if sh["kind"] == "exit" and sh["at1515"] is None and hm >= "15:15:00":
+                sh["at1515"] = p
+                st = self._last_state.get(sh["symbol"])
+                if st:
+                    sh["spot1515"] = st.get("spot")
+                    d = st["ind"]["st_dir"][st["i"]]
+                    sh["trendHeld"] = "Y" if (d == 1 and sh["side"] == "PE") or (d == -1 and sh["side"] == "CE") else "N"
+
+    def shadow_summary(self):
+        skips = [sh for sh in self.state.get("shadows", []) if sh["kind"] == "skip"]
+        worked = sum(1 for sh in skips if self._skip_verdict(sh)[0] == "Y")
+        return {"skipped": len(skips), "wouldHaveWorked": worked}
+
+    @staticmethod
+    def _skip_verdict(sh):
+        if sh.get("ref") is None:
+            return "Unclear", "Unclear"
+        if sh.get("targetTime"):
+            return "Y", "Wrong"
+        return "N", "Right"
+
+    def finish_day(self):
+        """After 15:30: shadow_skips CSV rows and the post-exit columns in today's trade log rows. Once per day."""
+        self._roll_day()
+        if self.state["finished"] == self.state["day"]:
+            return
+        day = self.state["day"]
+        rows = []
+        for sh in [x for x in self.state["shadows"] if x["kind"] == "skip"]:
+            worked, verdict = self._skip_verdict(sh)
+            if sh.get("ref") is None:
+                nxt = "No premium data for the option."
+            else:
+                pct = lambda v: f"{(v / sh['ref'] - 1) * 100:+.1f}%"  # noqa: E731
+                nxt = (f"High {sh['high']} at {sh['highTime']} ({pct(sh['high'])}), low {sh['low']} at {sh['lowTime']} ({pct(sh['low'])}); "
+                       + (f"target first at {sh['targetTime']}" if sh["targetTime"] else f"stop first at {sh['stopTime']}" if sh["stopTime"] else "neither by 15:15"))
+            rows.append({
+                "date": day, "index": sh["symbol"], "candle_time": sh["candle"], "setup": "call" if sh["side"] == "CE" else "put",
+                "rule": sh["rule"], "filters_missed": sh["missed"], "why_skipped": sh["why"], "instrument": sh["instrument"],
+                "reference_premium": sh.get("ref"), "stop_level": sh.get("stopLevel"), "target_level": sh.get("targetLevel"),
+                "highest_premium": sh["high"], "time_of_high": sh["highTime"], "lowest_premium": sh["low"], "time_of_low": sh["lowTime"],
+                "target_reached": "Y" if sh["targetTime"] else "N", "target_time": sh["targetTime"],
+                "stop_hit_first": "Y" if sh["stopTime"] else "N", "stop_time": sh["stopTime"],
+                "what_happened_next": nxt, "would_it_have_worked": worked, "skip_verdict": verdict,
+            })
+        if rows:
+            self._append_csv(os.path.join(self.cfg["logDir"], "shadow_skips.csv"), SHADOW_SKIP_FIELDS, rows)
+        self._rewrite_trade_log()
+        self.state["finished"] = day
+        self._save()
+
+    def _append_csv(self, path, fields, rows):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            new = not os.path.exists(path)
+            with open(path, "a", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                if new:
+                    w.writeheader()
+                w.writerows(rows)
+        except OSError as e:
+            self.alert("log", f"Could not write {path}: {e}")
+
+    def _rewrite_trade_log(self):
+        """Today's rows get the shadow-after-exit columns (the rows of other days are kept as they are)."""
+        path = os.path.join(self.cfg["logDir"], "trade_log.csv")
+        try:
+            old = list(csv.DictReader(open(path, encoding="utf-8"))) if os.path.exists(path) else []
+        except OSError:
+            return
+        keep = [r for r in old if r.get("date") != self.state["day"]]
+        today = [self._log_row(t) for t in self.state["trades"] if t["status"] == "closed"]
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=TRADE_LOG_FIELDS, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(keep + today)
+        except OSError as e:
+            self.alert("log", f"Could not update the trade log ({path}): {e}")
+
     def on_candle(self, symbol, state):
         """Signal exit check on a completed 5-minute candle (Trading Hub rule only)."""
+        self._last_state[symbol] = state
         for t in list(self.state["trades"]):
             if t["status"] == "open" and t["symbol"] == symbol and t["account"] == TH:
                 why = trading_hub_exit(state, t["side"])
@@ -507,11 +704,16 @@ class AutoTrader:
             self._save()
         self._write_log(trade)
         self.on_order(trade, f"exit {reason}")
+        try:
+            self._start_exit_shadow(trade)
+        except Exception:
+            log.exception("could not start the post-exit shadow")
 
     def tick(self):
         """Every ~2 s: highest / lowest premium, target, stop fills, the time exit."""
         now = self.clock()
         self._roll_day()
+        self._shadow_tick(now)
         cutoff = datetime.strptime(self.cfg.get("timeExit", "15:14"), "%H:%M").time()
         for t in [t for t in self.state["trades"] if t["status"] == "open" and not t.get("exiting")]:
             acc = self.accounts[t["account"]]
@@ -579,6 +781,7 @@ class AutoTrader:
             "entryOrderId": None, "entryTime": self.clock().strftime("%H:%M:%S"), "entryPrice": round(fill, 2),
             "stop": floor_tick(fill * (1 - sp / 100)), "target": ceil_tick(fill * (1 + tp / 100)), "stopOrderId": None,
             "status": "open", "high": fill, "low": fill, "deltaStatus": "not checked", "tags": ["manual"], "checks": {},
+            "spotAtEntry": None, "invested": round(fill * qty, 2),
         }
         trade["stopOrderId"] = acc.stop(inst, lots, qty, trade["stop"])
         with self.lock:
@@ -587,6 +790,18 @@ class AutoTrader:
         self.on_order(trade, "bracket")
         return self._public(trade)
 
+    def account_orders(self, account):
+        """That account's orders today (the "Open order book" button). MegaBull's come from its API."""
+        acc = self.accounts.get(account)
+        if not acc:
+            raise AccountError("Unknown account")
+        if account == MB:
+            ok, why = acc.available()
+            if not ok:
+                raise AccountError(why)
+            return acc.client.orders()
+        return acc.paper.orders()
+
     def exit_trade(self, trade_id):
         t = next((t for t in self.state["trades"] if t["id"] == trade_id and t["status"] == "open"), None)
         if not t:
@@ -594,9 +809,12 @@ class AutoTrader:
         self._exit(t, "Manual")
 
     # ---------- trade log ----------
-    def _write_log(self, t):
-        path = os.path.join(self.cfg["logDir"], "trade_log.csv")
-        row = {
+    def _log_row(self, t):
+        sh = next((x for x in self.state.get("shadows", []) if x["kind"] == "exit" and x.get("tradeId") == t["id"]), {})
+        missed = None
+        if sh.get("high") is not None and t.get("exitPrice") is not None and t["entryPrice"]:
+            missed = round((sh["high"] - t["exitPrice"]) / t["entryPrice"] * 100, 2)
+        return {
             "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]], "rule": t["rule"],
             "grade": t["grade"], "side": t["side"], "instrument": t["instrument"]["name"], "entry_time": t["entryTime"],
             "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"],
@@ -607,14 +825,10 @@ class AutoTrader:
             "pcr": None if t.get("pcr") is None else round(t["pcr"], 2), "trending_oi_strength": t.get("toiStrength"),
             "delta_status": t.get("deltaStatus"),
             "checks": "; ".join(f"{k}={'true' if v else 'false'}" for k, v in (t.get("checks") or {}).items()),
+            "highest_premium_after_exit": sh.get("high"), "time_of_high_after_exit": sh.get("highTime"),
+            "lowest_premium_after_exit": sh.get("low"), "premium_at_1515": sh.get("at1515"), "spot_at_1515": sh.get("spot1515"),
+            "trend_still_held_at_1515": sh.get("trendHeld"), "missed_profit_pct_of_entry": missed,
         }
-        try:
-            os.makedirs(self.cfg["logDir"], exist_ok=True)
-            new = not os.path.exists(path)
-            with open(path, "a", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=TRADE_LOG_FIELDS)
-                if new:
-                    w.writeheader()
-                w.writerow(row)
-        except OSError as e:
-            self.alert("log", f"Could not write the trade log ({path}): {e}")
+
+    def _write_log(self, t):
+        self._append_csv(os.path.join(self.cfg["logDir"], "trade_log.csv"), TRADE_LOG_FIELDS, [self._log_row(t)])

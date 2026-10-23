@@ -197,3 +197,53 @@ def test_failed_entry_halts_the_account(tmp_path):
 
 def test_ticks():
     assert floor_tick(85.0399) == 85.0 and ceil_tick(120.01) == 120.05 and floor_tick(84.15) == 84.15
+
+
+def test_shadow_after_target_exit_records_the_high_and_fills_the_trade_log(tmp_path):
+    clock = Clock()
+    t, acc, _ = make(tmp_path, clock)
+    t.set_auto(True)
+    t.on_signal(GO, STATE)
+    wait_idle(t)
+    acc.ltp_value = 121.0
+    t.tick()  # target exit at 121
+    wait_idle(t)
+    clock.set("11:00")
+    acc.ltp_value = 140.0
+    t.tick()  # after the exit the premium keeps rising: recorded, no order
+    sent = list(acc.sent)
+    t.on_candle("BANKNIFTY", {"spot": 54000.0, "i": 0, "ind": {"st_dir": [1]}})
+    clock.set("15:16")
+    acc.ltp_value = 130.0
+    t.tick()
+    assert acc.sent == sent  # shadow logging never sends an order
+    clock.set("15:31")
+    t.tick()
+    t.finish_day()
+    rows = list(csv.DictReader(open(os.path.join(str(tmp_path), "trade_log.csv"))))
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["highest_premium_after_exit"] == "140.0" and r["time_of_high_after_exit"] == "11:00"
+    assert r["premium_at_1515"] == "130.0" and r["trend_still_held_at_1515"] == "Y"  # put, SuperTrend still red
+    assert r["missed_profit_pct_of_entry"] == "19.0"  # (140 - 121) / 100
+
+
+def test_skipped_setup_would_have_worked(tmp_path):
+    clock = Clock()
+    t, acc, _ = make(tmp_path, clock)
+    acc.instrument_chain = lambda s, e: []
+    skip = {**GO, "go": False, "grade": None, "at": "10:00"}
+    t.add_skip(skip, STATE, "RSI 14", "Must-have missed")
+    t.add_skip(skip, STATE, "RSI 14", "Must-have missed")  # same setup within 30 min: one row
+    assert len([s for s in t.state["shadows"] if s["kind"] == "skip"]) == 1
+    acc.ltp_value = 100.0
+    t.tick()  # reference premium 100: stop 85, target 120
+    clock.set("10:40")
+    acc.ltp_value = 121.0
+    t.tick()
+    clock.set("15:31")
+    t.tick()
+    t.finish_day()
+    rows = list(csv.DictReader(open(os.path.join(str(tmp_path), "shadow_skips.csv"))))
+    assert rows[0]["would_it_have_worked"] == "Y" and rows[0]["skip_verdict"] == "Wrong" and rows[0]["target_time"] == "10:40"
+    assert t.shadow_summary() == {"skipped": 1, "wouldHaveWorked": 1}

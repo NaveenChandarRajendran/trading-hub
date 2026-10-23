@@ -18,6 +18,7 @@ Endpoints:
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
     /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
     /api/signals/*, /api/autopaper/*            (signal watcher + auto PAPER trading: see sig_service.py, autopaper.py)
+    /api/orderflow, /api/orderflow/dext         (estimated delta of the index futures: see orderflow.py)
 
 Storage: set DATABASE_URL (e.g. postgresql://USER:PASSWORD@localhost:5432/algo_trading) to keep every snapshot in
 Postgres. Without it the backend falls back to JSON files in ./data.
@@ -40,8 +41,10 @@ from pydantic import BaseModel
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import autopaper
+import orderflow
 import dashboard_api
 import paper_api
+import sig_rules
 import sig_service
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
@@ -309,6 +312,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
 
 def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_body, paper):
     """Signal watcher + auto PAPER trader (Trading Hub paper account; MegaBull paper API when enabled)."""
+    sig_rules.configure(cfg.get("rules", {}))
     trader = None
     svc_ref = {}
     alert = lambda kind, msg: svc_ref["svc"].alert(kind, msg)  # noqa: E731
@@ -320,8 +324,12 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
                                               mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2))]
         trader = autopaper.AutoTrader(cfg, accounts, alert=alert, on_order=on_order,
                                       state_path=os.path.join("data", "autopaper_state.json"))
+    flow = None
+    if paper:
+        flow = orderflow.OrderFlowService(orderflow.OrderFlowStore("data"), paper.instruments.near_future)
+        paper.orderflow = flow
     sources = sig_service.MarketSources(tracker, candles, get_expiries, lot_size, trending_oi_body, trader)
-    svc = sig_service.SignalService(cfg, sources, trader)
+    svc = sig_service.SignalService(cfg, sources, trader, orderflow=flow, paper=paper)
     svc_ref["svc"] = svc
     return svc
 

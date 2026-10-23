@@ -6,6 +6,12 @@
   "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
   "tradingHub": {"enabled": true, "lots": 1, "stopPct": 15, "targetPct": 20},
   "megabull": {"enabled": false, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
+  "rules": {
+    "_note": "Owner's thresholds (23-Oct). pivotRoom and wallRoom are guesses: change them here.",
+    "trendingOiStrength": 50, "trendingOiRows": 3, "vixMax": 14, "pcr": 0.9, "rsi4Pillar": 45,
+    "pivotRoom": {"NIFTY": 50, "BANKNIFTY": 100}, "wallRoom": {"NIFTY": 50, "BANKNIFTY": 200}
+  },
+  "orderFlow": {"useEstimatedDelta": false, "deltaJump": {"NIFTY": 10000, "BANKNIFTY": 5000}},
   "rollOnExpiryDay": true,
   "timeExit": "15:14",
   "evaluateAfterCloseSeconds": 35

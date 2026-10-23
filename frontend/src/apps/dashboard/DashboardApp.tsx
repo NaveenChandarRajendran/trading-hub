@@ -19,14 +19,16 @@ import { minutesToExit } from './logic/signals';
 import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
 import { PriceChart } from './PriceChart';
-import { DayLevels, OiViewsCard, PaperCard, RuleCard, SnapshotBar, SrCard, TrendingOiCard } from './SignalPanels';
+import {
+  AccountCard, AutoSwitch, DayLevels, ManualPositions, OiViewsCard, OrderFlowCard, RuleCard, SnapshotBar, SrCard, TodayTrades, TrendingOiCard,
+} from './SignalPanels';
 import { useDashboard } from './useDashboard';
 import { useSignals } from './useSignals';
 import './dashboard.css';
 
 const INDICATORS = [
   ['supertrend', `SuperTrend ${ST_PERIOD},${ST_FACTOR}`], ['bollinger', `Bollinger ${BB_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`],
-  ['vwap', 'VWAP'], ['volume', 'Volume'], ['rsi', `RSI ${RSI_PERIOD}`],
+  ['vwap', 'VWAP'], ['volume', 'Volume'], ['rsi', `RSI ${RSI_PERIOD}`], ['delta', 'Cum. delta (est.)'],
 ] as const;
 const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]] as const;
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
@@ -154,7 +156,7 @@ export default function DashboardApp() {
           <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
         ) : (
           <PriceChart bars={d.bars} levels={sr?.levels ?? null} pivot={ctx?.pivot ?? null} resetKey={`${d.symbol}-${d.interval}`}
-            indicators={d.indicators} volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} />
+            indicators={d.indicators} volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
         )}
         <div className="db-levels">
           {sr ? (
@@ -194,9 +196,10 @@ export default function DashboardApp() {
       </section>
 
       {/* 4. rule cards */}
-      <div className="db-two">
+      <div className="db-three">
         <RuleCard r={s?.rules.megabull} fallbackName="MEGABULL RULE" />
         <RuleCard r={s?.rules.tradingHub} fallbackName="TRADING HUB RULE" />
+        <OrderFlowCard f={s?.orderFlow} symbol={d.symbol} />
       </div>
       {s && <p className="db-eval">Evaluated {s.meta.evaluatedAt} IST on the {s.meta.signalCandle ?? '—'} candle ({s.meta.source === 'watcher' ? 'signal watcher' : 'page check, no trading'}).
         {s.meta.problems.length > 0 && ` Data: ${s.meta.problems.join('; ')}`}</p>}
@@ -208,10 +211,21 @@ export default function DashboardApp() {
       </div>
       <SrCard sr={s?.sr ?? null} components={compText} />
 
-      {/* 6. paper trade card */}
-      <PaperCard auto={s?.auto ?? null} positions={s?.paperPositions ?? []} symbol={d.symbol} ltp={d.optionLtp}
-        onAuto={(on) => void sig.toggleAuto(on)} onBracket={(id) => void sig.bracket(id)} onExit={(id) => void sig.exitTrade(id)}
-        onExitManual={(id) => void paperApi.exit(id).then(() => sig.reload())} busy={sig.busy} notice={sig.notice} />
+      {/* 6. paper trading, both accounts (the owner never needs to open MegaBull) */}
+      <div className="db-section-head">
+        <h3 className="card-title">Paper trading · {d.symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty'}</h3>
+        <AutoSwitch auto={s?.auto ?? null} busy={sig.busy} notice={sig.notice} onAuto={(on) => void sig.toggleAuto(on)} />
+      </div>
+      <div className="db-two">
+        <AccountCard account="megabull" auto={s?.auto ?? null} symbol={d.symbol} ltp={d.optionLtp} now={now} busy={sig.busy}
+          onExit={(id) => void sig.exitTrade(id)} />
+        <AccountCard account="tradingHub" auto={s?.auto ?? null} symbol={d.symbol} ltp={d.optionLtp} now={now} busy={sig.busy}
+          onExit={(id) => void sig.exitTrade(id)}>
+          <ManualPositions positions={s?.paperPositions ?? []} ltp={d.optionLtp} busy={sig.busy} onBracket={(id) => void sig.bracket(id)}
+            onExitManual={(id) => void paperApi.exit(id).then(() => sig.reload())} />
+        </AccountCard>
+      </div>
+      <TodayTrades auto={s?.auto ?? null} shadow={s?.shadow ?? null} />
 
       {/* 7. snapshot log */}
       <SnapshotBar s={s?.snapshots} watcher={s?.meta.watcher} />

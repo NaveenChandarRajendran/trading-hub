@@ -32,12 +32,27 @@ MB_FIRST_TRIGGER = (9, 30)  # trigger candle starts at or after
 MB_LAST_ENTRY = (15, 0)
 MB_RSI_4P = 45.0
 MB_VIX_MAX = 14.0
-MB_PCR = 1.0
+MB_PCR = 0.9  # owner 23-Oct evening: "near 1 or above" = call side, "well below 1" = put side; 0.9 for now
 MB_RSI_DHARANI = (45.0, 55.0)  # put below the first, call above the second
 MB_PIVOT_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # room to the next pivot level (Dharani is NIFTY only)
 MB_WALL_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 200.0}  # room to the nearest OI level in the trade's direction
 
-DELTA_NOTE = "Not readable yet (Dext). Not checked; trade tagged."
+DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not checked; trade tagged."
+
+# autopaper.json "rules" -> these names (the owner's easy-to-change settings)
+SETTINGS = {
+    "trendingOiStrength": "TH_TOI_STRENGTH", "trendingOiRows": "TH_TOI_ROWS", "vixMax": "MB_VIX_MAX", "pcr": "MB_PCR",
+    "rsi4Pillar": "MB_RSI_4P", "pivotRoom": "MB_PIVOT_ROOM", "wallRoom": "MB_WALL_ROOM",
+}
+
+
+def configure(rules):
+    """Applies autopaper.json "rules" (only the names in SETTINGS; anything else is ignored)."""
+    g = globals()
+    for key, name in SETTINGS.items():
+        if key in (rules or {}):
+            v = rules[key]
+            g[name] = {**g[name], **v} if isinstance(g[name], dict) else type(g[name])(v)
 
 
 def check(id_, label, state, detail="", must=False, exempt=False):
@@ -228,8 +243,9 @@ def levels_for_trigger(state):
     return out
 
 
-def find_trigger(state, side):
+def find_trigger(state, side, supertrend_flip=False):
     """The trigger at candle i-1 (crossed a level from candle i-2) and whether candle i confirms it.
+    supertrend_flip (Dharani): a SuperTrend flip on candle i-1 to the trade's side also triggers, at the line's value.
     Returns (trigger dict | None, confirmed bool | None)."""
     bars, i = state["bars"], state["i"]
     if i < 2:
@@ -241,6 +257,11 @@ def find_trigger(state, side):
             crossed.append((lv, name))
         if side == "PE" and c2 >= lv > c1:
             crossed.append((lv, name))
+    if supertrend_flip:
+        d1, d2, line1 = _ago(state, "st_dir", 1), _ago(state, "st_dir", 2), _ago(state, "st_line", 1)
+        want = -1 if side == "CE" else 1
+        if line1 is not None and d2 is not None and d1 == want and d2 != want:
+            crossed.append((line1, "SuperTrend flip"))
     if not crossed:
         return None, None
     lv, name = max(crossed) if side == "CE" else min(crossed)  # the highest crossed (lowest for puts)
@@ -277,11 +298,12 @@ def room_check(state, side):
                  f"{room:,.0f} pts to {nxt:,.0f} {kind} (needs {need:.0f}+)")
 
 
-def flow_checks(state, side):
-    trig, confirmed = find_trigger(state, side)
+def flow_checks(state, side, supertrend_flip=False):
+    trig, confirmed = find_trigger(state, side, supertrend_flip)
     out = []
     if trig is None:
-        out.append(check("trigger", "Trigger candle (level break)", FAIL, "No close beyond pivot / prev high-low / OI R1-S1", True))
+        out.append(check("trigger", "Trigger candle (level break)", FAIL,
+                         "No close beyond pivot / prev high-low / OI R1-S1" + (" / SuperTrend flip" if supertrend_flip else ""), True))
         out.append(check("confirmation", "Confirmation candle", FAIL, "Waiting for a trigger", True))
     else:
         early = _hm_of(trig["time"]) < MB_FIRST_TRIGGER
@@ -317,7 +339,7 @@ def four_pillar_checks(state, side):
         out.append(check("pillar4", "Pillar 4: PCR", NOT_CHECKED, "PCR not available", True))
     else:
         ok = pcr >= MB_PCR if side == "CE" else pcr < MB_PCR
-        out.append(check("pillar4", "Pillar 4: PCR", PASS if ok else FAIL, f"{pcr:.2f} ({'≥' if side == 'CE' else '<'} {MB_PCR:.1f} for a {side_word(side)})", True))
+        out.append(check("pillar4", "Pillar 4: PCR", PASS if ok else FAIL, f"{pcr:.2f} ({'≥' if side == 'CE' else '<'} {MB_PCR:.2f} for a {side_word(side)})", True))
     out.append(room_check(state, side))
     return out
 
@@ -326,7 +348,7 @@ def dharani_checks(state, side):
     bars, i = state["bars"], state["i"]
     bar = bars[i]
     close = bar["close"]
-    out = flow_checks(state, side)
+    out = flow_checks(state, side, supertrend_flip=True)
     st = supertrend_check(state, side)
     st.update(id="pillar1", label="Pillar 1: SuperTrend (10, 2)")
     out.append(st)
@@ -377,6 +399,6 @@ def megabull_rule(state):
     blocked = [b for b in blocked if not b.startswith("No new entries")]  # the entry window check covers it
     return {
         "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "Dharani",
-        "account": "MegaBull paper", "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": None,
+        "account": "MegaBull paper", "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": ["delta not checked"], "at": state.get("signalTime"),
     }

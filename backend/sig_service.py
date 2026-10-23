@@ -52,6 +52,7 @@ SNAPSHOT_FIELDS = [
     "dhan_oi_verdict", "dhan_oi_average", "sensibull_verdict", "sensibull_average", "oi_agreement",
     "oi_r1", "oi_s1", "biggest_call_wall", "biggest_put_wall",
     "th_side", "th_go", "th_grade", "th_blocked", "th_checks", "mb_setup", "mb_side", "mb_go", "mb_blocked", "mb_checks",
+    "est_delta", "est_cumulative_delta", "dext_typed", "dext_match",
     "auto", "action", "note",
 ]
 
@@ -115,8 +116,9 @@ class MarketSources:
 
 
 class SignalService:
-    def __init__(self, cfg, sources, trader, clock=lambda: datetime.now(IST)):
+    def __init__(self, cfg, sources, trader, clock=lambda: datetime.now(IST), orderflow=None, paper=None):
         self.cfg, self.src, self.trader, self.clock = cfg, sources, trader, clock
+        self.orderflow, self.paper = orderflow, paper
         self.lock = threading.RLock()
         self.last = {}  # symbol -> {"at": epoch, "state": ..., "results": {...}, "problems": [...], "source": "watcher"|"page"}
         self.alerts = []  # newest last
@@ -182,6 +184,7 @@ class SignalService:
     def run_once(self):
         """One watcher cycle: both indices, both rules; snapshot rows; hand GO results to the trader."""
         self.heartbeat = self.clock()
+        self.subscribe_futures()  # the near-month future rolls the day after expiry
         for symbol in SYMBOLS:
             rec = None
             for attempt in range(3):  # Dhan's last minute can trail: retry a complete candle twice, 20 s apart
@@ -206,6 +209,9 @@ class SignalService:
                         action += f"{key}: {why or 'not sent'}; "
                     else:
                         self.skips[(key, self._skip_reason(r))] += 1
+                        setup = skipped_setup(r)
+                        if setup and not st["positions"].get(key):
+                            self.trader.add_skip(r, st, *setup)
             self.write_snapshot(symbol, rec, "5min", action.strip("; "))
 
     def _skip_reason(self, r):
@@ -268,6 +274,7 @@ class SignalService:
             "mb_blocked": "; ".join(mb.get("blocked", [])), "mb_checks": fmt_checks(mb),
             "auto": self.trader.state["auto"] if self.trader else False, "action": action, "note": note,
         }
+        row.update(self._flow_cols(symbol, st["signalTime"]))
         path = self.snapshot_path()
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -279,6 +286,22 @@ class SignalService:
                 w.writerow(row)
         except OSError as e:
             self.alert("log", f"Could not write the snapshot log ({path}): {e}")
+
+    def _flow_cols(self, symbol, candle):
+        if not self.orderflow:
+            return {}
+        try:
+            _f, bars = self.orderflow.series(symbol, 5)
+        except Exception:
+            return {}
+        b = next((x for x in bars if datetime.fromtimestamp(x["time"], IST).strftime("%H:%M") == candle), None)
+        if not b:
+            return {}
+        from orderflow import dext_match
+        typed = self.orderflow.typed(symbol, 5).get(candle)
+        m = dext_match(b["delta"], typed)
+        return {"est_delta": b["delta"], "est_cumulative_delta": b["cumulative"], "dext_typed": typed,
+                "dext_match": None if m is None else ("Y" if m else "N")}
 
     def on_order(self, trade, event):
         """Called by the trader on every order: one snapshot row for that index."""
@@ -299,6 +322,43 @@ class SignalService:
         except Exception:
             return []
         return [p for p in rows if p["open_qty"] > 0 and p.get("symbol") == symbol and p["security_id"] not in managed]
+
+    def flow_summary(self, symbol, side=None):
+        """The main page's 'Order flow, last 30 min' card: estimated delta of the last 6 completed 5-minute candles."""
+        if not self.orderflow:
+            return None
+        fut, bars = self.orderflow.series(symbol, 5)
+        if not fut:
+            return None
+        now = self.clock().timestamp()
+        done = [b for b in bars if b["time"] + 300 <= now]
+        last6 = done[-6:]
+        typed = self.orderflow.typed(symbol, 5)
+        checked = [(b, typed.get(datetime.fromtimestamp(b["time"], IST).strftime("%H:%M"))) for b in done]
+        pairs = [(b["delta"], v) for b, v in checked if v is not None]
+        cum = bars[-1]["cumulative"] if bars else 0
+        neg = sum(1 for b in last6 if b["delta"] < 0)
+        pos = sum(1 for b in last6 if b["delta"] > 0)
+        agrees = None
+        if side and last6:
+            agrees = (cum < 0 and neg > pos) if side == "PE" else (cum > 0 and pos > neg)
+        from orderflow import dext_match
+        return {
+            "future": fut["name"], "cumulative": cum, "change30": sum(b["delta"] for b in last6),
+            "last6": [{"time": datetime.fromtimestamp(b["time"], IST).strftime("%H:%M"), "delta": b["delta"]} for b in last6],
+            "negative": neg, "positive": pos, "side": side, "agrees": agrees,
+            "dext": {"typed": len(pairs), "matched": sum(1 for d, v in pairs if dext_match(d, v))},
+            "usedInRules": bool(self.cfg.get("orderFlow", {}).get("useEstimatedDelta")),
+        }
+
+    def subscribe_futures(self):
+        """Keep both index futures on the feed all session (order flow needs every tick, dashboard open or not)."""
+        if self.orderflow and self.paper:
+            try:
+                ids = [f["securityId"] for f in self.orderflow.future_ids().values()]
+                self.paper.watch(ids, group="orderflow")
+            except Exception as e:
+                log.warning("could not subscribe the index futures for order flow: %s", e)
 
     def snapshot_info(self):
         path = self.snapshot_path()
@@ -327,11 +387,16 @@ class SignalService:
             top = [(r, n) for (k, r), n in self.skips.most_common() if k == key][:3]
             if top:
                 lines.append("  Most common skip reasons: " + "; ".join(f"{r} ({n} candles)" for r, n in top))
+        if self.trader:
+            sh = self.trader.shadow_summary()
+            lines.append(f"Shadow log: {sh['skipped']} skipped setups, {sh['wouldHaveWorked']} would have worked (shadow_skips.csv).")
         return "\n".join(lines)
 
     def _end_of_day(self, now):
         if now.time() >= datetime.strptime("15:31", "%H:%M").time() and self._summary_day != now.date() and self._traded_today(now):
             self._summary_day = now.date()
+            if self.trader:
+                self.trader.finish_day()
             text = self.summary()
             self._append(os.path.join(self.cfg["logDir"], f"summary_{now.date()}.txt"), text + "\n")
             self.alert("summary", text)
@@ -364,6 +429,7 @@ class SignalService:
 
     def _loop(self):
         self.check_key_age()
+        self.subscribe_futures()
         crashes = 0
         while not self._stop.is_set():
             now = self.clock()
@@ -421,6 +487,36 @@ class ExitBody(BaseModel):
     tradeId: str
 
 
+class DextBody(BaseModel):
+    symbol: str
+    interval: int = 5
+    time: str  # candle start "HH:MM"
+    value: float | None = None
+
+
+def skipped_setup(r):
+    """(filters missed, why skipped) when a rule result is a skipped SETUP worth shadowing (owner's brief 7b), else None.
+    MegaBull: the trigger candle happened but the rule said NO GO (Grade A only, so one missed filter is a skip).
+    Trend: Trending OI or SuperTrend fired but a must-have was missed, or two or more other checks were off."""
+    if r["go"]:
+        return None
+    by = {c["id"]: c for c in r["checks"]}
+    off = [c["label"] for c in r["checks"] if c["state"] != PASS and not c.get("exempt")]
+    if r["rule"] == "megabull":
+        if by.get("trigger", {}).get("state") != PASS:
+            return None
+        return "; ".join(off) or "-", "; ".join(r["blocked"]) or ("Grade A only: " + ", ".join(off) + " missed")
+    st, toi = by.get("supertrend", {}).get("state"), by.get("trendingOi", {}).get("state")
+    if PASS not in (st, toi):
+        return None
+    if r.get("grade"):  # a valid grade blocked only by a gate (time, open position): not a skipped setup
+        return None
+    must_off = [c["label"] for c in r["checks"] if c["must"] and not c.get("exempt") and c["state"] != PASS]
+    soft_off = [c["label"] for c in r["checks"] if not c["must"] and c["state"] != PASS]
+    why = "Must-have missed" if must_off else f"{len(soft_off)} other checks off (Grade B allows one)"
+    return "; ".join(must_off + soft_off), why
+
+
 def _context_row(state):
     if not state:
         return None
@@ -453,6 +549,8 @@ def register(app, svc):
             "alerts": svc.alerts[-10:],
             "snapshots": svc.snapshot_info(),
             "paperPositions": svc.manual_positions(symbol),
+            "shadow": svc.trader.shadow_summary() if svc.trader else None,
+            "orderFlow": svc.flow_summary(symbol, (rec["results"].get("tradingHub") or {}).get("side")),
         }
         if st:
             for w in ("windows",):
@@ -468,6 +566,38 @@ def register(app, svc):
         return PlainTextResponse(open(path, encoding="utf-8").read(), media_type="text/csv",
                                  headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'})
 
+    @app.get("/api/orderflow")
+    def orderflow(symbol: str = "NIFTY", interval: int = 5):
+        symbol = symbol.upper()
+        if symbol not in SYMBOLS:
+            raise HTTPException(400, f"symbol must be one of {list(SYMBOLS)}")
+        if interval not in (1, 3, 5, 15, 30):
+            raise HTTPException(400, "interval must be 1, 3, 5, 15 or 30")
+        if not svc.orderflow:
+            raise HTTPException(503, "Order flow is not running (paper trading feed is off).")
+        from orderflow import dext_match
+        fut, bars = svc.orderflow.series(symbol, interval)
+        typed = svc.orderflow.typed(symbol, interval)
+        jump = svc.cfg.get("orderFlow", {}).get("deltaJump", {}).get(symbol)
+        rows = []
+        for b in bars:
+            hhmm = datetime.fromtimestamp(b["time"], IST).strftime("%H:%M")
+            v = typed.get(hhmm)
+            rows.append({**b, "hhmm": hhmm, "dext": v, "match": dext_match(b["delta"], v),
+                         "jump": bool(jump) and abs(b["delta"]) >= jump})
+        return {"meta": {"symbol": symbol, "interval": interval, "future": fut["name"] if fut else None,
+                         "asOf": svc.clock().strftime("%Y-%m-%d %H:%M:%S"), "deltaJump": jump,
+                         "usedInRules": bool(svc.cfg.get("orderFlow", {}).get("useEstimatedDelta")),
+                         "message": "" if fut else "No index future in Dhan's instrument list yet."},
+                "rows": rows}
+
+    @app.post("/api/orderflow/dext")
+    def set_dext(body: DextBody):
+        if not svc.orderflow:
+            raise HTTPException(503, "Order flow is not running.")
+        svc.orderflow.set_dext(body.symbol.upper(), body.interval, body.time, body.value)
+        return {"ok": True}
+
     @app.post("/api/autopaper/auto")
     def set_auto(body: AutoBody):
         if not svc.trader:
@@ -479,6 +609,36 @@ def register(app, svc):
     def bracket(body: BracketBody):
         try:
             return svc.trader.bracket(body.securityId)
+        except Exception as e:
+            raise HTTPException(409, str(e))
+
+    @app.get("/api/autopaper/check")
+    def startup_check():
+        """For the daily start file: is the MegaBull key there, how old is it, does MegaBull answer (read-only)."""
+        acc = svc.trader.accounts.get("megabull") if svc.trader else None
+        if not acc:
+            return {"megabull": {"ok": False, "message": "Auto paper trading is not running."}}
+        try:
+            client = acc.client
+        except Exception as e:
+            return {"megabull": {"ok": False, "message": str(e)}}
+        age = client.key_age_days()
+        try:
+            client.me()
+            msg = "MegaBull answered." + ("" if acc.enabled else " MegaBull auto orders are still OFF (by design until tested).")
+            ok = True
+        except Exception as e:
+            ok, msg = False, f"MegaBull did not answer: {e}"
+        if age is not None and age > svc.cfg["keyMaxAgeDays"]:
+            msg += f" The key is {age} days old: make a new one."
+        return {"megabull": {"ok": ok, "message": msg, "keyAgeDays": age}}
+
+    @app.get("/api/autopaper/orders")
+    def account_orders(account: str = "tradingHub"):
+        if not svc.trader:
+            raise HTTPException(503, "Auto paper trading is not running.")
+        try:
+            return {"account": account, "rows": svc.trader.account_orders(account)}
         except Exception as e:
             raise HTTPException(409, str(e))
 
