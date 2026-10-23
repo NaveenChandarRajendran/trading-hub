@@ -50,7 +50,7 @@ def load_key(path=DEFAULT_KEYS_FILE):
     if not os.path.exists(p):
         raise MegaBullError(f"MegaBull key file not found: {p}")
     try:
-        d = json.load(open(p, encoding="utf-8"))
+        d = json.load(open(p, encoding="utf-8-sig"))  # utf-8-sig: Windows PowerShell 5 writes a BOM
     except ValueError as e:
         raise MegaBullError(f"MegaBull key file is not valid JSON: {p}") from e
     key = str(d.get("apiKey") or "").strip()
