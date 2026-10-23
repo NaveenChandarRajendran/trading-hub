@@ -30,6 +30,8 @@
   --call-soft: #fdf1ef;
   --put-soft: #eef8f1;
   --itm-soft: #f6f0e4; /* in-the-money cells: neutral warm tint, not a signal color */
+  --series-bb: #5b8fd6; /* chart overlays (Dashboard): Bollinger bands */
+  --series-vwap: #8a63d2; /* chart overlays: VWAP */
   /* P&L heatmap (calendar): 1 = small, 4 = large win / loss */
   --heat-empty: #eceff2;
   --heat-up-1: #c7ecd5; --heat-up-2: #8fd4a9; --heat-up-3: #3fae6f; --heat-up-4: #137a43;
@@ -74,6 +76,8 @@
   --call-soft: #261a1a;
   --put-soft: #16231b;
   --itm-soft: #29241b;
+  --series-bb: #6f9fe0;
+  --series-vwap: #a688e6;
   --heat-empty: #23272d;
   --heat-up-1: #173a26; --heat-up-2: #1f6a3e; --heat-up-3: #2e9a5b; --heat-up-4: #4fd08a;
   --heat-down-1: #45201f; --heat-down-2: #7a2f2c; --heat-down-3: #b8433e; --heat-down-4: #f0706b;

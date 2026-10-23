@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-22 (Dashboard on `feature/dashboard`)_
+_Last updated: 2026-10-23 (signal watcher + auto paper on `Diwakar_OptionBuy_Backtest`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -55,6 +55,48 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   intraday data has no 09:15 candle for the index (first is 09:16), so the first bar of the day comes from the live
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
+
+## Signal watcher + auto paper trading (branch `Diwakar_OptionBuy_Backtest`, ADR 0004)
+PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend.md`, `docs/strategies/megabull.md`.
+- Dashboard layout, top to bottom: top bar (index, expiry, interval, "Exit by 3:15 PM · N min left" chip, India VIX chip
+  (record only), clock, Refresh) → day levels (both indices: previous H / C / L, pivot = (H+L+C)/3, today H / L, VIX,
+  PCR) → chart (SuperTrend 10,2 red/green, Bollinger 20,2, EMA 20, VWAP on futures volume, volume, RSI 14 with put
+  30-45 / call 55-70 guide lines, pivot and S1-S3 / R1-R3 dashed) → MEGABULL RULE and TRADING HUB RULE cards (GO / NO GO,
+  grade, ticks, account) → Trending OI last 5 rows + "OI views side by side" (Dhan vs Sensibull, Agreement) → OI S&R
+  table with the biggest walls → paper trade card (Auto ON / OFF kill switch, per-account limits, live premium, P&L,
+  stop / target bar, "Place stop + target together", "Exit position") → snapshot log bar (Download CSV).
+  The glance-card column is gone (its contents are in the OI section); `logic/cards.ts` still feeds the components line.
+- Backend: `sig_indicators.py` (same maths as the chart, shared fixture), `sig_oi.py` (port of the OI apps' formulas),
+  `sig_rules.py` (both rules), `sig_market.py` (state from CandleService, chain cache, tracker, VIX), `sig_service.py`
+  (watcher thread every 5 min at hh:m5:35, snapshot CSV, alerts, end-of-day summary, routes), `autopaper.py` (trader:
+  Auto switch, daily limits, entries, SL-M stop + watched target, signal / time exits, trade log CSV),
+  `megabull_client.py` (MegaBull paper API; `python megabull_client.py check` is read-only). Settings: `autopaper.json`
+  (optional `autopaper.local.json`, not committed). State: `data/autopaper_state.json`.
+- Endpoints: `GET /api/signals/state?symbol=`, `GET /api/signals/snapshots.csv?date=`, `POST /api/autopaper/auto`,
+  `POST /api/autopaper/bracket`, `POST /api/autopaper/exit`. `dhan_client.index_ltp` (India VIX, IDX_I 21).
+  `dashboard_api.CandleService` (the candles cache, now shared with the watcher; endpoint unchanged).
+  `paper_api.PaperService.watch / ltp / order / open_qty` hooks.
+- Owner decisions (23-Oct): cumulative delta (Dext) is "not checked", never blocks, trades tagged; Trading Hub
+  must-have (b) = Trending OI ±50% × 3 rows AND Dhan OI & OI Change verdict agrees, Sensibull record only; MegaBull
+  trigger levels = pivot, previous high / low, OI R1 / S1.
+- Tests: `test_sig_indicators.py`, `test_sig_oi.py`, `test_sig_rules.py`, `test_sig_market.py`, `test_autopaper.py`;
+  frontend `logic/indicatorsShared.test.ts`, `logic/signals.test.ts`.
+- Evening update (23-Oct): order flow (`orderflow.py`: delta estimated per tick from the near-month future's Full
+  packets vs the previous best bid / ask, tick rule in between; per minute, saved in `data/orderflow_<day>.json`;
+  `GET /api/orderflow`, `POST /api/orderflow/dext`); main chart: cumulative delta (est.) pane under RSI, no per-candle
+  bars; "Order flow, last 30 min" card beside the rule cards; new page **Order Flow (est.)** (`src/apps/order-flow/`:
+  price, delta bars, cumulative line, 1/3/5/15/30m, last 12 candles with a typed Dext column, match tick, delta jump).
+  Rule thresholds in `autopaper.json` "rules" (`sig_rules.configure`); PCR 0.9; Dharani SuperTrend flip trigger;
+  MegaBull Grade A only. Shadow logging (record only): after every exit to 15:30 (trade log columns, rewritten at
+  15:31) and skipped setups (`shadow_skips.csv`). Paper section: MEGABULL ACCOUNT and TRADING HUB ACCOUNT cards, today's
+  trades for both accounts with day P&L, order book lists (`GET /api/autopaper/orders`), shadow line.
+  `Start_Trading_Day.bat` (+ `scripts/start_trading_day.ps1`): hidden Dhan prompts, MegaBull key only when missing or
+  older than 25 days (`%USERPROFILE%\TradingHubKeys`), starts both windows, checks Dhan (`/api/expiries`) and MegaBull
+  (`GET /api/autopaper/check`, read-only), opens the dashboard. 30-minute chart interval.
+- Known limits / open: MegaBull is off until the owner confirms the ⚠ numbers in `megabull.md` and the API check has run
+  (instrument CSV columns, order fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
+  VIX ID 21 is from Dhan's list, not yet checked live. Nothing has run against a live session yet: check the first
+  watcher rows at 09:20-09:35. Alerts show on the dashboard and in `alerts.log`, not on the phone.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
@@ -183,7 +225,7 @@ from the trading-hub-feature skill. See `docs/adr/0001-scoped-design-system.md`.
 Shared helpers added: `signed()` in `src/shared/grid.ts`, `copyText()` in `src/shared/clipboard.ts`.
 
 ## Not built yet
-Strategy engine (ORB, Supertrend flip), paper trading, live orders, Alembic migrations, strategy docs.
+Strategy engine for ORB, live orders, Alembic migrations. (Paper trading, the two rules and their strategy docs exist now.)
 
 ## Known limits
 - Paste-based apps depend on NSE's browser session (empty JSON when it has expired).

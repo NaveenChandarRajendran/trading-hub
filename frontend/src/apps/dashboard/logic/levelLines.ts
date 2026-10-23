@@ -24,7 +24,6 @@ export interface LevelColors {
 
 export const LEVEL_KEYS = ['R1', 'R2', 'R3', 'S1', 'S2', 'S3'] as const;
 export type LevelKey = (typeof LEVEL_KEYS)[number];
-const SOLID = 0;
 const DASHED = 2;
 const SECONDARY_ALPHA = 0.6; // R2/R3, S2/S3 are lighter than R1/S1
 
@@ -44,7 +43,7 @@ export function lineSpec(key: LevelKey, level: Level | undefined, colors: LevelC
     price: level?.strike ?? lastPrice,
     color: primary ? base : withAlpha(base, SECONDARY_ALPHA),
     lineWidth: primary ? 2 : 1,
-    lineStyle: primary ? SOLID : DASHED,
+    lineStyle: DASHED, // all OI levels dashed (owner's brief, 23-Oct-2026); R1 / S1 stay thicker
     lineVisible: !!level,
     axisLabelVisible: !!level,
     title: key, // just "R1"; the price scale shows the strike

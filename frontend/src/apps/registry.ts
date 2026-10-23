@@ -102,6 +102,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./components/ComponentsApp')),
   },
   {
+    id: 'order-flow',
+    group: 'live',
+    name: 'Order Flow (est.)',
+    path: '/order-flow',
+    icon: '≋',
+    component: lazy(() => import('./order-flow/OrderFlowApp')),
+  },
+  {
     id: 'paper-trade',
     group: 'live',
     name: 'Paper Trading',

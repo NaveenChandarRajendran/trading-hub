@@ -9,3 +9,7 @@ __pycache__/
 
 # Backend runtime data: caches, snapshots, paper.json (see CLAUDE.md: data/ is never committed)
 backend/data/
+
+# Auto paper trading: local overrides and the MegaBull check output (keys live in ~/TradingHubKeys, never here)
+backend/autopaper.local.json
+backend/megabull_check.txt

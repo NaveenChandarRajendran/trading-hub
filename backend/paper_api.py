@@ -71,6 +71,8 @@ class PaperService:
         self.last_error = ""
         self._unsaved = []  # (kind, day, data) whose store write failed; retried on the next write
         self._feed_subs = set()
+        self._watch = {}  # group -> {(segment, id)} kept subscribed: "auto" (autopaper.py), "orderflow" (index futures)
+        self.orderflow = None  # orderflow.OrderFlowService: estimated delta from the index futures' Full packets
         self._feed_status = None
         self._timer = None
         self._stopping = threading.Event()
@@ -229,7 +231,7 @@ class PaperService:
 
     def _sync_feed(self):
         """Feed subscriptions = what the clients show + open positions + pending orders."""
-        need = {(FNO, p.security_id) for p in self.engine.positions.values() if p.open_qty > 0} | self._traded
+        need = {(FNO, p.security_id) for p in self.engine.positions.values() if p.open_qty > 0} | self._traded | set().union(*self._watch.values())
         need |= {(FNO, o.security_id) for o in self.engine.orders.values() if o.status in OPEN_STATES}
         for c in list(self.clients):
             need |= c.subs
@@ -257,7 +259,13 @@ class PaperService:
             if key[0] == FNO:
                 with self.lock:
                     self._ensure_day(now)
+                    prev_book = self.engine.books.get(key[1])
                     self._publish(self.engine.on_tick(key[1], book, now))
+                if self.orderflow and key[1] in self.instruments.future_ids():
+                    try:
+                        self.orderflow.on_packet(key[1], pkt, prev_book)
+                    except Exception:
+                        log.exception("order flow update failed")
         msg = {"type": "tick", "data": tick}
         for c in list(self.clients):
             if key in c.subs or (key[0] == FNO and key[1] in self.engine.positions):
@@ -276,6 +284,38 @@ class PaperService:
                 for c in list(self.clients):
                     if key in c.subs:
                         c.push(cmsg)
+
+    # ---------- auto paper trader hooks (autopaper.py) ----------
+    def watch(self, security_ids, group="auto"):
+        """Keep these NSE_FNO instruments subscribed (the auto trader needs a live price before it can place an
+        order; order flow needs the index futures all day)."""
+        with self.lock:
+            self._watch[group] = {(FNO, int(i)) for i in security_ids}
+            self._sync_feed()
+
+    def ltp(self, security_id):
+        with self.lock:
+            return self.engine._ltp(int(security_id))
+
+    def has_book(self, security_id):
+        with self.lock:
+            return int(security_id) in self.engine.books
+
+    def order(self, order_id):
+        with self.lock:
+            o = self.engine.orders.get(order_id)
+            return o.to_dict() if o else None
+
+    def open_qty(self, security_id):
+        with self.lock:
+            p = self.engine.positions.get(int(security_id))
+            return p.open_qty if p else 0
+
+    def instrument_chain(self, symbol, expiry):
+        return self.instruments.chain(symbol, expiry)
+
+    def option_expiries(self, symbol):
+        return self.instruments.expiries(symbol)
 
     # ---------- commands ----------
     def place_order(self, security_id, side, lots, order_type, price=None, trigger_price=None):

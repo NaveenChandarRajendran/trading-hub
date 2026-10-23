@@ -11,6 +11,7 @@ import { DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, t
 import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
 import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
 import { takeNewLevels, type LevelsBasis } from './logic/levels';
+import { fetchFlow, type FlowRow } from '../order-flow/logic/api';
 
 const read = (k: string) => {
   try {
@@ -28,11 +29,12 @@ const write = (k: string, v: string) => {
 };
 const stocksOf = (symbol: string) => ((constituents as Record<string, { symbol: string }[]>)[symbol] ?? []).map((c) => c.symbol);
 
-export function useDashboard() {
+/** optionIds: option security IDs whose live premium the page shows (the paper trade card). */
+export function useDashboard(optionIds: number[] = []) {
   const [symbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
   const [interval, setIntervalState] = useState(() => {
     const v = Number(read('interval'));
-    return [1, 3, 5, 15].includes(v) ? v : DEFAULT_INTERVAL;
+    return [1, 3, 5, 15, 30].includes(v) ? v : DEFAULT_INTERVAL;
   });
   const [refreshSec, setRefreshState] = useState(() => {
     const v = Number(read('refresh'));
@@ -69,6 +71,8 @@ export function useDashboard() {
   const [volumeError, setVolumeError] = useState('');
   const [candlesError, setCandlesError] = useState<unknown>(null);
   const [feedState, setFeedState] = useState<ConnState>('connecting');
+  const [optionLtp, setOptionLtp] = useState<Record<number, number>>({}); // live premium per option security ID
+  const [flow, setFlow] = useState<FlowRow[]>([]); // estimated delta per candle (chart interval) of the near future
   const [now, setNow] = useState(() => Date.now());
   const putMinutes = (m: Candle[]) => {
     minutesRef.current = m;
@@ -132,6 +136,21 @@ export function useDashboard() {
     return () => ac.abort();
   }, [loadSummary]);
 
+  // estimated cumulative delta for the chart's pane (best effort: the chart works without it)
+  const loadFlow = useCallback(async (signal?: AbortSignal) => {
+    try {
+      setFlow((await fetchFlow(symbol, interval, signal)).rows);
+    } catch {
+      /* order flow not running: no delta pane data */
+    }
+  }, [symbol, interval]);
+  useEffect(() => {
+    const ac = new AbortController();
+    setFlow([]);
+    void loadFlow(ac.signal);
+    return () => ac.abort();
+  }, [loadFlow]);
+
   useEffect(() => {
     const ac = new AbortController();
     putMinutes([]);
@@ -147,18 +166,29 @@ export function useDashboard() {
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       void loadSummary();
-      if (marketOpen) void loadCandles();
+      if (marketOpen) {
+        void loadCandles();
+        void loadFlow();
+      }
     }, refreshSec * 1000);
     return () => window.clearInterval(id);
-  }, [refreshSec, loadSummary, loadCandles, marketOpen]);
+  }, [refreshSec, loadSummary, loadCandles, loadFlow, marketOpen]);
 
   // live: the index's 1-minute candle and the near-month future's volume, over /ws/paper (the backend's single Dhan feed)
   const spotId = INDEX_IDS[symbol];
   const futId = volumeInfo?.securityId ?? null;
+  const optionKey = [...optionIds].sort((a, b) => a - b).join(',');
   useEffect(() => {
+    const ids = optionKey ? optionKey.split(',').map(Number) : [];
     const feed = new PaperFeed(PAPER_WS, {
       onState: setFeedState,
-      onTicks: () => {},
+      onTicks: (ticks) => {
+        const next: Record<number, number> = {};
+        ticks.forEach((t) => {
+          if (t.segment === 'NSE_FNO' && ids.includes(t.securityId) && t.ltp > 0) next[t.securityId] = t.ltp;
+        });
+        if (Object.keys(next).length) setOptionLtp((p) => ({ ...p, ...next }));
+      },
       onMessage: (m) => {
         if (m.type === 'candle' && m.data.securityId === spotId) {
           const pending = pendingVolume.current.get(m.data.time);
@@ -171,10 +201,11 @@ export function useDashboard() {
         }
       },
     });
-    feed.setSubscriptions(futId ? [keyOf('IDX_I', spotId), keyOf('NSE_FNO', futId)] : [keyOf('IDX_I', spotId)]);
+    const keys = [keyOf('IDX_I', spotId), ...(futId ? [keyOf('NSE_FNO', futId)] : []), ...ids.map((id) => keyOf('NSE_FNO', id))];
+    feed.setSubscriptions(keys);
     feed.connect();
     return () => feed.close();
-  }, [spotId, futId]);
+  }, [spotId, futId, optionKey]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 5000);
@@ -185,12 +216,13 @@ export function useDashboard() {
     forceLevels.current = true; // Refresh redraws the S/R lines at once
     void loadSummary();
     void loadCandles();
+    void loadFlow();
   };
 
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh,
+    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp, flow,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

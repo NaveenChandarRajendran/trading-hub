@@ -1,0 +1,9 @@
+/* Order flow page: layout only, tokens only. */
+.of { display: flex; flex-direction: column; gap: var(--sp-4); }
+.of .of-chart { height: 560px; min-height: 360px; }
+.of .of-cum { font-weight: 600; font-size: var(--fs-md); }
+.of .of-cum.up { color: var(--up); }
+.of .of-cum.down { color: var(--down); }
+.of .of-scroll { overflow-x: auto; }
+.of .of-input { width: 96px; height: 24px; text-align: right; }
+.of .of-note { font-size: var(--fs-sm); color: var(--warn); }

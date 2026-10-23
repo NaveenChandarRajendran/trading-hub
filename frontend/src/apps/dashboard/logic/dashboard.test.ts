@@ -64,11 +64,11 @@ describe('level lines', () => {
     expect(lines.count).toBe(6);
   });
 
-  it('R in --down, S in --up; R1/S1 solid and full colour, the others dashed and lighter', () => {
+  it('R in --down, S in --up; all dashed (brief 23-Oct); R1/S1 thicker and full colour, the others lighter', () => {
     const r1 = lineSpec('R1', { strike: 23000, oi: 1 }, colors);
     const r2 = lineSpec('R2', { strike: 23100, oi: 1 }, colors);
     const s3 = lineSpec('S3', { strike: 22500, oi: 1 }, colors);
-    expect([r1.color, r1.lineStyle, r1.lineWidth]).toEqual(['#d13f3f', 0, 2]);
+    expect([r1.color, r1.lineStyle, r1.lineWidth]).toEqual(['#d13f3f', 2, 2]); // dashed, thicker
     expect([r2.color, r2.lineStyle, r2.lineWidth]).toEqual(['#d13f3f99', 2, 1]);
     expect(s3.color).toBe('#138a4e99');
   });
