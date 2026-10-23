@@ -124,3 +124,5 @@
 .db .db-wait { text-align: center; padding: var(--sp-5) 0; }
 .db .db-account .btn { align-self: flex-start; }
 .db .db-rule-note.warn { color: var(--warn); }
+.db .db-inline { flex-direction: row; align-items: center; gap: var(--sp-2); }
+.db .db-inline select { min-width: 0; }

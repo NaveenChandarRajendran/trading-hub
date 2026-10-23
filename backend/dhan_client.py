@@ -122,6 +122,15 @@ class DhanClient:
             raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
         return {"timestamp": ts, "close": close}
 
+    def index_daily(self, symbol, from_date, to_date):
+        """Daily candles of the index (IDX_I): {"timestamp": [...], "open": [...], "high", "low", "close"}. Dates 'YYYY-MM-DD'."""
+        body = {"securityId": str(SCRIP[symbol]), "exchangeSegment": SEGMENT, "instrument": "INDEX",
+                "expiryCode": 0, "oi": False, "fromDate": from_date, "toDate": to_date}
+        payload = self._post("/charts/historical", body, gap=HISTORY_GAP_SECONDS)
+        if not isinstance(payload, dict) or not isinstance(payload.get("timestamp"), list):
+            raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
+        return payload
+
     def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None):
         """1-minute (or 5/15/25/60) candles: {"timestamp": [epoch s], "open": [...], ..., "volume": [...]}.
         The index by default (no volume); with future_id, that index future (NSE_FNO / FUTIDX, with volume).

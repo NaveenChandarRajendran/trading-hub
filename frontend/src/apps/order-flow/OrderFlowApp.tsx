@@ -4,16 +4,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { inr, signed } from '../../shared/grid';
 import { errorText } from '../../shared/live/liveStatus';
-import { Alert, EmptyState, Pill, Segmented, Status } from '../../shared/ui';
+import { Alert, EmptyState, Pill, Status } from '../../shared/ui';
+import { nseDate } from '../../shared/dhan/chainAdapter';
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { fetchCandles } from '../dashboard/logic/api';
 import { aggregate, type Candle } from '../dashboard/logic/candles';
 import { FlowChart } from './FlowChart';
-import { fetchFlow, matchText, parseTyped, saveDext, type FlowResponse } from './logic/api';
+import { fetchFlow, fetchFlowDays, matchText, parseTyped, saveDext, type FlowResponse } from './logic/api';
 import './order-flow.css';
 
 const INTERVALS = [
-  { value: '1', label: '1m' }, { value: '3', label: '3m' }, { value: '5', label: '5m' }, { value: '15', label: '15m' }, { value: '30', label: '30m' },
+  { value: '1', label: '1 min' }, { value: '3', label: '3 min' }, { value: '5', label: '5 min' }, { value: '10', label: '10 min' },
+  { value: '15', label: '15 min' }, { value: '20', label: '20 min' }, { value: '30', label: '30 min' }, { value: '45', label: '45 min' },
+  { value: '60', label: '1 hour' },
 ] as const;
 type Iv = (typeof INTERVALS)[number]['value'];
 const REFRESH_MS = 30000;
@@ -42,35 +45,48 @@ export default function OrderFlowApp() {
   const [error, setError] = useState<unknown>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
+  const [day, setDay] = useState(''); // '' = today (live); otherwise an earlier recorded day
+  const [days, setDays] = useState<string[]>([]);
   const iv = Number(interval);
+  const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const live = !day;
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchFlowDays(ac.signal).then((r) => setDays(r.days.filter((x) => x !== todayIst))).catch(() => {});
+    return () => ac.abort();
+  }, [todayIst]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [f, c] = await Promise.all([fetchFlow(symbol, iv, signal), fetchCandles(symbol, 1, signal)]);
+      const [f, c] = await Promise.all([fetchFlow(symbol, iv, signal, day), fetchCandles(symbol, 1, signal, day)]);
       setFlow(f);
       setMinutes(c.candles);
       setError(null);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setError(e);
     }
-  }, [symbol, iv]);
+  }, [symbol, iv, day]);
 
   useEffect(() => {
     const ac = new AbortController();
+    setFlow(null);
+    setMinutes([]);
     void load(ac.signal);
+    if (!live) return () => ac.abort(); // an earlier day does not change
     const id = window.setInterval(() => document.visibilityState === 'visible' && void load(), REFRESH_MS);
     return () => {
       ac.abort();
       window.clearInterval(id);
     };
-  }, [load]);
+  }, [load, live]);
 
   const today = useMemo(() => {
     if (!flow?.rows.length) return aggregate(minutes, iv);
     const first = flow.rows[0].time;
     return aggregate(minutes.filter((m) => m.time >= first - 86400 / 2), iv); // today's session (the flow starts today)
   }, [minutes, iv, flow]);
-  const last12 = (flow?.rows ?? []).slice(-12).reverse();
+  const last12 = (live ? (flow?.rows ?? []).slice(-12) : flow?.rows ?? []).slice().reverse(); // earlier day: every candle
   const cum = flow?.rows.at(-1)?.cumulative ?? 0;
 
   const commit = async (hhmm: string) => {
@@ -104,11 +120,19 @@ export default function OrderFlowApp() {
               {SYMBOLS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
             </select>
           </label>
-          <div className="field">Interval
-            <Segmented label="Candle interval" options={INTERVALS} value={interval} onChange={(v) => { write('interval', v); setInterval_(v); }} />
-          </div>
+          <label className="field">Interval
+            <select value={interval} onChange={(e) => { write('interval', e.target.value); setInterval_(e.target.value as Iv); }}>
+              {INTERVALS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+            </select>
+          </label>
+          <label className="field">Date
+            <select value={day} onChange={(e) => setDay(e.target.value)}>
+              <option value="">Today (live)</option>
+              {days.map((x) => <option key={x} value={x}>{nseDate(x)}</option>)}
+            </select>
+          </label>
           <div className="toolbar-end">
-            <Status kind={error ? 'error' : flow ? 'live' : 'idle'}>{flow ? `${flow.meta.future ?? ''} · ${flow.meta.asOf.slice(11, 16)} IST` : 'Loading…'}</Status>
+            <Status kind={error ? 'error' : flow ? (live ? 'live' : 'idle') : 'idle'}>{flow ? `${flow.meta.future ?? ''} · ${flow.meta.asOf.slice(11, 16)} IST` : 'Loading…'}</Status>
             <button className="btn" onClick={() => void load()}>Refresh</button>
           </div>
         </div>
@@ -123,19 +147,19 @@ export default function OrderFlowApp() {
 
       <section className="card">
         <div className="card-head">
-          <h3 className="card-title">{symbol} · {interval} min · price, delta per candle, cumulative delta</h3>
+          <h3 className="card-title">{symbol} · {INTERVALS.find((x) => x.value === interval)?.label} · {day ? nseDate(day) : 'today'} · price, delta per candle, cumulative delta</h3>
           <span className={`of-cum num ${cum >= 0 ? 'up' : 'down'}`}>Cumulative {k(cum)} {cum >= 0 ? '▲' : '▼'}</span>
         </div>
         {!flow?.rows.length ? (
-          <EmptyState>{flow?.meta.message || 'No order flow yet today. It builds from the live feed while the backend runs (09:15 to 15:30).'}</EmptyState>
+          <EmptyState>{flow?.meta.message || (live ? 'No order flow yet today. It builds from the live feed while the backend runs (09:15 to 15:30).' : 'Nothing was recorded that day.')}</EmptyState>
         ) : (
-          <FlowChart bars={today} flow={flow.rows} resetKey={`${symbol}-${interval}`} />
+          <FlowChart bars={today} flow={flow.rows} resetKey={`${symbol}-${interval}-${day}`} />
         )}
       </section>
 
       <section className="card">
         <div className="card-head">
-          <h3 className="card-title">Last 12 candles</h3>
+          <h3 className="card-title">{live ? 'Last 12 candles' : `All candles of ${nseDate(day)} (Dext values read-only)`}</h3>
           {note && <span className="of-note">{note}</span>}
         </div>
         <div className="of-scroll">
@@ -153,10 +177,10 @@ export default function OrderFlowApp() {
                   <td className={`num ${r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : ''}`}>{k(r.delta)}</td>
                   <td className={`num ${r.cumulative > 0 ? 'up' : r.cumulative < 0 ? 'down' : ''}`}>{k(r.cumulative)}</td>
                   <td>
-                    <input className="of-input num" aria-label={`Dext delta at ${r.hhmm}`} placeholder="e.g. -9.6K"
+                    {!live ? <span className="num">{r.dext == null ? '—' : k(r.dext)}</span> : <input className="of-input num" aria-label={`Dext delta at ${r.hhmm}`} placeholder="e.g. -9.6K"
                       value={drafts[r.hhmm] ?? (r.dext == null ? '' : String(r.dext))}
                       onChange={(e) => setDrafts((d) => ({ ...d, [r.hhmm]: e.target.value }))}
-                      onBlur={() => void commit(r.hhmm)} onKeyDown={(e) => e.key === 'Enter' && void commit(r.hhmm)} />
+                      onBlur={() => void commit(r.hhmm)} onKeyDown={(e) => e.key === 'Enter' && void commit(r.hhmm)} />}
                   </td>
                   <td>{r.match == null ? <span className="muted">—</span> : <Pill tone={r.match ? 'up' : 'down'}>{r.match ? '✓' : '✗'}</Pill>}</td>
                   <td>{r.jump ? <Pill tone="warn">Jump</Pill> : <span className="muted">—</span>}</td>

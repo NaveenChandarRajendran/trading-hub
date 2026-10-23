@@ -7,14 +7,15 @@ import { copyText } from '../../shared/clipboard';
 import { nseDate } from '../../shared/dhan/chainAdapter';
 import { inr } from '../../shared/grid';
 import { errorText } from '../../shared/live/liveStatus';
-import { Alert, CopyValue, EmptyState, Pill, Segmented, Status } from '../../shared/ui';
+import { Alert, CopyValue, EmptyState, Pill, Status } from '../../shared/ui';
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
 import { api as paperApi } from '../paper-trade/logic/api';
-import { BB_PERIOD, EMA_PERIOD, INTERVALS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE, ST_FACTOR, ST_PERIOD } from './config/settings';
+import { BB_PERIOD, DAILY_RANGES, EMA_PERIOD, INTERVALS, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE, ST_FACTOR, ST_PERIOD } from './config/settings';
 import { componentsCard } from './logic/cards';
 import { srLevels } from './logic/levels';
+import { pivots } from './logic/indicators';
 import { minutesToExit } from './logic/signals';
 import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
@@ -62,11 +63,15 @@ export default function DashboardApp() {
     if (wanted.join(',') !== optionIds.join(',')) setOptionIds(wanted);
   }, [wanted, optionIds]);
 
+  const intervalLabel = INTERVALS.find((x) => x.value === d.interval)?.label ?? `${d.interval} min`;
+  const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const levelsChain = d.levelsBasis?.chain ?? null; // replaced at most hourly, see useDashboard
   const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
   const levelsAt = d.levelsBasis ? hhmm(d.levelsBasis.at) : '';
   const levelsNext = d.levelsBasis ? hhmm(d.levelsBasis.at + LEVELS_REFRESH_SEC * 1000) : '';
   const ctx = s?.context.find((c) => c?.symbol === d.symbol) ?? null;
+  // pivot line: today's from the watcher; an earlier day's from its previous session; none on the daily chart
+  const chartPivot = d.isDaily ? null : d.day ? (d.prevSession ? pivots(d.prevSession.high, d.prevSession.low, d.prevSession.close).P : null) : ctx?.pivot ?? null;
   const comp = useMemo(() => componentsCard(d.summary?.components, (constituents as Record<string, Constituent[]>)[d.symbol] ?? [], new Date()), [d.summary, d.symbol]);
   const compText = comp.figures.length ? `Index components: ${comp.figures[0].value}${comp.verdict ? ` · ${comp.verdict}` : ''}` : '';
   const left = minutesToExit(now);
@@ -98,10 +103,6 @@ export default function DashboardApp() {
               {d.expiries.map((x) => <option key={x} value={x}>{nseDate(x)}</option>)}
             </select>
           </label>
-          <div className="field">Interval
-            <Segmented label="Candle interval" options={INTERVALS} value={String(d.interval) as (typeof INTERVALS)[number]['value']}
-              onChange={(v) => d.setInterval(Number(v))} />
-          </div>
           <div className="db-chips">
             <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 PM · {left} min left · no new Trend entries after 2:30</Pill>
             <Pill tone="accent">India VIX {ctx?.vix != null ? inr(2)(ctx.vix) : '—'} · record only</Pill>
@@ -139,8 +140,28 @@ export default function DashboardApp() {
       {/* 3. chart */}
       <section className="card db-chart-card">
         <div className="card-head">
-          <h3 className="card-title">{d.symbol} · {d.interval} min{d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h3>
+          <h3 className="card-title">{d.symbol} · {intervalLabel}{d.isDaily ? '' : ` · ${d.day ? nseDate(d.day) : 'today'}`}
+            {d.live && d.feedState !== 'open' && <span className="db-muted"> · live feed {d.feedState}</span>}</h3>
           <span className="db-head-end">
+            <label className="field db-inline">Interval
+              <select value={d.interval} onChange={(e) => d.setInterval(Number(e.target.value))}>
+                {INTERVALS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </select>
+            </label>
+            {d.isDaily ? (
+              <label className="field db-inline">Range
+                <select value={d.rangeDays} onChange={(e) => d.setRangeDays(Number(e.target.value))}>
+                  {DAILY_RANGES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                </select>
+              </label>
+            ) : (
+              <label className="field db-inline">Date
+                <select value={d.day} onChange={(e) => d.setDay(e.target.value)}>
+                  <option value="">Today (live)</option>
+                  {d.sessions.filter((x) => x !== todayIst).map((x) => <option key={x} value={x}>{nseDate(x)}</option>)}
+                </select>
+              </label>
+            )}
             {d.summary?.chain.data && <span className="db-muted num">Spot {inr(2)(d.summary.chain.data.meta.spot)}</span>}
             <span className="db-toggles" role="group" aria-label="Indicators">
               {INDICATORS.map(([k, label]) => (
@@ -155,7 +176,8 @@ export default function DashboardApp() {
         {!d.bars.length ? (
           <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
         ) : (
-          <PriceChart bars={d.bars} levels={sr?.levels ?? null} pivot={ctx?.pivot ?? null} resetKey={`${d.symbol}-${d.interval}`}
+          <PriceChart bars={d.bars} levels={d.live ? sr?.levels ?? null : null} pivot={chartPivot}
+            resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}`}
             indicators={d.indicators} volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
         )}
         <div className="db-levels">
@@ -187,6 +209,7 @@ export default function DashboardApp() {
           )}
         </div>
         <p className="card-foot">
+          {!d.live && <>Showing {d.isDaily ? 'daily candles' : `an earlier day (${nseDate(d.day)})`}: no live updates, OI levels only for today. The rule cards always use today's 5-min reading. </>}
           Dashed lines: the pivot and S1–S3 / R1–R3 (top put / call OI within {SR_RANGE} pts of spot, updated hourly).
           SuperTrend red = bearish, green = bullish. RSI zones: put 30–45, call 55–70.
           {d.indicators.volume && (d.volumeInfo ? ` Volume and VWAP: ${d.volumeInfo.name} (near-month future).` : '')}

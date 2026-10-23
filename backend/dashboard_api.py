@@ -17,7 +17,7 @@ import logging
 import re
 import threading
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Callable
 
 from fastapi import HTTPException
@@ -25,6 +25,7 @@ from fastapi import HTTPException
 from candles import INTERVALS, aggregate, merge_volume, parse_intraday, recent_sessions
 from chain_cache import chain_response
 from dhan_client import SCRIP, DhanError, TokenExpired
+from store import IST
 
 log = logging.getLogger("dashboard")
 TRENDING_INTERVAL = 5  # the Trending OI app's default; the card reads the newest row, which is the same at any interval
@@ -44,6 +45,17 @@ class DashboardDeps:
     cached_history: Callable[[str], dict | None]
     history_for: Callable[[str, int], dict]
     near_future: Callable[[str], dict | None]  # near-month index future (volume for the chart), or None
+
+
+def _prev_session(one_min, sessions):
+    """High / low / close of the session before the shown one (the date picker's pivot), or None."""
+    if len(sessions) < 2:
+        return None
+    rows = [c for c in one_min if datetime.fromtimestamp(c["time"], IST).date() == sessions[0]]
+    if not rows:
+        return None
+    return {"date": sessions[0].isoformat(), "high": max(c["high"] for c in rows), "low": min(c["low"] for c in rows),
+            "close": rows[-1]["close"]}
 
 
 def section(status, data=None, error="", as_of=None):
@@ -129,13 +141,16 @@ class CandleService:
             volume_error = f"Futures volume unavailable: {e}"
         return one_min, fut, volume_error
 
-    def get(self, symbol, max_age=None):
+    def get(self, symbol, max_age=None, day=None):
         """(fetched at, sessions, 1-minute candles, future, volume error, last error). Raises DhanError / TokenExpired
-        only when there is nothing cached; otherwise the last candles come back with last error set."""
+        only when there is nothing cached; otherwise the last candles come back with last error set.
+        day: an earlier trading day (date) for the chart's date picker: that session and the one before it; an earlier
+        day never changes, so it is fetched once."""
         now = self.tracker.clock()
-        sessions = tuple(recent_sessions(now.date()))
+        past = day is not None and day < now.date()
+        sessions = tuple(recent_sessions(day if past else now.date()))
         key = (symbol, sessions)
-        ttl = max_age if max_age is not None else CANDLE_TTL_OPEN if self.tracker.market_open() else CANDLE_TTL_CLOSED
+        ttl = float("inf") if past else max_age if max_age is not None else CANDLE_TTL_OPEN if self.tracker.market_open() else CANDLE_TTL_CLOSED
         last_error = ""
         with self._lock:  # one set of Dhan calls serves every caller asking at the same time
             hit = self._cache.get(key)
@@ -213,15 +228,59 @@ def register(app, deps: DashboardDeps):
     candles_svc = CandleService(tracker, deps.near_future)
     app.state.candles = candles_svc  # shared with the signal watcher (sig_service.py)
 
+    daily_cache = {}  # (symbol, IST date, days) -> response body
+
+    @app.get("/api/dashboard/sessions")
+    def sessions(n: int = 60):
+        """Trading days for the date picker, newest first (today first when it is a trading day)."""
+        n = max(1, min(n, 250))
+        return {"days": [d.isoformat() for d in reversed(recent_sessions(tracker.clock().date(), n))]}
+
+    @app.get("/api/dashboard/daily")
+    def daily(symbol: str = "NIFTY", days: int = 30):
+        """Index daily candles for the last `days` trading days (chart interval "1 day"). Cached per IST day."""
+        symbol = symbol.upper()
+        if symbol not in SCRIP:
+            raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
+        days = max(5, min(days, 400))
+        today = tracker.clock().date()
+        key = (symbol, today, days)
+        if key not in daily_cache or tracker.market_open():
+            # ask for enough calendar days to cover the trading days, plus warm-up for the indicators (SuperTrend, BB 20)
+            frm = today - timedelta(days=int(days * 1.6) + 45)
+            try:
+                p = tracker.client.index_daily(symbol, frm.isoformat(), (today + timedelta(days=1)).isoformat())
+            except TokenExpired as e:
+                raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
+            except DhanError as e:
+                raise HTTPException(502, str(e))
+            rows = []
+            for i, ts in enumerate(p.get("timestamp") or []):
+                try:
+                    rows.append({"time": int(ts), "open": float(p["open"][i]), "high": float(p["high"][i]),
+                                 "low": float(p["low"][i]), "close": float(p["close"][i])})
+                except (KeyError, IndexError, TypeError, ValueError):
+                    continue
+            daily_cache[key] = {"meta": {"symbol": symbol, "days": days, "shown": min(days, len(rows))}, "candles": rows}
+        return daily_cache[key]
+
     @app.get("/api/dashboard/candles")
-    def candles(symbol: str = "NIFTY", interval: int = 5):
+    def candles(symbol: str = "NIFTY", interval: int = 5, date: str = ""):
         symbol = symbol.upper()
         if symbol not in SCRIP:
             raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
         if interval not in INTERVALS:
             raise HTTPException(400, f"interval must be one of {list(INTERVALS)}")
+        day = None
+        if date:
+            try:
+                day = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(400, "date must look like 2026-10-21")
+            if day > tracker.clock().date():
+                raise HTTPException(400, "date can't be in the future")
         try:
-            fetched, sessions, one_min, fut, volume_error, last_error = candles_svc.get(symbol)
+            fetched, sessions, one_min, fut, volume_error, last_error = candles_svc.get(symbol, day=day)
         except TokenExpired as e:
             raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
         except DhanError as e:
@@ -236,6 +295,8 @@ def register(app, deps: DashboardDeps):
                 # volume = this future's (an index has none); the page subscribes to it for the live minute
                 "volume": {"securityId": fut["securityId"], "name": fut["name"], "expiry": fut["expiry"]} if fut else None,
                 "volumeError": volume_error,
+                "live": day is None or day >= tracker.clock().date(),
+                "prevSession": _prev_session(one_min, sessions),
             },
             "candles": aggregate(one_min, interval),
         }

@@ -37,3 +37,24 @@ def test_aggregate_and_dext_match():
     five = aggregate_flow(mins, 5)
     assert [(x["buy"], x["sell"], x["delta"], x["cumulative"]) for x in five] == [(50, 20, 30, 30), (10, 4, 6, 36)]
     assert dext_match(30, 12000) and not dext_match(30, -5) and dext_match(5, None) is None
+
+
+def test_an_earlier_day_is_read_back_from_its_file(tmp_path):
+    from datetime import date
+    from orderflow import OrderFlowService, OrderFlowStore
+    fut = {"securityId": 7, "name": "NIFTY OCT FUT"}
+    clock = [at("10:00")]
+    svc = OrderFlowService(OrderFlowStore(str(tmp_path)), lambda s: fut if s == "NIFTY" else None, clock=lambda: clock[0])
+
+    class Book:
+        best_bid, best_ask = 99.5, 100.5
+    svc.on_packet(7, {"ltp": 100.0, "volume": 1000}, Book())
+    svc.on_packet(7, {"ltp": 100.5, "volume": 1300}, Book())
+    svc.set_dext("NIFTY", 5, "10:00", 250)
+    svc.save()
+    clock[0] = datetime(2026, 10, 26, 9, 20, tzinfo=IST)  # next trading day
+    f, rows = svc.series("NIFTY", 5, date(2026, 10, 23))
+    assert f["name"] == "NIFTY OCT FUT" and rows[0]["buy"] == 300
+    assert svc.typed("NIFTY", 5, date(2026, 10, 23)) == {"10:00": 250}
+    assert svc.days() == ["2026-10-26", "2026-10-23"] or svc.days() == ["2026-10-23"]
+    assert svc.series("NIFTY", 5)[1] == []  # today: nothing yet

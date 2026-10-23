@@ -2,13 +2,20 @@
 import { DEFAULT_RANGE } from '../../oi-support-resistance/config/settings';
 
 export const STORAGE_PREFIX = 'dashboard.';
+/** Chart interval dropdown (minutes; DAILY = one candle per day). The rules always use 5-minute candles. */
+export const DAILY = 1440;
 export const INTERVALS = [
-  { value: '1', label: '1m' },
-  { value: '3', label: '3m' },
-  { value: '5', label: '5m' },
-  { value: '15', label: '15m' },
-  { value: '30', label: '30m' },
+  { value: 1, label: '1 min' }, { value: 3, label: '3 min' }, { value: 5, label: '5 min' }, { value: 10, label: '10 min' },
+  { value: 15, label: '15 min' }, { value: 20, label: '20 min' }, { value: 30, label: '30 min' }, { value: 45, label: '45 min' },
+  { value: 60, label: '1 hour' }, { value: DAILY, label: '1 day' },
 ] as const;
+/** Range dropdown for the daily chart (trading days). */
+export const DAILY_RANGES = [
+  { value: 15, label: 'Last 15 days' }, { value: 30, label: 'Last 30 days' }, { value: 90, label: 'Last 90 days' },
+  { value: 180, label: 'Last 180 days' }, { value: 250, label: 'Last 1 year' },
+] as const;
+export const DEFAULT_RANGE_DAYS = 30;
+export const SESSION_DAYS = 60; // date dropdown: today + this many trading days back
 export const DEFAULT_INTERVAL = 5;
 export const REFRESH_OPTIONS = [30, 60, 120, 300] as const; // seconds; summary auto-refresh (Settings)
 export const DEFAULT_REFRESH_SEC = 60;

@@ -17,12 +17,19 @@ export interface FlowRow {
 }
 
 export interface FlowResponse {
-  meta: { symbol: string; interval: number; future: string | null; asOf: string; deltaJump: number | null; usedInRules: boolean; message: string };
+  meta: {
+    symbol: string; interval: number; future: string | null; date: string; live: boolean; asOf: string; deltaJump: number | null;
+    usedInRules: boolean; message: string;
+  };
   rows: FlowRow[];
 }
 
-export const fetchFlow = (symbol: string, interval: number, signal?: AbortSignal) =>
-  getJson<FlowResponse>(API_BASE, `/api/orderflow?symbol=${encodeURIComponent(symbol)}&interval=${interval}`, signal);
+/** date: '' = today, or an earlier day that was recorded. */
+export const fetchFlow = (symbol: string, interval: number, signal?: AbortSignal, date = '') =>
+  getJson<FlowResponse>(API_BASE, `/api/orderflow?symbol=${encodeURIComponent(symbol)}&interval=${interval}${date ? `&date=${date}` : ''}`, signal);
+
+/** Days with recorded order flow, newest first. */
+export const fetchFlowDays = (signal?: AbortSignal) => getJson<{ days: string[] }>(API_BASE, '/api/orderflow/days', signal);
 
 export const saveDext = (symbol: string, interval: number, time: string, value: number | null) =>
   requestJson<{ ok: boolean }>(API_BASE, '/api/orderflow/dext', { method: 'POST', body: { symbol, interval, time, value } });

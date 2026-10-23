@@ -7,8 +7,11 @@ import { liveStatus } from '../../shared/live/liveStatus';
 import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
-import { DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, type IndicatorToggles, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, STORAGE_PREFIX } from './config/settings';
-import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
+import {
+  DAILY, DAILY_RANGES, DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_RANGE_DAYS, DEFAULT_REFRESH_SEC, INDEX_IDS, INTERVALS, type IndicatorToggles,
+  LEVELS_REFRESH_SEC, REFRESH_OPTIONS, SESSION_DAYS, STORAGE_PREFIX,
+} from './config/settings';
+import { fetchCandles, fetchDaily, fetchSessions, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
 import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
 import { takeNewLevels, type LevelsBasis } from './logic/levels';
 import { fetchFlow, type FlowRow } from '../order-flow/logic/api';
@@ -34,8 +37,21 @@ export function useDashboard(optionIds: number[] = []) {
   const [symbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
   const [interval, setIntervalState] = useState(() => {
     const v = Number(read('interval'));
-    return [1, 3, 5, 15, 30].includes(v) ? v : DEFAULT_INTERVAL;
+    return INTERVALS.some((x) => x.value === v) ? v : DEFAULT_INTERVAL;
   });
+  // date dropdown: '' = today (live); otherwise an earlier trading day. Range: days shown on the daily chart.
+  const [day, setDayState] = useState('');
+  const [rangeDays, setRangeState] = useState(() => {
+    const v = Number(read('range'));
+    return DAILY_RANGES.some((x) => x.value === v) ? v : DEFAULT_RANGE_DAYS;
+  });
+  const [sessions, setSessions] = useState<string[]>([]);
+  const [daily, setDaily] = useState<Candle[]>([]);
+  const [prevSession, setPrevSession] = useState<CandlesResponse['meta']['prevSession']>(null);
+  const isDaily = interval === DAILY;
+  const live = !day && !isDaily;
+  const liveRef = useRef(live);
+  liveRef.current = live;
   const [refreshSec, setRefreshState] = useState(() => {
     const v = Number(read('refresh'));
     return (REFRESH_OPTIONS as readonly number[]).includes(v) ? v : DEFAULT_REFRESH_SEC;
@@ -78,10 +94,18 @@ export function useDashboard(optionIds: number[] = []) {
     minutesRef.current = m;
     setMinutes(m);
   };
-  const bars = useMemo(() => aggregate(minutes, interval), [minutes, interval]);
+  const bars = useMemo(() => (isDaily ? daily : aggregate(minutes, interval)), [minutes, interval, isDaily, daily]);
 
   const setSymbol = (s: string) => { write('symbol', s); setSymbolState(s); };
   const setInterval_ = (v: number) => { write('interval', String(v)); setIntervalState(v); };
+  const setDay = (d: string) => setDayState(d);
+  const setRangeDays = (v: number) => { write('range', String(v)); setRangeState(v); };
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchSessions(SESSION_DAYS, ac.signal).then((r) => setSessions(r.days)).catch(() => {});
+    return () => ac.abort();
+  }, []);
   const setRefreshSec = (v: number) => { write('refresh', String(v)); setRefreshState(v); };
 
   // expiries for the OI levels and cards
@@ -117,18 +141,27 @@ export function useDashboard(optionIds: number[] = []) {
     }
   }, [symbol, expiry]);
 
-  // always 1-minute: the interval is applied here, so switching it needs no request
+  // intraday: always 1-minute (the interval is applied here, so switching it needs no request); daily: index day candles
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     try {
-      const r = await fetchCandles(symbol, 1, signal);
-      putMinutes(r.candles);
-      setVolumeInfo(r.meta.volume);
-      setVolumeError(r.meta.volumeError);
+      if (isDaily) {
+        const r = await fetchDaily(symbol, rangeDays, signal);
+        setDaily(r.candles);
+        setVolumeInfo(null);
+        setVolumeError('');
+        setPrevSession(null);
+      } else {
+        const r = await fetchCandles(symbol, 1, signal, day);
+        putMinutes(r.candles);
+        setVolumeInfo(r.meta.volume);
+        setVolumeError(r.meta.volumeError);
+        setPrevSession(r.meta.prevSession ?? null);
+      }
       setCandlesError(null);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setCandlesError(e);
     }
-  }, [symbol]);
+  }, [symbol, day, isDaily, rangeDays]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -139,11 +172,15 @@ export function useDashboard(optionIds: number[] = []) {
   // estimated cumulative delta for the chart's pane (best effort: the chart works without it)
   const loadFlow = useCallback(async (signal?: AbortSignal) => {
     try {
-      setFlow((await fetchFlow(symbol, interval, signal)).rows);
+      if (isDaily) {
+        setFlow([]);
+        return;
+      }
+      setFlow((await fetchFlow(symbol, interval, signal, day)).rows);
     } catch {
-      /* order flow not running: no delta pane data */
+      /* order flow not running or not recorded that day: no delta pane data */
     }
-  }, [symbol, interval]);
+  }, [symbol, interval, day, isDaily]);
   useEffect(() => {
     const ac = new AbortController();
     setFlow([]);
@@ -154,6 +191,7 @@ export function useDashboard(optionIds: number[] = []) {
   useEffect(() => {
     const ac = new AbortController();
     putMinutes([]);
+    setDaily([]);
     pendingVolume.current.clear();
     setVolumeInfo(null);
     void loadCandles(ac.signal);
@@ -166,7 +204,7 @@ export function useDashboard(optionIds: number[] = []) {
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       void loadSummary();
-      if (marketOpen) {
+      if (marketOpen && liveRef.current) {
         void loadCandles();
         void loadFlow();
       }
@@ -190,6 +228,7 @@ export function useDashboard(optionIds: number[] = []) {
         if (Object.keys(next).length) setOptionLtp((p) => ({ ...p, ...next }));
       },
       onMessage: (m) => {
+        if (!liveRef.current) return; // an earlier day or the daily chart: no live candle
         if (m.type === 'candle' && m.data.securityId === spotId) {
           const pending = pendingVolume.current.get(m.data.time);
           pendingVolume.current.delete(m.data.time);
@@ -223,6 +262,7 @@ export function useDashboard(optionIds: number[] = []) {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
     summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp, flow,
+    day, setDay, sessions, rangeDays, setRangeDays, isDaily, live, prevSession,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }

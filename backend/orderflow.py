@@ -167,19 +167,47 @@ class OrderFlowService:
             self.save()
 
     def save(self):
-        data = {"minutes": {str(sid): list(m.values()) for sid, m in self.builder.minutes.items()}, "dext": self.dext}
+        futs = {str(f["securityId"]): {"symbol": sym, "name": f["name"]} for sym, f in self.future_ids().items()}
+        data = {"minutes": {str(sid): list(m.values()) for sid, m in self.builder.minutes.items()}, "dext": self.dext,
+                "futures": futs}
         try:
             self.store.save(self._day.isoformat(), data)
         except OSError:
             pass
 
-    def series(self, symbol, interval=1):
+    def series(self, symbol, interval=1, day=None):
+        """(future, rows) for today, or for an earlier day saved on disk (the date picker)."""
         self._ensure_day()
+        if day is not None and day != self._day:
+            return self._past(symbol, interval, day)
         f = self.future_ids().get(symbol)
         if not f:
             return None, []
         mins = self.builder.series(f["securityId"], self._day)
         return f, (mins if interval == 1 else aggregate_flow(mins, interval))
+
+    def _past(self, symbol, interval, day):
+        data = self.store.load(day.isoformat())
+        futs = data.get("futures", {})
+        sid = next((k for k, v in futs.items() if v.get("symbol") == symbol), None)
+        if sid is None:  # older file without the futures map: today's future of that index, if it was recorded
+            f = self.future_ids().get(symbol)
+            sid = str(f["securityId"]) if f else None
+        if sid is None or sid not in data.get("minutes", {}):
+            return None, []
+        b = DeltaBuilder()
+        b.restore(int(sid), data["minutes"][sid])
+        mins = b.series(int(sid), day)
+        f = {"securityId": int(sid), "name": futs.get(sid, {}).get("name", f"{symbol} future")}
+        return f, (mins if interval == 1 else aggregate_flow(mins, interval))
+
+    def days(self):
+        """Days with a saved order flow file, newest first."""
+        try:
+            names = os.listdir(self.store.data_dir)
+        except OSError:
+            return []
+        return sorted((n[10:20] for n in names if n.startswith("orderflow_") and n.endswith(".json")), reverse=True)
 
     def set_dext(self, symbol, interval, hhmm, value):
         self._ensure_day()
@@ -190,7 +218,8 @@ class OrderFlowService:
             self.dext[key] = float(value)
         self.save()
 
-    def typed(self, symbol, interval):
+    def typed(self, symbol, interval, day=None):
         self._ensure_day()
+        dext = self.dext if day is None or day == self._day else self.store.load(day.isoformat()).get("dext", {})
         prefix = f"{symbol}|{interval}|"
-        return {k[len(prefix):]: v for k, v in self.dext.items() if k.startswith(prefix)}
+        return {k[len(prefix):]: v for k, v in dext.items() if k.startswith(prefix)}
