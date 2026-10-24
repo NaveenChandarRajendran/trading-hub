@@ -13,6 +13,7 @@ Endpoints:
     GET  /api/quotes?symbols=HDFCBANK,ICICIBANK   (live prices of NSE stocks, for index components)
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
     GET  /api/sr/history?symbol=NIFTY&expiry=&date=   (OI support / resistance level history, see sr_api.py)
+    GET|PUT|DELETE /api/dashboard/fixed-levels?index=&expiry=   (Dashboard "Fix zones", see dashboard_levels_api.py)
     /api/algo/*                                  (OI breakout algo, paper only: status, events, day, reports; algo_api.py)
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
@@ -41,6 +42,7 @@ from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import algo_api
 import algo_config
 import dashboard_api
+import dashboard_levels_api
 from algo_filters import load_constituents
 from algo_service import AlgoData, AlgoService
 from candles import parse_intraday, recent_sessions
@@ -340,6 +342,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         resolve_ids=sec_ids.resolve, quotes_for_ids=quotes_for_ids, cached_history=cached_history, history_for=history_for,
         near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
     sr_api.register(app, tracker, get_expiries)
+    dashboard_levels_api.register(app, tracker.store, tracker.clock)
     if paper:
         paper_api.register(app, paper)
     if algo:

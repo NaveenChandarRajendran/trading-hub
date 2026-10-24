@@ -5,8 +5,7 @@ import { istMs } from '../../../shared/live/liveStatus';
 import { analyzeChain, buildView } from '../../oi-support-resistance/logic/levels';
 import niftyJson from '../../../shared/dhan/__fixtures__/nifty-2026-10-21.json';
 import { aggregate, applyMinute, applyVolume, bucketStart, type Candle } from './candles';
-import { segmentsFor, type SrRow } from './levelHistory';
-import { SegmentLayer, segStyle, withAlpha, type SegHandle, type SegStyle } from './segmentLayer';
+import { LevelLines, lineSpec, withAlpha, type LineSpec } from './levelLines';
 import { srLevels } from './levels';
 
 const resp = niftyJson as unknown as ChainResponse; // real NIFTY 27-Oct chain, 21-Oct-2026 after the close
@@ -27,73 +26,62 @@ describe('S/R levels', () => {
   });
 });
 
-/** Fake chart host that records every series it creates, updates and removes. */
+
+/** Fake price-line host that records every call. */
 function fakeHost() {
-  const made: { style: SegStyle; data: { time: number; value: number }[][]; applied: Partial<SegStyle>[]; removed: boolean }[] = [];
+  const created: { spec: LineSpec; applied: Partial<LineSpec>[] }[] = [];
   return {
-    made,
-    add(style: SegStyle) {
-      const rec = { style, data: [] as { time: number; value: number }[][], applied: [] as Partial<SegStyle>[], removed: false };
-      made.push(rec);
-      return { rec, setData: (p: { time: number; value: number }[]) => rec.data.push(p), applyOptions: (o: Partial<SegStyle>) => rec.applied.push(o) };
-    },
-    remove(h: SegHandle) {
-      const rec = (h as SegHandle & { rec?: { removed: boolean } }).rec;
-      if (rec) rec.removed = true;
+    created,
+    createPriceLine(spec: LineSpec) {
+      const rec = { spec, applied: [] as Partial<LineSpec>[] };
+      created.push(rec);
+      return { applyOptions: (o: Partial<LineSpec>) => rec.applied.push(o) };
     },
   };
 }
-const ist = (hhmm: string) => Date.parse(`2026-10-22T${hhmm}:00+05:30`) / 1000;
-const srRow = (slot: SrRow['slot'], strike: number, from: string, to: string | null): SrRow =>
-  ({ slot, strike, oi: 1, valid_from: `2026-10-22 ${from}`, valid_to: to ? `2026-10-22 ${to}` : null, reason: 'open' });
+const lv = (r: number[], s: number[]) => ({ R: r.map((strike) => ({ strike, oi: 1 })), S: s.map((strike) => ({ strike, oi: 1 })) });
 
-describe('level segments on the chart', () => {
-  const rows = [srRow('R1', 23000, '09:16', null), srRow('S1', 22900, '09:16', '10:47'), srRow('S1', 22800, '10:47', null)];
-
-  it('one series per segment, drawn over its own time range', () => {
+describe('level lines', () => {
+  it('creates six lines once, then only moves them in place', () => {
     const host = fakeHost();
-    new SegmentLayer(host).update(segmentsFor(rows, 5, ist('11:30')), colors, true);
-    expect(host.made.map((m) => m.data[0])).toEqual([
-      [{ time: ist('09:15'), value: 23000 }, { time: ist('11:30'), value: 23000 }],
-      [{ time: ist('09:15'), value: 22900 }, { time: ist('10:45'), value: 22900 }],
-      [{ time: ist('10:45'), value: 22800 }, { time: ist('11:30'), value: 22800 }],
-    ]);
+    const lines = new LevelLines(host);
+    lines.update(lv([23000, 23100, 23200], [22700, 22600, 22500]), colors);
+    expect(host.created.map((c) => c.spec.title)).toEqual(['R1', 'R2', 'R3', 'S1', 'S2', 'S3']);
+
+    lines.update(lv([22950, 23000, 23100], [22800, 22700, 22600]), colors); // levels changed on refresh
+    expect(host.created).toHaveLength(6); // nothing recreated
+    expect(host.created[0].applied.at(-1)).toMatchObject({ price: 22950, title: 'R1', lineVisible: true });
+    expect(host.created[3].applied.at(-1)).toMatchObject({ price: 22800, title: 'S1' });
   });
 
-  it('refreshes update in place: the current level grows to the new bar, nothing is recreated', () => {
+  it('hides a missing level (keeps the line, keeps its last price) and shows it again later', () => {
     const host = fakeHost();
-    const layer = new SegmentLayer(host);
-    layer.update(segmentsFor(rows, 5, ist('11:30')), colors, true);
-    layer.update(segmentsFor(rows, 5, ist('11:35')), colors, true);
-    expect(host.made).toHaveLength(3);
-    expect(host.made[0].data.at(-1)).toEqual([{ time: ist('09:15'), value: 23000 }, { time: ist('11:35'), value: 23000 }]);
-    expect(host.made[1].data).toHaveLength(1); // the replaced level didn't change: no new data
+    const lines = new LevelLines(host);
+    lines.update(lv([23000, 23100, 23200], [22700, 22600, 22500]), colors);
+    lines.update(lv([23000], [22700, 22600, 22500]), colors);
+    expect(host.created[1].applied.at(-1)).toMatchObject({ lineVisible: false, axisLabelVisible: false, price: 23100, title: 'R2' });
+    lines.update(lv([23000, 23050, 23200], [22700, 22600, 22500]), colors);
+    expect(host.created[1].applied.at(-1)).toMatchObject({ lineVisible: true, price: 23050 });
+    expect(lines.count).toBe(6);
   });
 
-  it('a new shift adds a segment; a new index / day removes the old ones', () => {
+  it('R in --down, S in --up; R1/S1 solid and full colour, the others dashed and lighter', () => {
+    const r1 = lineSpec('R1', { strike: 23000, oi: 1 }, colors);
+    const r2 = lineSpec('R2', { strike: 23100, oi: 1 }, colors);
+    const s3 = lineSpec('S3', { strike: 22500, oi: 1 }, colors);
+    expect([r1.color, r1.lineStyle, r1.lineWidth]).toEqual(['#d13f3f', 0, 2]);
+    expect([r2.color, r2.lineStyle, r2.lineWidth]).toEqual(['#d13f3f99', 2, 1]);
+    expect(s3.color).toBe('#138a4e99');
+  });
+
+  it('theme switch recolours the same lines', () => {
     const host = fakeHost();
-    const layer = new SegmentLayer(host);
-    layer.update(segmentsFor(rows, 5, ist('11:30')), colors, true);
-    const shifted = [...rows.slice(0, 2), { ...rows[2], valid_to: '2026-10-22 12:00' }, srRow('S1', 22850, '12:00', null)];
-    layer.update(segmentsFor(shifted, 5, ist('12:05')), colors, true);
-    expect(host.made).toHaveLength(4);
-    layer.update([], colors, true);
-    expect(host.made.every((m) => m.removed)).toBe(true);
-    expect(layer.count).toBe(0);
-  });
-
-  it('current levels as before (R --down, S --up, level 1 solid, others dashed, axis label); old ones thin and faded', () => {
-    const [r1, oldS1, s1] = segmentsFor(rows, 5, ist('11:30'));
-    expect(segStyle(r1, colors, true)).toEqual({ color: '#d13f3f', lineWidth: 2, lineStyle: 0, lastValueVisible: true, title: 'R1', visible: true });
-    expect(segStyle(oldS1, colors, true)).toEqual({ color: '#138a4e4d', lineWidth: 1, lineStyle: 0, lastValueVisible: false, title: '', visible: true });
-    expect(segStyle(s1, colors, true).color).toBe('#138a4e');
-    expect(segStyle({ ...s1, slot: 'S2' }, colors, true)).toMatchObject({ color: '#138a4e99', lineStyle: 2, lineWidth: 1 });
-  });
-
-  it('"Show history" off hides the old segments only', () => {
-    const [r1, oldS1] = segmentsFor(rows, 5, ist('11:30'));
-    expect(segStyle(oldS1, colors, false).visible).toBe(false);
-    expect(segStyle(r1, colors, false).visible).toBe(true);
+    const lines = new LevelLines(host);
+    const levels = lv([23000, 23100, 23200], [22700, 22600, 22500]);
+    lines.update(levels, colors);
+    lines.update(levels, { up: '#3cc47c', down: '#f0706b' }); // dark tokens
+    expect(host.created).toHaveLength(6);
+    expect(host.created[0].applied.at(-1)!.color).toBe('#f0706b');
   });
 
   it('withAlpha leaves non-hex colours alone', () => {

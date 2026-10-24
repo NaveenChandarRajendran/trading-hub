@@ -9,9 +9,8 @@ import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
 import { EMA_PERIOD, INTERVALS, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE } from './config/settings';
 import { buildCards, consensus } from './logic/cards';
-import {
-  currentLevels, entryLines, morningLines, pinNow, pinnedLines, rawSegments, saveSrSettings, segmentsFor, shiftMarkers, type SrChange, type SrSettings,
-} from './logic/levelHistory';
+import { chartLevels, compare, hhmm, ROW_ORDER, shiftSummary, toSet, type Comparison } from './logic/fixedLevels';
+import { currentLevels, saveSrSettings, type SrChange, type SrSettings } from './logic/levelHistory';
 import { srFrom } from './logic/levels';
 import { Consensus, GlanceCard } from './GlanceCard';
 import constituents from '../components/config/constituents.json';
@@ -21,9 +20,7 @@ import { useDashboard } from './useDashboard';
 import './dashboard.css';
 
 const INDICATORS = [['volume', 'Volume'], ['rsi', `RSI ${RSI_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`]] as const;
-const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]] as const;
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
-const IST_OFFSET_S = 19800; // bar times are UTC epoch seconds; +05:30 gives the IST date
 const strike = (n: number) => inr(Number.isInteger(n) ? 0 : 2)(n);
 const changeText = (c: SrChange) => `${strike(c.from)} → ${c.to == null ? 'removed' : strike(c.to)}`;
 const REASONS: Record<string, string> = {
@@ -34,6 +31,7 @@ export default function DashboardApp() {
   const d = useDashboard();
   const [showSettings, setShowSettings] = useState(false);
   const [copied, setCopied] = useState('');
+  const [showChanges, setShowChanges] = useState(false); // "Level changes today" starts collapsed
 
   const chainResp = d.summary?.chain;
   const chain = chainResp?.data && (chainResp.status === 'ok' || chainResp.status === 'stale') ? chainResp.data : null;
@@ -43,22 +41,11 @@ export default function DashboardApp() {
   const sr = useMemo(() => (chain ? srFrom(chain, currentLevels(h, chain.meta.lotSize), range) : null), [chain, h, range]);
   const recorded = sr?.source === 'recorded';
 
-  const firstBar = d.bars[0]?.time ?? null;
-  const lastBar = d.bars.at(-1)?.time ?? null;
-  // recorded segments only on the bars of their own day (before today's first candle the chart shows the last session)
-  const sameDay = lastBar != null && h?.meta.date === new Date((lastBar + IST_OFFSET_S) * 1000).toISOString().slice(0, 10);
-  const segments = useMemo(
-    () => (sameDay && h?.segments.length ? segmentsFor(h.segments, d.interval, lastBar) : rawSegments(sr?.levels ?? null, firstBar, lastBar)),
-    [sameDay, h, sr, d.interval, firstBar, lastBar],
-  );
-  const markers = useMemo(() => (h ? shiftMarkers(h.changes.filter((c) => c.reason !== 'open'), d.interval) : []), [h, d.interval]);
   const changes = useMemo(() => (h ? h.changes.filter((c) => c.reason !== 'open') : []), [h]);
-  const pinnedHere = d.pinned?.symbol === d.symbol && d.pinned.expiry === d.expiry;
-  const refLines = useMemo(() => [
-    ...(d.levelView.morning && h ? morningLines(h.segments, d.levelView.morningTime) : []),
-    ...pinnedLines(d.pinned, d.symbol, d.expiry),
-    ...entryLines([...d.positions.values()], d.symbol),
-  ], [d.levelView.morning, d.levelView.morningTime, h, d.pinned, d.symbol, d.expiry, d.positions]);
+  // the chart draws exactly one set: the fixed zones while "Fix zones" is ticked, else the live levels
+  const lines = useMemo(() => chartLevels(sr?.levels ?? null, d.fixed), [sr, d.fixed]);
+  const rows = useMemo(() => (d.fixed ? compare(d.fixed.levels, toSet(sr?.levels ?? null)) : null), [d.fixed, sr]);
+  const summary = d.fixed && rows ? shiftSummary(rows, d.fixed.fixedAt) : '';
   const cards = useMemo(
     () => buildCards(d.summary, sr, (constituents as Record<string, Constituent[]>)[d.symbol] ?? [], new Date(),
       d.summaryError != null ? 'Not available. See the message at the top.' : ''),
@@ -105,10 +92,6 @@ export default function DashboardApp() {
                       {REFRESH_OPTIONS.map((s) => <option key={s} value={s}>Every {refreshLabel(s)}</option>)}
                     </select>
                   </label>
-                  <label className="field">Morning levels at (IST)
-                    <input type="time" min="09:15" max="15:30" value={d.levelView.morningTime}
-                      onChange={(e) => e.target.value && d.setLevelView({ morningTime: e.target.value })} />
-                  </label>
                   {h && <SrRuleForm key={JSON.stringify(h.meta.settings)} settings={h.meta.settings} onSaved={d.reloadHistory} />}
                 </div>
               )}
@@ -132,42 +115,37 @@ export default function DashboardApp() {
                     onClick={() => d.toggleIndicator(k)}>{label}</button>
                 ))}
               </span>
+              <label className="db-fix" title="Freeze the S/R lines on the chart; the row below shows how the live levels moved since">
+                <input type="checkbox" checked={!!d.fixed} disabled={!d.fixed && !sr}
+                  onChange={(e) => void d.setFixed(e.target.checked, toSet(sr?.levels ?? null))} />
+                Fix zones
+              </label>
+              {d.fixed && <span className="db-muted num">Fixed at {hhmm(d.fixed.fixedAt)}</span>}
             </span>
           </div>
           {d.candlesError != null && d.summaryError == null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
           {!d.bars.length ? (
             <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
           ) : (
-            <PriceChart bars={d.bars} segments={segments} markers={markers} showHistory={d.levelView.history} refLines={refLines}
-              resetKey={`${d.symbol}-${d.interval}`}
+            <PriceChart bars={d.bars} levels={lines} resetKey={`${d.symbol}-${d.interval}`}
               indicators={d.indicators} volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} />
           )}
+          {d.fixedError != null && <Alert kind="error">Fix zones: {errorText(d.fixedError)}</Alert>}
           <div className="db-levels">
-            {sr ? (
+            {sr || d.fixed ? (
               <>
-                <span className="db-level-list">
-                  {LEVEL_ORDER.map(([side, i]) => {
-                    const l = sr.levels[side][i];
-                    return (
-                      <span key={`${side}${i}`} className={`db-level ${side === 'R' ? 'down' : 'up'}`}>
-                        {side}{i + 1} {l ? <CopyValue value={l.strike} iconSide="end" /> : <span className="db-muted">—</span>}
-                      </span>
-                    );
-                  })}
-                </span>
+                <div className="db-compare">
+                  {summary && <span className="db-shift-summary">{summary}</span>}
+                  {ROW_ORDER.map((line) => (
+                    <span key={line[0]} className="db-level-list">
+                      {line.map((slot) => <LevelCell key={slot} slot={slot} live={toSet(sr?.levels ?? null)[slot] ?? null}
+                        row={rows?.find((r) => r.slot === slot) ?? null} />)}
+                    </span>
+                  ))}
+                </div>
                 <span className="db-copy">
-                  <span className="db-toggles" role="group" aria-label="Level lines">
-                    <button type="button" className={`db-toggle ${d.levelView.history ? 'on' : ''}`} aria-pressed={d.levelView.history}
-                      title="Earlier levels (faded) and a marker at each shift" onClick={() => d.setLevelView({ history: !d.levelView.history })}>History</button>
-                    <button type="button" className={`db-toggle ${d.levelView.morning ? 'on' : ''}`} aria-pressed={d.levelView.morning}
-                      title={`The set in effect at ${d.levelView.morningTime} IST (Settings)`} disabled={!h?.segments.length}
-                      onClick={() => d.setLevelView({ morning: !d.levelView.morning })}>Morning</button>
-                    <button type="button" className={`db-toggle ${pinnedHere ? 'on' : ''}`} aria-pressed={pinnedHere}
-                      title={pinnedHere ? 'Remove the pinned set' : 'Keep the current set on the chart as reference lines'}
-                      onClick={() => d.setPinned(pinnedHere ? null : pinNow(d.symbol, d.expiry, sr.levels))}>{pinnedHere ? 'Unpin' : 'Pin levels'}</button>
-                  </span>
                   {copied && <span className="db-muted">{copied}</span>}
-                  <button className="btn" onClick={() => void copyLevels()}>Copy levels for chart</button>
+                  <button className="btn" disabled={!sr} onClick={() => void copyLevels()}>Copy levels for chart</button>
                 </span>
               </>
             ) : (
@@ -178,13 +156,15 @@ export default function DashboardApp() {
           </div>
           <div className="db-changes">
             <div className="db-changes-head">
-              <span className="db-changes-title">Level changes today</span>
+              <button type="button" className="db-changes-toggle" aria-expanded={showChanges} onClick={() => setShowChanges((v) => !v)}>
+                Level changes today ({changes.length}) {showChanges ? '▾' : '▸'}
+              </button>
               <span className="db-muted">
                 {recorded ? `Recorded · as of ${h!.meta.asOf.slice(11, 16)} IST` : chain ? 'Not recorded yet: raw OI ranking shown' : ''}
               </span>
             </div>
-            {d.historyError != null && <span className="db-muted">Level history: {errorText(d.historyError)}</span>}
-            {changes.length ? (
+            {showChanges && d.historyError != null && <span className="db-muted">Level history: {errorText(d.historyError)}</span>}
+            {!showChanges ? null : changes.length ? (
               <ol className="db-change-list">
                 {changes.map((c) => (
                   <li key={`${c.at}|${c.slot}`} className="num">
@@ -200,6 +180,7 @@ export default function DashboardApp() {
             )}
           </div>
           <p className="card-foot">
+            {d.fixed ? `Chart lines: the zones fixed at ${hhmm(d.fixed.fixedAt)}; the row compares them with the live levels. ` : ''}
             S1–S3 / R1–R3: top put / call OI within {range} pts of spot. A level moves to another strike only when that
             strike's OI leads by {h?.meta.settings.leadPct ?? 10}% for {h?.meta.settings.confirmRefreshes ?? 3} refreshes in a row
             (at once if spot crosses it); OI Support &amp; Resistance Live shows the same levels.
@@ -215,6 +196,25 @@ export default function DashboardApp() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** One slot of the level row. Not fixed: the live level (copyable). Fixed: "22,500 → 22,400 ↓100" or "22,700 —". */
+function LevelCell({ slot, live, row }: { slot: string; live: number | null; row: Comparison | null }) {
+  const cls = `db-level ${slot[0] === 'R' ? 'down' : 'up'}`;
+  if (!row) {
+    return <span className={cls}>{slot} {live != null ? <CopyValue value={live} iconSide="end" /> : <span className="db-muted">—</span>}</span>;
+  }
+  return (
+    <span className={cls}>
+      {slot}{' '}
+      {row.fixed != null ? <CopyValue value={row.fixed} iconSide="end" /> : <span className="db-muted">–</span>}
+      {row.move === 'same' && <span className="db-same">—</span>}
+      {(row.move === 'up' || row.move === 'down') && (
+        <span className="db-delta num">→ {strike(row.now!)} <span className={row.move}>{row.move === 'up' ? '↑' : '↓'}{strike(Math.abs(row.delta!))}</span></span>
+      )}
+      {row.move === 'missing' && <span className="db-same">→ {row.now != null ? strike(row.now) : 'none'}</span>}
+    </span>
   );
 }
 

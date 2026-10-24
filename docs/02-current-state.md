@@ -118,13 +118,15 @@ the same levels.
   `data/sr_<sym>_<expiry>_<date>.json`. A restart resumes from the open rows.
 - `GET /api/sr/history?symbol=&expiry=&date=` (current, segments, changes newest first), `GET/PUT /api/sr/settings`
   (shared rule, table `sr_settings` / `data/sr_settings.json`; used from the next refresh).
-- Dashboard chart (`logic/levelHistory.ts`, `logic/segmentLayer.ts`, tested): one line series per history row, created
-  once and updated in place. Current levels as before (R `--down`, S `--up`, R1/S1 solid, others dashed, axis label);
-  earlier ones thin and faded. A marker per shift ("S1 ↑ 22,800 · 12:41", renumbering included). Toggles under the
-  chart (per browser): History (on), Morning (off; the set in effect at the Settings time, default 09:30, dotted),
-  Pin levels (one pinned set per index + expiry, `--accent`, "S1 22,900 · pinned 10:00"). "Level changes today" list
-  (time, slot, old → new, points, reason). Settings has the shared rule (lead %, refreshes, range) and the morning time.
-  Recorded segments are drawn only on the bars of their own day.
+- Dashboard chart (`fix/dashboard-levels`, 25-Oct): exactly one set of S1–S3 / R1–R3 price lines (`logic/levelLines.ts`,
+  existing style, right-axis labels). Level history is still recorded (sr_levels, algo tables) but no longer drawn:
+  no segments, faded lines, shift markers, History / Morning toggles, Pin levels or paper entry-zone line.
+  **Fix zones** checkbox in the chart head: ticking it stores the levels on the chart with the time in Postgres
+  (`dashboard_fixed_levels`, one active set per index + expiry, `GET|PUT|DELETE /api/dashboard/fixed-levels`,
+  `dashboard_levels_api.py`); the lines then stay put ("Fixed at 10:15") until unticked. The row under the chart shows
+  the live levels (CopyValue), or, while fixed, "fixed → now" per level ("22,500 → 22,400 ↓100", "22,700 —") with
+  "2 levels shifted since 10:15". "Level changes today (n) ▸" is collapsed by default. `logic/fixedLevels.ts`,
+  tests `fixedLevels.test.ts`, `test_dashboard_fixed_levels.py`.
 - OI S&R Live: each Refresh also fetches the history and shows the recorded levels (OI from that refresh); the range is
   the shared rule's. Falls back to its own ranking (with a note) when nothing is recorded.
 - Paper Trading (`backend/paper_levels.py`, `frontend/src/apps/paper-trade/logic/levels.ts`): every order saves the
@@ -134,7 +136,7 @@ the same levels.
   whose old strike was within 100 pts of the zone changes later (renumbering not counted twice), the row gets a warn
   pill "Level shifted → 22,800" and the page shows one notice per shift (seen ids per day in localStorage). The
   service re-checks open positions every 20 s and pushes a `position` message when a shift appears. Never exits.
-  The Dashboard draws open positions' entry zones on the chart ("Entry S1 22,900", `--accent`, from `/ws/paper`).
+  (The Dashboard no longer draws the entry zone; it stays on the Paper Trading position row.)
 - Tests: `test_sr_levels.py`, `test_sr_api.py`, `test_paper_levels.py`, `test_paper_store.py` (order levels),
   `test_pg_store.py`; `dashboard/logic/levelHistory.test.ts`, `dashboard.test.ts`, OSR `levels.test.ts`,
   `paper-trade/logic/logic.test.ts`.

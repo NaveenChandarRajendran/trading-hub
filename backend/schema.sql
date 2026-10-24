@@ -268,3 +268,17 @@ CREATE TABLE IF NOT EXISTS oc_snapshots (
     PRIMARY KEY ("index", expiry, ts, strike)
 );
 CREATE INDEX IF NOT EXISTS oc_snapshots_day_index ON oc_snapshots (trade_date, "index");
+
+-- Dashboard "Fix zones": the S1-S3 / R1-R3 set frozen on the chart, per index + expiry (dashboard_levels_api.py).
+-- One active set per index + expiry; unfixing keeps the row (active = false), nothing is deleted.
+CREATE TABLE IF NOT EXISTS dashboard_fixed_levels (
+    id          bigserial        PRIMARY KEY,
+    "index"     text             NOT NULL,
+    expiry      text             NOT NULL,
+    fixed_at    timestamptz      NOT NULL,
+    r1 double precision, r2 double precision, r3 double precision,
+    s1 double precision, s2 double precision, s3 double precision,
+    active      boolean          NOT NULL DEFAULT true,
+    unfixed_at  timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS dashboard_fixed_levels_one_active ON dashboard_fixed_levels ("index", expiry) WHERE active;

@@ -137,6 +137,41 @@ class JsonStore:
             json.dump({"symbol": symbol, "expiry": expiry, "date": date, "rows": rows}, f)
         os.replace(path + ".tmp", path)
 
+    # ---- Dashboard "Fix zones" (test double of PgStore's: one JSON file)
+    def _fixed_path(self):
+        return os.path.join(self.data_dir, "dashboard_fixed_levels.json")
+
+    def _fixed_rows(self):
+        try:
+            with open(self._fixed_path(), encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return []
+
+    def fixed_levels(self, index, expiry):
+        """The active fixed set {fixedAt, levels} for index + expiry, or None."""
+        row = next((r for r in self._fixed_rows() if r["index"] == index and r["expiry"] == expiry and r["active"]), None)
+        return {"fixedAt": row["fixedAt"], "levels": row["levels"]} if row else None
+
+    def fix_levels(self, index, expiry, levels, at):
+        rows = self._fixed_rows()
+        for r in rows:
+            if r["index"] == index and r["expiry"] == expiry and r["active"]:
+                r.update(active=False, unfixedAt=at.isoformat())
+        rows.append({"index": index, "expiry": expiry, "fixedAt": at.isoformat(),
+                     "levels": {k: v for k, v in levels.items() if v is not None}, "active": True, "unfixedAt": None})
+        with open(self._fixed_path(), "w", encoding="utf-8") as f:
+            json.dump(rows, f)
+        return self.fixed_levels(index, expiry)
+
+    def unfix_levels(self, index, expiry, at):
+        rows = self._fixed_rows()
+        for r in rows:
+            if r["index"] == index and r["expiry"] == expiry and r["active"]:
+                r.update(active=False, unfixedAt=at.isoformat())
+        with open(self._fixed_path(), "w", encoding="utf-8") as f:
+            json.dump(rows, f)
+
     def sr_settings(self):
         try:
             with open(os.path.join(self.data_dir, "sr_settings.json"), encoding="utf-8") as f:
@@ -277,6 +312,33 @@ class PgStore:
                 cur.execute("INSERT INTO sr_levels (symbol, expiry, trade_date, slot, strike, oi, valid_from, reason) "
                             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (symbol, expiry, slot, valid_from) DO NOTHING",
                             (symbol, expiry, date, r["slot"], r["strike"], r["oi"], ts(r["valid_from"]), r["reason"]))
+
+    # ---- Dashboard "Fix zones" (dashboard_levels_api.py): one active set per index + expiry
+    def fixed_levels(self, index, expiry):
+        """The active fixed set {fixedAt, levels} for index + expiry, or None."""
+        with self._cursor() as cur:
+            cur.execute('SELECT fixed_at, r1, r2, r3, s1, s2, s3 FROM dashboard_fixed_levels '
+                        'WHERE "index"=%s AND expiry=%s AND active', (index, expiry))
+            r = cur.fetchone()
+        if not r:
+            return None
+        return {"fixedAt": r[0].astimezone(IST).isoformat(),
+                "levels": {k: v for k, v in zip(LEVEL_SLOTS, r[1:]) if v is not None}}
+
+    def fix_levels(self, index, expiry, levels, at):
+        """Replaces the active set (the old one is kept, inactive) in one transaction."""
+        with self._cursor() as cur:
+            cur.execute('UPDATE dashboard_fixed_levels SET active=false, unfixed_at=%s '
+                        'WHERE "index"=%s AND expiry=%s AND active', (at, index, expiry))
+            cur.execute('INSERT INTO dashboard_fixed_levels ("index", expiry, fixed_at, r1, r2, r3, s1, s2, s3) '
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (index, expiry, at, *[levels.get(k) for k in LEVEL_SLOTS]))
+        return self.fixed_levels(index, expiry)
+
+    def unfix_levels(self, index, expiry, at):
+        with self._cursor() as cur:
+            cur.execute('UPDATE dashboard_fixed_levels SET active=false, unfixed_at=%s '
+                        'WHERE "index"=%s AND expiry=%s AND active', (at, index, expiry))
 
     def sr_settings(self):
         with self._cursor() as cur:

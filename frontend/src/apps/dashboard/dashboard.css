@@ -28,12 +28,25 @@
 .db .db-level.down { color: var(--down); }
 .db .db-level .copy-value { color: var(--text); font-weight: 500; }
 .db .db-copy { display: inline-flex; align-items: center; gap: var(--sp-2); }
+/* Fix zones: checkbox in the chart head; the level row compares the fixed set with the live levels */
+.db .db-fix { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
+.db .db-fix input { margin: 0; accent-color: var(--accent); }
+.db .db-compare { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.db .db-shift-summary { font-size: var(--fs-sm); font-weight: 600; color: var(--warn); }
+.db .db-delta { font-weight: 500; color: var(--text-2); }
+.db .db-delta .up { color: var(--up); }
+.db .db-delta .down { color: var(--down); }
+.db .db-same { font-weight: 500; color: var(--text-3); }
 .db .card-foot a { color: var(--text-2); }
 
 /* level changes today (newest first) */
 .db .db-changes { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .db .db-changes-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-1); }
 .db .db-changes-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.db .db-changes-toggle { padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-sm); font-weight: 600;
+  color: var(--text-2); cursor: pointer; }
+.db .db-changes-toggle:hover { color: var(--text); }
+.db .db-changes-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
 .db .db-change-list { list-style: none; margin: 0; padding: 0; max-height: 110px; overflow-y: auto; font-size: var(--fs-sm); }
 .db .db-change-list li { display: grid; grid-template-columns: 3.5em 2.5em auto 1fr; gap: var(--sp-2); padding: 2px 0; }
 .db .db-toggle:disabled { opacity: 0.5; cursor: default; }

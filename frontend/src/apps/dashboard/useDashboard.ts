@@ -8,13 +8,13 @@ import constituents from '../components/config/constituents.json';
 import { PAPER_WS } from '../paper-trade/config/settings';
 import { PaperFeed, keyOf, type ConnState } from '../paper-trade/logic/feed';
 import {
-  DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_LEVEL_VIEW, DEFAULT_REFRESH_SEC, INDEX_IDS, REFRESH_OPTIONS, STORAGE_PREFIX,
-  type IndicatorToggles, type LevelView,
+  DEFAULT_INDICATORS, DEFAULT_INTERVAL, DEFAULT_REFRESH_SEC, INDEX_IDS, REFRESH_OPTIONS, STORAGE_PREFIX,
+  type IndicatorToggles,
 } from './config/settings';
 import { fetchCandles, fetchSummary, type CandlesResponse, type Summary } from './logic/api';
 import { aggregate, applyMinute, applyVolume, type Candle } from './logic/candles';
-import type { Position } from '../paper-trade/logic/api';
-import { fetchSrHistory, type PinnedSet, type SrHistory } from './logic/levelHistory';
+import { fixedApi, type FixedLevels, type LevelSet } from './logic/fixedLevels';
+import { fetchSrHistory, type SrHistory } from './logic/levelHistory';
 
 const read = (k: string) => {
   try {
@@ -60,36 +60,36 @@ export function useDashboard() {
   const expiry = expiries.includes(expiryPick) ? expiryPick : expiries[0] ?? '';
 
   const [summary, setSummary] = useState<Summary | null>(null);
-  // paper positions from the same /ws/paper connection: open ones draw their S/R entry zone on the chart
-  const [positions, setPositions] = useState<Map<number, Position>>(new Map());
   // recorded S/R levels (backend stability rule): current set, the day's segments and changes
   const [history, setHistory] = useState<SrHistory | null>(null);
   const [historyError, setHistoryError] = useState<unknown>(null);
-  // chart level options, per browser: history / morning toggles, morning time, one pinned set
-  const [levelView, setLevelViewState] = useState<LevelView>(() => {
+  // "Fix zones": the frozen level set for this index + expiry, from Postgres (survives refresh / restart)
+  const [fixed, setFixedState] = useState<FixedLevels | null>(null);
+  const [fixedError, setFixedError] = useState<unknown>(null);
+  const fixedKey = useRef('');
+  useEffect(() => {
+    setFixedState(null);
+    if (!expiry) return;
+    const key = `${symbol}|${expiry}`;
+    fixedKey.current = key;
+    const ctrl = new AbortController();
+    fixedApi.get(symbol, expiry, ctrl.signal)
+      .then((r) => { if (fixedKey.current === key) { setFixedState(r.fixed); setFixedError(null); } })
+      .catch((e) => { if ((e as Error).name !== 'AbortError') setFixedError(e); });
+    return () => ctrl.abort();
+  }, [symbol, expiry]);
+  /** Ticks / unticks "Fix zones": fixing stores `levels` (what the chart shows now) with the server's time. */
+  const setFixed = async (on: boolean, levels: LevelSet) => {
+    const key = `${symbol}|${expiry}`;
     try {
-      return { ...DEFAULT_LEVEL_VIEW, ...JSON.parse(read('levelView') ?? '{}') };
-    } catch {
-      return DEFAULT_LEVEL_VIEW;
+      const r = on ? await fixedApi.fix(symbol, expiry, levels) : await fixedApi.unfix(symbol, expiry);
+      if (fixedKey.current === key) setFixedState(r.fixed);
+      setFixedError(null);
+    } catch (e) {
+      setFixedError(e);
     }
-  });
-  const setLevelView = (patch: Partial<LevelView>) =>
-    setLevelViewState((p) => {
-      const next = { ...p, ...patch };
-      write('levelView', JSON.stringify(next));
-      return next;
-    });
-  const [pinned, setPinnedState] = useState<PinnedSet | null>(() => {
-    try {
-      return JSON.parse(read('pinned') ?? 'null');
-    } catch {
-      return null;
-    }
-  });
-  const setPinned = (p: PinnedSet | null) => {
-    write('pinned', JSON.stringify(p));
-    setPinnedState(p);
   };
+
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [minutes, setMinutes] = useState<Candle[]>([]); // 1-minute candles: history + live
@@ -188,11 +188,7 @@ export function useDashboard() {
       onState: setFeedState,
       onTicks: () => {},
       onMessage: (m) => {
-        if (m.type === 'snapshot') {
-          setPositions(new Map(m.positions.map((p) => [p.security_id, p])));
-        } else if (m.type === 'position') {
-          setPositions((prev) => new Map(prev).set(m.data.security_id, m.data));
-        } else if (m.type === 'candle' && m.data.securityId === spotId) {
+        if (m.type === 'candle' && m.data.securityId === spotId) {
           const pending = pendingVolume.current.get(m.data.time);
           pendingVolume.current.delete(m.data.time);
           putMinutes(applyMinute(minutesRef.current, m.data, pending));
@@ -221,8 +217,8 @@ export function useDashboard() {
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, history, historyError, levelView, setLevelView, pinned, setPinned,
-    bars, volumeInfo, volumeError, candlesError, feedState, refresh, reloadHistory: () => void loadSummary(), positions,
+    summary, summaryError, loading, history, historyError, fixed, fixedError, setFixed,
+    bars, volumeInfo, volumeError, candlesError, feedState, refresh, reloadHistory: () => void loadSummary(),
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };
 }
