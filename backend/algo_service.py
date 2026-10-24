@@ -270,7 +270,8 @@ class AlgoService:
             self.record("*", "info", f"Restarted: resumed today's state ({', '.join(f'{s} {st['trades']} trades' for s, st in self.states.items())})", now=now)
             self._reconcile(now)
         else:
-            self.record("*", "info", f"Algo started for {self.day} in {self.mode.upper()} mode", now=now)
+            self.record("*", "info", f"Algo started for {self.day} in {self.mode.upper()} mode, rule variant "
+                                     f"{cfg.RULE_VARIANT}", now=now)
         self._warm(now)
 
     def _reconcile(self, now):
@@ -669,8 +670,8 @@ class AlgoService:
         self._save_state(sym)  # before any order: a restart can never repeat this candle's entry
         for a in actions:
             if a["type"] == "event":
-                self.record(sym, a["kind"], a["message"], setup=st["setup"]["name"] if st["setup"] and a["kind"] == "armed"
-                            else "", data={**a["data"], "filters": f}, now=now)
+                name = a["data"].pop("setupName", "") or (st["setup"]["name"] if st["setup"] and a["kind"] == "armed" else "")
+                self.record(sym, a["kind"], a["message"], setup=name, data={**a["data"], "filters": f}, now=now)
             elif a["type"] == "enter":
                 self._enter(sym, a, f, now)
             elif a["type"] == "exit":
@@ -793,13 +794,15 @@ class AlgoService:
                 last = self.last_tick[sym]
                 out.append({
                     "symbol": sym, "levels": st.get("levels"), "levelsAt": st.get("levelsAt"), "trades": st.get("trades", 0),
-                    "maxTrades": cfg.MAX_TRADES_PER_INDEX, "stopped": st.get("stopped", False), "setup": st.get("setup"),
+                    "maxTrades": cfg.MAX_TRADES_PER_INDEX, "stopped": st.get("stopped", False),
+                    "setup": st.get("setup") or next(iter(st.get("setups", {}).values()), None),
+                    "setups": list(st.get("setups", {}).values()) or ([st["setup"]] if st.get("setup") else []),
                     "open": live, "closed": st.get("closed", []), "lastCandle": st.get("lastCandle"),
                     "spot": self.spot[sym], "dataAgeSec": round((now - last).total_seconds()) if last else None,
                     "state": self._state_label(st, now),
                     "blocked": self.notes.get((sym, "block")) or "",
                 })
-            return {"meta": {"mode": self.mode, "asOf": now.strftime("%Y-%m-%d %H:%M:%S"),
+            return {"meta": {"mode": self.mode, "variant": cfg.RULE_VARIANT, "asOf": now.strftime("%Y-%m-%d %H:%M:%S"),
                              "tokenExpired": self.data.token_expired(), "tradingDay": self.trading_day(now), "health": self.health(now),
                              "account": self.broker.account if self.broker else None,
                              "funds": self.broker.funds() if self.broker else None,
@@ -819,6 +822,8 @@ class AlgoService:
             return "in trade"
         if st.get("setup"):
             return f"{st['setup']['name']} armed ({st['setup']['count']}/{cfg.PULLBACK_CANDLES})"
+        if st.get("setups"):
+            return ", ".join(s["name"] for s in st["setups"].values()) + " armed"
         if not st.get("levels"):
             return f"waiting for {cfg.LEVELS_AT:%H:%M} levels"
         if now.time() >= cfg.ENTRY_TO:

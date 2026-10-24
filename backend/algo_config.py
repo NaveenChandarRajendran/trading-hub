@@ -22,6 +22,20 @@ LEVEL_RANGE = 500  # points either side of spot, OSR Live's default
 CANDLE_MIN = 5  # closed 5-minute candles of the index spot, 09:15-aligned
 BUFFER = {"NIFTY": 10, "BANKNIFTY": 25}  # points
 PULLBACK_CANDLES = 6  # the pullback must come within this many candles after the break
+
+# Rule variant (docs/strategies/oi-breakout.md). Live trading stays on A until Naveen chooses another.
+#   A: filters checked only on the break candle.
+#   B: after a break the setup stays armed for PULLBACK_CANDLES; filters re-checked every candle; enter on a pullback
+#      candle if they pass then; a close back through the level (by the buffer) cancels.
+#   C: B + continuation: no pullback within CONTINUATION_AFTER candles, filters pass and a candle closes beyond the
+#      break candle's high (CE) / low (PE) -> enter.
+#   D: B + level ladder: R1-R3 / S1-S3 are all breakout levels targeting the next one; a broken level stays armed until
+#      a close back through it, so a later retest from the other side is a pullback.
+VARIANTS = ("A", "B", "C", "D")
+RULE_VARIANT = os.getenv("ALGO_VARIANT", "A").strip().upper()
+if RULE_VARIANT not in VARIANTS:
+    RULE_VARIANT = "A"
+CONTINUATION_AFTER = 3  # variant C
 MIN_RANGE_WIDTH = {"NIFTY": 100, "BANKNIFTY": 250}  # R1 - S1 for the range setup
 
 # filters on the break candle
