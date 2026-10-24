@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
-import { Alert, EmptyState, Heatmap, Stat } from '../../shared/ui';
+import { Alert, EmptyState, Heatmap, Segmented, Stat } from '../../shared/ui';
 import { downloadCsv, hms, price, rupees, shortName, signedRupees, toneOf } from './format';
-import { api, type PnlResponse, type Trade } from './logic/api';
+import { api, type PnlAccount, type PnlResponse, type Trade } from './logic/api';
 import { buildCalendar, dayLabel, fyLabel, fyOf, fyRange } from './logic/calendar';
 import { byMonth, summarize, toCsv } from './logic/pnl';
 import type { Paper } from './usePaper';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m: string) => `${MONTH_NAMES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
+const ACCOUNTS = [{ value: 'manual', label: 'Manual' }, { value: 'algo', label: 'Algo' }] as const;
 
 export function PnlView({ paper }: { paper: Paper }) {
   const today = paper.today;
   const current = fyOf(today);
   const [fy, setFy] = useState(current);
+  const [account, setAccount] = useState<PnlAccount>('manual');
   const [data, setData] = useState<PnlResponse | null>(null);
   const [error, setError] = useState('');
   const [day, setDay] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export function PnlView({ paper }: { paper: Paper }) {
   useEffect(() => {
     const ctrl = new AbortController();
     const { from, to } = fyRange(fy);
-    api.pnl(from, to, ctrl.signal)
+    api.pnl(from, to, ctrl.signal, account)
       .then((r) => {
         setData(r);
         setError('');
@@ -32,15 +34,15 @@ export function PnlView({ paper }: { paper: Paper }) {
         if (e.name !== 'AbortError') setError(e instanceof ApiError ? e.message : 'Could not load the P&L report.');
       });
     return () => ctrl.abort();
-  }, [fy, paper.tradeVersion, paper.meta?.accountId]);
+  }, [fy, account, paper.tradeVersion, paper.meta?.accountId]);
 
   useEffect(() => {
     if (!day) return;
     const ctrl = new AbortController();
     setDayTrades(null);
-    api.trades(day, ctrl.signal).then((r) => setDayTrades(r.rows)).catch(() => setDayTrades([]));
+    api.trades(day, ctrl.signal, account).then((r) => setDayTrades(r.rows)).catch(() => setDayTrades([]));
     return () => ctrl.abort();
-  }, [day, paper.tradeVersion]);
+  }, [day, account, paper.tradeVersion]);
 
   const rows = data?.rows ?? [];
   const s = useMemo(() => summarize(rows), [rows]);
@@ -60,7 +62,11 @@ export function PnlView({ paper }: { paper: Paper }) {
               {[current, current - 1, current - 2].map((y) => <option key={y} value={y}>{fyLabel(y)}</option>)}
             </select>
           </label>
-          <span className="muted">Net = realized P&amp;L − charges, by IST trade date. Current account only.</span>
+          <div className="field">Account
+            <Segmented label="Account" options={ACCOUNTS} value={account} onChange={(v) => { setAccount(v); setDay(null); }} />
+          </div>
+          <span className="muted">Net = realized P&amp;L − charges, by IST trade date.{account === 'algo'
+            ? ' Algo: the OI breakout algo’s paper account (live variant only).' : ' Your manual trades.'}</span>
         </div>
         {error && <div className="pt-gap"><Alert kind="error">{error}</Alert></div>}
       </section>

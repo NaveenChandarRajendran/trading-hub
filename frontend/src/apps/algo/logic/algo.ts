@@ -38,19 +38,21 @@ export function reviewText(rows: TradeRow[], date: string): string {
 
 export type LogFilter = 'all' | 'trades' | 'signals' | 'problems';
 
-const IN: Record<LogFilter, (k: string) => boolean> = {
-  all: (k) => k !== 'candle',
-  trades: (k) => k === 'entry' || k === 'exit',
-  signals: (k) => ['armed', 'skip', 'cancel', 'expire', 'entry', 'exit', 'levels'].includes(k),
-  problems: (k) => ['error', 'skip', 'stale', 'feed'].includes(k),
+const IN: Record<LogFilter, (e: AlgoEvent) => boolean> = {
+  all: (e) => e.type !== 'candle',
+  trades: (e) => e.type === 'entry' || e.type === 'exit',
+  signals: (e) => ['signal', 'skip', 'entry', 'exit', 'levels'].includes(e.type),
+  problems: (e) => ['error', 'skip', 'feed'].includes(e.type),
 };
 
-/** Decision log rows for a filter and index ("" = both); candles only with "all + candles". */
-export function filterEvents(rows: AlgoEvent[], filter: LogFilter, symbol: string, withCandles: boolean): AlgoEvent[] {
-  return rows.filter((e) => (filter === 'all' && withCandles && e.kind === 'candle') || IN[filter](e.kind))
-    .filter((e) => !symbol || e.symbol === symbol || e.symbol === '*');
+/** Decision log rows for a filter, index ("" = both) and variant ("" = all; lines for both indices always show). */
+export function filterEvents(rows: AlgoEvent[], filter: LogFilter, symbol: string, variant = ''): AlgoEvent[] {
+  return rows.filter((e) => IN[filter](e))
+    .filter((e) => !symbol || e.index === symbol || e.index === '*')
+    .filter((e) => !variant || e.variant === variant || e.index === '*');
 }
 
+/** Tone of a log row's pill, by its fine-grained kind (armed, skip, entry, ...). */
 export const KIND_TONE: Record<string, Tone> = {
   entry: 'accent', exit: 'accent', armed: 'up', skip: 'warn', cancel: 'neutral', expire: 'neutral', error: 'down',
   levels: 'neutral', info: 'neutral', candle: 'neutral', stale: 'warn', feed: 'warn', heartbeat: 'neutral',

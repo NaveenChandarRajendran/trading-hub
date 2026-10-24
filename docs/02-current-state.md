@@ -74,12 +74,28 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
   tracebacks, heartbeat every 15 min, status `health` (ok / stale / error + reason) on the page, network calls outside
   the algo lock, candles only 09:15–15:30 and opening at or after 09:30. Tests: `test_algo_health.py`,
   `test_dhan_feed.py`.
-- Past days: `/api/algo/events?date=` (2026-10-23 or 23-10-2026) returns that day's log and trades; a day missing from
-  the store in use (e.g. it ran with Postgres, viewed from a JSON run) is read back from `logs/algo-<day>.log`.
-- Rule variants B / C / D (`RULE_VARIANT`, default A): `test_algo_variants.py` on 23-Oct NIFTY candles.
-- Replay: `algo_replay.py` (log or Dhan source, Replay accounts, report in `logs/replay-<date>.md`); `test_algo_replay.py`.
-- Option-chain snapshots every tracked minute (`chain_snapshots.py`, ATM ±25 strikes: OI, previous OI, LTP, previous
-  close, volume, IV), `data/chain_<sym>_<expiry>_<date>.jsonl` or table `option_chain_snapshot`; `test_chain_snapshots.py`.
+- Live variant **B** (since 26-Oct), shadows A / C / D on the same candles (signals only, never an order, variant tag
+  on every row); "no room" skip in every variant. `test_algo_shadows.py`, `test_algo_variants.py`.
+- **Postgres is the single source of truth (ADR 0006).** `main.py` reads `DATABASE_URL` (and the Dhan keys) from
+  `backend/.env.local` and refuses to start without a reachable database; no JSON fallback (`JsonStore` /
+  `PaperJsonStore` remain only as test doubles). The app never reads `logs/*.log` (write-only backup).
+  Tables: `algo_events` (ts, trade_date, index, variant, type, setup, message, details, uid; migrated in place from
+  the 23-Oct layout), `algo_state` (per index + variant), `algo_levels`, `algo_candles`, `algo_daily_summary` (15:35
+  IST, `POST /api/algo/summary` recomputes), `oc_snapshots` (per strike per minute), `pt_orders.variant`.
+  The same database also holds another project's tables (`candles`, `option_oi`, `trades`, `signals`, ...): never touched.
+- Reports: Algo page Today | Reports. Reports: presets / custom range, index + variant filters, tiles, day-wise table
+  (CSV), variant comparison, day view (levels, trades of all variants, decision log with CSV, candles with filter
+  values). Today: variant filter on the log (default live), shadows on the index cards, end-of-day comparison after
+  15:35. Paper Trading P&L calendar: Manual | Algo. Endpoints `/api/algo/day`, `/api/algo/reports`,
+  `/api/paper/pnl?account=algo`, `/api/paper/trades?account=algo`. `algo_reports.py`.
+- Import (idempotent): `python scripts/import_legacy.py` (JSON store + algo logs -> Postgres; run on 24-Oct: +4
+  toi_session, +1,120 toi_snapshot, +7 pt_orders, +7 pt_trades, +3 pt_positions, +142 algo_candles, +2 algo_levels,
+  +2 algo_daily_summary; algo_events +0 because the 23-Oct events were already in Postgres; a second run adds 0).
+- Backup: `python scripts/backup_db.py` -> `backend/backups/trading-hub-YYYY-MM-DD.sql` (pg_dump, plain SQL; nothing is
+  ever deleted). Tests on Postgres: `test_algo_db.py`, `test_pg_store.py`, `test_paper_store.py` with
+  `TEST_DATABASE_URL` pointing at the throwaway database `trading_hub_test` (they TRUNCATE tables).
+- Replay: `algo_replay.py --source db|dhan` (Postgres only), Replay accounts, report in `logs/replay-<date>.md`.
+- Option-chain snapshots every tracked minute (`chain_snapshots.py`, ATM ±25 strikes) -> `oc_snapshots`.
 - 23-Oct review: the feed was not silent from 09:50 (every 5-minute candle 09:25–15:15 had 5 live minutes, filters
   fresh). The page looked dead because candle lines are hidden in the log by default and no rule fired after 09:45
   (both indices below S1 with the breakdown already used; A has no S2 / S3 setups). Ticks did stop at about 15:14,

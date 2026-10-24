@@ -246,9 +246,13 @@ class PaperService:
                 rows = self.store.orders(self.account["id"], day)
         return [self._with_instrument(o) for o in rows]
 
-    def trades(self, day=None):
+    def trades(self, day=None, account=None):
+        """Fills of a day: the manual account (today from the engine), or a named one ("Algo") from the store."""
         with self.lock:
-            if day in (None, self.day.isoformat()):
+            if account:
+                acc = self.store.active_account(account)
+                rows = self.store.trades(acc["id"], day or self.day.isoformat()) if acc else []
+            elif day in (None, self.day.isoformat()):
                 rows = [t.to_dict() for t in self.engine.trades]
             else:
                 rows = self.store.trades(self.account["id"], day)
@@ -597,8 +601,11 @@ def register(app, svc):
                 "rows": [{"strike": r["strike"], "ce": slim(r["ce"]), "pe": slim(r["pe"])} for r in rows]}
 
     @app.get("/api/paper/trades")
-    def trades(date: str = ""):
-        return {"meta": svc.meta(), "rows": svc.trades(_day(date, "date"))}
+    def trades(date: str = "", account: str = ""):
+        if account and account.lower() not in ("algo", "manual"):
+            raise HTTPException(400, "account must be manual or algo")
+        name = "Algo" if account.lower() == "algo" else None
+        return {"meta": svc.meta(), "rows": svc.trades(_day(date, "date"), name)}
 
     @app.websocket("/ws/paper")
     async def ws_paper(ws: WebSocket):

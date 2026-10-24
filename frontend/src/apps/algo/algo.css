@@ -22,7 +22,11 @@
 .algo .algo-log-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .algo .algo-check { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-2); }
 .algo .algo-log { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow-y: auto; font-size: var(--fs-sm); }
-.algo .algo-log li { display: grid; grid-template-columns: 5em 6.5em 5.5em 1fr; gap: var(--sp-2); align-items: start;
+.algo .algo-log li { display: grid; grid-template-columns: 5em 9.5em 5.5em 1fr; gap: var(--sp-2); align-items: start;
   padding: var(--sp-1) 0; border-bottom: 1px solid var(--border); }
 .algo .algo-sym { font-weight: 600; color: var(--text-2); }
 .algo .algo-msg { white-space: normal; overflow-wrap: anywhere; }
+.algo .algo-tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.algo tr.algo-click { cursor: pointer; }
+.algo tr.algo-click:hover td { background: var(--surface-2); }
+.algo .algo-candles { max-height: 520px; overflow-y: auto; }

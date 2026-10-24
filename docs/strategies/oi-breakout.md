@@ -44,8 +44,12 @@ Buffer: NIFTY 10, BANKNIFTY 25 points.
   blocks the PE, Bearish blocks the CE). A new touch needs a candle that did not touch the level first. A candle that
   started with a breakout setup armed is not used for range.
 
-## Rule variants (`RULE_VARIANT` in algo_config.py, env `ALGO_VARIANT`; live default **A**)
-- **A** (live): filters checked only on the break candle (Setup 1 above).
+## Rule variants (`RULE_VARIANT` in algo_config.py, env `ALGO_VARIANT`; live **B** since 26-Oct-2026)
+The live variant places paper orders. The other three run as **shadows** on the same live candles and filter values:
+signals only (never an order, no account, no day-loss limit), each logged with its variant tag; their would-be
+entries record the ATM option's live price, exits use the same target / spot stop / premium stop / 15:15 rules, and
+the result is measured in index points. 23-Oct ran A live (before shadows existed).
+- **A**: filters checked only on the break candle (Setup 1 above).
 - **B**: after a break of R1 / S1 the setup stays armed for 6 candles and the filters are re-checked on every candle;
   entry on a pullback candle if they pass at that moment. A close back through the level (by the buffer) cancels.
 - **C**: B + continuation: no pullback within 3 candles, the filters pass and a candle closes beyond the break
@@ -53,13 +57,13 @@ Buffer: NIFTY 10, BANKNIFTY 25 points.
 - **D**: B + level ladder: R1–R3 / S1–S3 are all breakout levels, each targeting the next one (R3 / S3: no target,
   exit by stop or 15:15). A broken level stays armed until a close back through it (no 6-candle expiry), so a later
   retest from the other side is a pullback.
-- B, C, D skip an entry with no room: spot already at or through the target zone ("no room"). A does not (unchanged
-  live behaviour): on 23-Oct BANKNIFTY, A would have entered at 54,607.7 with its target zone at 54,625 already passed.
+- **No room** (every variant, breakout and range entries): skip when spot is already at or through the target zone
+  (on 23-Oct BANKNIFTY the 09:50 breakdown closed at 54,607.7 with its S2 zone at 54,625 already passed).
 
 ## Replay
-`python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source log|dhan` (backend folder). `dhan`: historical
-1-minute candles (index + the option traded), booked in paper accounts "Replay <variant>"; needs a valid token. `log`:
-the day's decision log candles and RSI, index points only. OI filters are checked when the day has option-chain
+`python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source db|dhan` (backend folder). `dhan`: historical
+1-minute candles (index + the option traded), booked in paper accounts "Replay <variant>"; needs a valid token. `db`:
+the day's stored candles and RSI (algo_candles) and locked levels (algo_levels), index points only. OI filters are checked when the day has option-chain
 snapshots (saved every minute since 24-Oct) and Trending OI history; else the report says "OI not checked".
 Report: `backend/logs/replay-<date>.md` / `.json`.
 
@@ -85,7 +89,10 @@ Report: `backend/logs/replay-<date>.md` / `.json`.
 - Kill switch: `POST /api/algo/stop` (no new entries), `POST /api/algo/stop-exit-all`, `POST /api/algo/resume`; buttons
   on the Algo page.
 
-## Decision log
-Every candle, level lock, armed setup, skip (with each filter value), cancel, expiry, entry, exit and error goes to
-the store (`algo_events`) and to `backend/logs/algo-YYYY-MM-DD.log`. Each closed trade keeps its entry / exit time,
+## Decision log and reports (Postgres)
+Every level lock, armed setup, skip (with each filter value), cancel, expiry, entry, exit, error, feed event and
+heartbeat goes to `algo_events` (with index, variant, type), every evaluated candle with its RSI and filter values to
+`algo_candles`, the locked levels to `algo_levels`, and a daily summary per index and variant to `algo_daily_summary`
+at 15:35 IST. `backend/logs/algo-YYYY-MM-DD.log` is a write-only plain-text backup; the app never reads it.
+The Algo page's Reports view (date range, tiles, day-wise table, variant comparison, day view, CSV) reads these tables. Each closed trade keeps its entry / exit time,
 prices, spot, and the full reason for both, for the end-of-day review ("Copy review" on the Algo page).

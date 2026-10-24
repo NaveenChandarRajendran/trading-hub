@@ -184,12 +184,15 @@ export const api = {
   cancel: (id: string) => requestJson<Order>(PAPER_API, `/api/paper/orders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   orders: (date: string, signal?: AbortSignal) =>
     requestJson<{ meta: Meta; rows: Order[] }>(PAPER_API, `/api/paper/orders?${q({ date })}`, { signal }),
-  trades: (date: string, signal?: AbortSignal) =>
-    requestJson<{ meta: Meta; rows: Trade[] }>(PAPER_API, `/api/paper/trades?${q({ date })}`, { signal }),
+  trades: (date: string, signal?: AbortSignal, account: PnlAccount = 'manual') =>
+    requestJson<{ meta: Meta; rows: Trade[] }>(PAPER_API, `/api/paper/trades?${q({ date, account })}`, { signal }),
   positions: (signal?: AbortSignal) =>
     requestJson<{ meta: Meta; rows: Position[]; funds: Funds }>(PAPER_API, '/api/paper/positions', { signal }),
   exit: (securityId: number) => requestJson(PAPER_API, `/api/paper/positions/${securityId}/exit`, { method: 'POST' }),
   exitAll: () => requestJson(PAPER_API, '/api/paper/positions/exit-all', { method: 'POST' }),
-  pnl: (from: string, to: string, signal?: AbortSignal) =>
-    requestJson<PnlResponse>(PAPER_API, `/api/paper/pnl?${q({ from, to })}`, { signal }),
+  pnl: (from: string, to: string, signal?: AbortSignal, account: PnlAccount = 'manual') =>
+    requestJson<PnlResponse>(PAPER_API, `/api/paper/pnl?${q({ from, to, account })}`, { signal }),
 };
+
+/** Whose P&L: the manual account (this page) or the OI breakout algo's "Algo" account (same pt_ tables). */
+export type PnlAccount = 'manual' | 'algo';

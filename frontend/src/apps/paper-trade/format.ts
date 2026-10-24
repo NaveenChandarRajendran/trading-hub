@@ -27,14 +27,4 @@ export const STATUS_TONE: Record<OrderStatus, Tone> = {
   PENDING: 'warn', TRIGGERED: 'warn', FILLED: 'up', CANCELLED: 'neutral', REJECTED: 'down',
 };
 
-/** Starts a CSV download (works from the double-clicked dist/index.html too). */
-export function downloadCsv(name: string, csv: string) {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export { downloadCsv } from '../../shared/csv';

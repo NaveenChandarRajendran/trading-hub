@@ -37,17 +37,28 @@ describe('trade review', () => {
 });
 
 describe('decision log filter', () => {
-  const ev = (symbol: string, kind: string): AlgoEvent => ({ at: '2026-10-23T10:05:11+05:30', symbol, setup: '', kind, message: kind, data: {} });
+  const TYPE: Record<string, string> = { armed: 'signal', stale: 'feed' };
+  const ev = (index: string, kind: string, variant: AlgoEvent['variant'] = 'B'): AlgoEvent => ({
+    ts: '2026-10-23T10:05:11+05:30', trade_date: '2026-10-23', index, variant, type: TYPE[kind] ?? kind, kind, setup: '',
+    message: kind, details: {},
+  });
   const rows = [ev('NIFTY', 'candle'), ev('NIFTY', 'skip'), ev('BANKNIFTY', 'entry'), ev('*', 'info'), ev('NIFTY', 'error')];
 
-  it('hides candles unless asked; filters by kind and index (global lines stay)', () => {
-    expect(filterEvents(rows, 'all', '', false).map((e) => e.kind)).toEqual(['skip', 'entry', 'info', 'error']);
-    expect(filterEvents(rows, 'all', '', true)).toHaveLength(5);
-    expect(filterEvents(rows, 'trades', '', false).map((e) => e.kind)).toEqual(['entry']);
-    expect(filterEvents(rows, 'problems', 'NIFTY', false).map((e) => e.kind)).toEqual(['skip', 'error']);
-    expect(filterEvents([ev('NIFTY', 'stale'), ev('*', 'feed'), ev('*', 'heartbeat')], 'problems', '', false).map((e) => e.kind))
+  it('hides old candle rows; filters by type and index (lines for both indices stay)', () => {
+    expect(filterEvents(rows, 'all', '').map((e) => e.kind)).toEqual(['skip', 'entry', 'info', 'error']);
+    expect(filterEvents(rows, 'trades', '').map((e) => e.kind)).toEqual(['entry']);
+    expect(filterEvents(rows, 'problems', 'NIFTY').map((e) => e.kind)).toEqual(['skip', 'error']);
+    expect(filterEvents([ev('NIFTY', 'stale'), ev('*', 'feed'), ev('*', 'heartbeat')], 'problems', '').map((e) => e.kind))
       .toEqual(['stale', 'feed']);
-    expect(filterEvents(rows, 'all', 'BANKNIFTY', false).map((e) => e.symbol)).toEqual(['BANKNIFTY', '*']);
+    expect(filterEvents(rows, 'all', 'BANKNIFTY').map((e) => e.index)).toEqual(['BANKNIFTY', '*']);
+    expect(filterEvents([ev('NIFTY', 'armed', 'A')], 'signals', '').map((e) => e.type)).toEqual(['signal']);
+  });
+
+  it('variant filter: the chosen variant only (lines for both indices always show)', () => {
+    const mixed = [ev('NIFTY', 'entry', 'B'), ev('NIFTY', 'entry', 'A'), ev('NIFTY', 'skip', 'D'), ev('*', 'heartbeat', 'B')];
+    expect(filterEvents(mixed, 'all', '', 'B').map((e) => `${e.variant}:${e.kind}`)).toEqual(['B:entry', 'B:heartbeat']);
+    expect(filterEvents(mixed, 'all', '', 'A').map((e) => `${e.variant}:${e.kind}`)).toEqual(['A:entry', 'B:heartbeat']);
+    expect(filterEvents(mixed, 'all', '')).toHaveLength(4);
   });
 });
 
