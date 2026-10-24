@@ -15,6 +15,7 @@ from calc import pick_strikes, summarize
 from chain_cache import ChainCache
 from dhan_client import STRIKE_STEP, DhanError
 from holidays import NSE_HOLIDAYS
+from chain_snapshots import make_snapshot
 from sr_levels import DEFAULTS as SR_DEFAULTS, LevelState, apply_changes, side_oi
 from store import IST, JsonStore
 
@@ -167,6 +168,11 @@ class Tracker:
             self._record_levels(symbol, expiry, today, chain, snap["ts"])
         except Exception as e:
             log.warning("S/R levels for %s %s: %s", symbol, expiry, e)
+        try:  # the minute's chain, for replays of the OI filters (chain_snapshots.py)
+            self.store.save_chain_snapshot(symbol, expiry, today, make_snapshot(
+                snap["ts"], now.isoformat(timespec="seconds"), spot, oc))
+        except Exception as e:
+            log.warning("chain snapshot for %s %s: %s", symbol, expiry, e)
         return snap
 
     # ------------------------------------------------------- S/R levels

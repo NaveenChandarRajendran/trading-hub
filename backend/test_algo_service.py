@@ -289,10 +289,12 @@ def test_status_endpoint_shape(env):
 
 
 # ---------------------------------------------------------------- safety
-ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_service.py", "algo_api.py")
-ALLOWED_IMPORTS = {"json", "logging", "os", "re", "threading", "time", "traceback", "dataclasses", "datetime", "typing", "fastapi",
-                   "algo_config", "algo_filters", "algo_logic", "candles", "dhan_client", "dhan_feed", "holidays",
-                   "paper_engine", "sr_levels", "store"}
+ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_service.py", "algo_api.py", "algo_replay.py")
+ALLOWED_IMPORTS = {"json", "logging", "os", "re", "sys", "argparse", "threading", "time", "traceback", "dataclasses",
+                   "datetime", "typing", "fastapi", "algo_config", "algo_filters", "algo_logic", "algo_service", "calc", "chain_snapshots",
+                   "candles", "dhan_client", "dhan_feed", "holidays", "instruments", "paper_engine", "sr_levels", "store"}
+# from dhan_client: the index ids, and (replay only) the market-data client; dhan_client has no order endpoint at all
+DHAN_NAMES = {"algo_replay.py": {"SCRIP", "DhanClient"}}
 ORDER_WORDS = ("/orders", "/super/orders", "/forever", "placeorder", "place_order(", "modify_order", "cancel_order",
                "/v2/orders", "slicing")
 
@@ -310,7 +312,8 @@ def test_algo_cannot_reach_a_real_order_endpoint():
                 continue
             assert set(mods) <= ALLOWED_IMPORTS, f"{name} imports {mods}"
             if isinstance(node, ast.ImportFrom) and node.module == "dhan_client":
-                assert {a.name for a in node.names} <= {"SCRIP"}, f"{name} imports {[a.name for a in node.names]} from dhan_client"
+                assert {a.name for a in node.names} <= DHAN_NAMES.get(name, {"SCRIP"}), \
+                    f"{name} imports {[a.name for a in node.names]} from dhan_client"
         low = src.lower().replace("broker.buy(", "").replace("engine.place_order(", "")
         for w in ORDER_WORDS:
             assert w not in low, f"{name} mentions {w!r}"

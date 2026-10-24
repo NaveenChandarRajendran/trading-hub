@@ -68,7 +68,24 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
 - Tests: `test_algo_logic.py` (state machine), `test_algo_filters.py` (ports vs TypeScript), `test_algo_service.py`
   (end to end with the real engine: entry, exits, 15:15, risk, stale data, restart, kill switch, signals mode, the
   no-real-orders check), `algo/logic/algo.test.ts`.
-- Checked against live Dhan after hours (levels, filters, intraday, option lookup); not yet run in a live session.
+- First live paper day 23-Oct-2026 (A): ran all day, no trades (see "23-Oct review" below).
+- Reliability (24-Oct): feed watchdog in `dhan_feed.py` (polled recv, reconnect after 2 min without packets in market
+  hours, `on_event` into the algo log), per-index watchdog + logged resubscribe / reconnect attempts, exceptions with
+  tracebacks, heartbeat every 15 min, status `health` (ok / stale / error + reason) on the page, network calls outside
+  the algo lock, candles only 09:15–15:30 and opening at or after 09:30. Tests: `test_algo_health.py`,
+  `test_dhan_feed.py`.
+- Past days: `/api/algo/events?date=` (2026-10-23 or 23-10-2026) returns that day's log and trades; a day missing from
+  the store in use (e.g. it ran with Postgres, viewed from a JSON run) is read back from `logs/algo-<day>.log`.
+- Rule variants B / C / D (`RULE_VARIANT`, default A): `test_algo_variants.py` on 23-Oct NIFTY candles.
+- Replay: `algo_replay.py` (log or Dhan source, Replay accounts, report in `logs/replay-<date>.md`); `test_algo_replay.py`.
+- Option-chain snapshots every tracked minute (`chain_snapshots.py`, ATM ±25 strikes: OI, previous OI, LTP, previous
+  close, volume, IV), `data/chain_<sym>_<expiry>_<date>.jsonl` or table `option_chain_snapshot`; `test_chain_snapshots.py`.
+- 23-Oct review: the feed was not silent from 09:50 (every 5-minute candle 09:25–15:15 had 5 live minutes, filters
+  fresh). The page looked dead because candle lines are hidden in the log by default and no rule fired after 09:45
+  (both indices below S1 with the breakdown already used; A has no S2 / S3 setups). Ticks did stop at about 15:14,
+  with nothing logged: recv() had no timeout (a half-open socket blocks it forever) and staleness was only checked
+  when a candle had ticks. Both fixed. That day ran with Postgres (DATABASE_URL set in the console only) while 24-Oct
+  ran with JSON, so the 23-Oct events are in Postgres; the page now falls back to the log file.
 - Known limits: candles missed while the backend is down are skipped (only the newest closed candle is evaluated);
   the paper P&L page does not separate the Algo account yet (deferred, with replay / backtest and a settings popover).
 

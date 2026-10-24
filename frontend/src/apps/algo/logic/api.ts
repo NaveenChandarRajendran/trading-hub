@@ -50,6 +50,7 @@ export interface IndexStatus {
 export interface AlgoStatus {
   meta: {
     mode: 'paper' | 'signals' | 'off';
+    variant: string; // rule variant A-D (algo_config.RULE_VARIANT)
     asOf: string;
     tokenExpired: boolean;
     tradingDay: boolean;

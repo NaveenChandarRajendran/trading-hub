@@ -54,6 +54,8 @@ def breakout_checks(side, f):
                    "value": f"{r:.1f} (need {lo:.0f}-{hi:.0f})" if r is not None else "no data"},
                   {"name": "Components", "ok": True, "value": nc}]
         return all(c["ok"] for c in checks), checks
+    if f.get("componentsChecked") is False:  # replay with saved OI snapshots: no stock-quote history
+        comp = {"verdict": "Neutral", "indexMove": 0.0, "priced": 0, "total": 0, "notChecked": True}
     checks = [
         {"name": "Trending OI", "ok": bool(toi) and toi["sentiment"] == want and abs(toi["strength"]) >= cfg.TOI_STRENGTH_MIN,
          "value": f"{toi['sentiment']} {abs(toi['strength']):.1f}% (need {want} >= {cfg.TOI_STRENGTH_MIN:.0f}%)" if toi
@@ -64,7 +66,8 @@ def breakout_checks(side, f):
          "value": f"{r:.1f} (need {lo:.0f}-{hi:.0f})" if r is not None else "no data"},
         {"name": "Components", "ok": bool(comp) and comp.get("verdict") is not None
          and comp["verdict"] != ("Bearish" if bull else "Bullish"),
-         "value": f"{comp['verdict']} ({comp['indexMove']:+.2f}%, need not {'Bearish' if bull else 'Bullish'})"
+         "value": "not checked (no history)" if comp and comp.get("notChecked") else
+         f"{comp['verdict']} ({comp['indexMove']:+.2f}%, need not {'Bearish' if bull else 'Bullish'})"
          if comp and comp.get("verdict") else f"not ready ({comp['priced']}/{comp['total']} priced)" if comp else "no data"},
     ]
     return all(c["ok"] for c in checks), checks
@@ -350,6 +353,13 @@ def _on_candle_v(state, c, now, filters, block, v):
             nxt = next_slot(slot)
             target = L.get(nxt) if nxt else None
             target = None if target is None else target - buf if bull else target + buf
+            if target is not None and ((bull and c["close"] >= target) or (not bull and c["close"] <= target)):
+                out.append(event("skip", f"{name} {'pullback' if pull else 'continuation'} at {hm(now)} but no room: "
+                                          f"spot {fmt(c['close'])} is already {'at or above' if bull else 'at or below'} "
+                                          f"the {nxt} target zone {fmt(target)}", setupName=name, **base))
+                if v != "D":
+                    del setups[slot]
+                continue
             reason = (f"{name} [{v}]: break {s['breakText']}; {how}. Filters now: {checks_text(checks)}")
             out.append(_enter(state, side, name, target, "below" if bull else "above",
                               lvl - buf if bull else lvl + buf, reason, c, now, {**base, "checks": checks, "variant": v}))

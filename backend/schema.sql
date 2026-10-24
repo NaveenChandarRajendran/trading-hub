@@ -152,3 +152,16 @@ CREATE TABLE IF NOT EXISTS algo_state (
     updated_at  timestamptz NOT NULL,
     PRIMARY KEY (trade_date, symbol)
 );
+
+-- Option-chain snapshots, one per tracked expiry per minute in market hours (chain_snapshots.py): ATM +/- 25 strikes
+-- with OI, previous OI, LTP, previous close, volume, IV per leg, so replays can check the OI filters on past days.
+CREATE TABLE IF NOT EXISTS option_chain_snapshot (
+    symbol      text             NOT NULL,
+    expiry      date             NOT NULL,
+    trade_date  date             NOT NULL,
+    ts          text             NOT NULL,       -- 'YYYY-MM-DD HH:MM' IST, the tracker's minute
+    spot        double precision NOT NULL,
+    snap        jsonb            NOT NULL,       -- {"ts", "fetchedAt", "spot", "columns", "rows": [[strike, ...], ...]}
+    PRIMARY KEY (symbol, expiry, ts)
+);
+CREATE INDEX IF NOT EXISTS option_chain_snapshot_day ON option_chain_snapshot (symbol, trade_date);

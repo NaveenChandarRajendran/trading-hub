@@ -1,6 +1,6 @@
 """Postgres tests. They need a real database, so they only run when TEST_DATABASE_URL is set, e.g.
     set TEST_DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/some_throwaway_db
-They TRUNCATE the toi_ and sr_ tables, so never point this at a database holding data you want to keep."""
+They TRUNCATE the toi_, sr_ and option_chain_snapshot tables, so never point this at a database holding data you want to keep."""
 import os
 
 import pytest
@@ -22,7 +22,7 @@ SNAP = dict(spot=55629.35, strikes_used=15, call_chg=1053810.0, put_chg=410340.0
 def store():
     s = PgStore(DSN)
     with s._cursor() as cur:
-        cur.execute("TRUNCATE toi_snapshot, toi_session, sr_levels, sr_settings")
+        cur.execute("TRUNCATE toi_snapshot, toi_session, sr_levels, sr_settings, option_chain_snapshot")
     yield s
     s.close()
 
@@ -101,3 +101,12 @@ def test_sr_level_rows_open_close_and_settings(store):
     assert store.sr_settings() == {}
     store.save_sr_settings({"leadPct": 5, "confirmRefreshes": 2, "range": 400})
     assert store.sr_settings() == {"leadPct": 5, "confirmRefreshes": 2, "range": 400}
+
+
+def test_chain_snapshots_roundtrip(store):
+    snap = {"ts": "2026-10-23 09:16", "fetchedAt": "2026-10-23T09:16:03+05:30", "spot": 22700.5, "columns": ["strike"],
+            "rows": [[22700.0, 1.0]]}
+    store.save_chain_snapshot("NIFTY", "2026-10-27", "2026-10-23", snap)
+    store.save_chain_snapshot("NIFTY", "2026-10-27", "2026-10-23", {**snap, "spot": 22701.0})  # same minute: replaced
+    assert store.chain_snapshots("NIFTY", "2026-10-27", "2026-10-23") == [{**snap, "spot": 22701.0}]
+    assert store.chain_snapshot_expiries("NIFTY", "2026-10-23") == ["2026-10-27"]

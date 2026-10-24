@@ -99,6 +99,7 @@ export default function AlgoApp() {
             <Pill tone={mode === 'paper' ? 'accent' : mode === 'signals' ? 'warn' : 'neutral'}>
               {mode === 'paper' ? 'PAPER' : mode === 'signals' ? 'SIGNALS ONLY' : mode === 'off' ? 'OFF' : '…'}
             </Pill>
+            {status?.meta.variant && <Pill tone="neutral">Rules {status.meta.variant}</Pill>}
             <span className="muted">OI breakout algo · Algo account · no real orders</span>
           </div>
           <div className="toolbar-end">

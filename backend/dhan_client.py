@@ -107,11 +107,17 @@ class DhanClient:
             raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
         return {"timestamp": ts, "close": close}
 
-    def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None):
+    def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None, option_id=None):
         """1-minute (or 5/15/25/60) candles: {"timestamp": [epoch s], "open": [...], ..., "volume": [...]}.
-        The index by default (no volume); with future_id, that index future (NSE_FNO / FUTIDX, with volume).
+        The index by default (no volume); with future_id, that index future (NSE_FNO / FUTIDX, with volume); with
+        option_id, that index option (NSE_FNO / OPTIDX: premiums for replays). Market data only, no orders.
         from_dt / to_dt are 'YYYY-MM-DD HH:MM:SS' (IST). Same data-API limit as historical()."""
-        sid, seg, inst = (future_id, "NSE_FNO", "FUTIDX") if future_id else (SCRIP[symbol], SEGMENT, "INDEX")
+        if option_id:
+            sid, seg, inst = option_id, "NSE_FNO", "OPTIDX"
+        elif future_id:
+            sid, seg, inst = future_id, "NSE_FNO", "FUTIDX"
+        else:
+            sid, seg, inst = SCRIP[symbol], SEGMENT, "INDEX"
         body = {"securityId": str(sid), "exchangeSegment": seg, "instrument": inst,
                 "interval": str(interval), "oi": False, "fromDate": from_dt, "toDate": to_dt}
         payload = self._post("/charts/intraday", body, gap=HISTORY_GAP_SECONDS)

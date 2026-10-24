@@ -63,6 +63,32 @@ class JsonStore:
         return keys
 
     # ---------------------------------------------------- S/R level history (sr_levels.py)
+    # ---- option-chain snapshots (chain_snapshots.py): one JSON line per minute, appended
+    def _chain_path(self, symbol, expiry, date):
+        return os.path.join(self.data_dir, f"chain_{symbol}_{expiry}_{date}.jsonl")
+
+    def save_chain_snapshot(self, symbol, expiry, date, snap):
+        with open(self._chain_path(symbol, expiry, date), "a", encoding="utf-8") as f:
+            f.write(json.dumps(snap, separators=(",", ":")) + "\n")
+
+    def chain_snapshots(self, symbol, expiry, date):
+        path = self._chain_path(symbol, expiry, date)
+        if not os.path.exists(path):
+            return []
+        out = {}
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    s = json.loads(line)
+                except ValueError:  # a line cut short by a crash
+                    continue
+                out[s["ts"]] = s  # the same minute twice: the later write wins
+        return [out[k] for k in sorted(out)]
+
+    def chain_snapshot_expiries(self, symbol, date):
+        names = glob.glob(os.path.join(self.data_dir, f"chain_{symbol}_*_{date}.jsonl"))
+        return sorted(os.path.basename(p)[len(f"chain_{symbol}_"):-len(f"_{date}.jsonl")] for p in names)
+
     def _sr_path(self, symbol, expiry, date):
         return os.path.join(self.data_dir, f"sr_{symbol}_{expiry}_{date}.json")
 
@@ -179,6 +205,24 @@ class PgStore:
             return [(r[0], r[1]) for r in cur.fetchall()]
 
     # ---------------------------------------------------- S/R level history (sr_levels.py)
+    def save_chain_snapshot(self, symbol, expiry, date, snap):
+        with self._cursor() as cur:
+            cur.execute("INSERT INTO option_chain_snapshot (symbol, expiry, trade_date, ts, spot, snap) "
+                        "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (symbol, expiry, ts) DO UPDATE SET spot=EXCLUDED.spot, "
+                        "snap=EXCLUDED.snap", (symbol, expiry, date, snap["ts"], snap["spot"], json.dumps(snap)))
+
+    def chain_snapshots(self, symbol, expiry, date):
+        with self._cursor() as cur:
+            cur.execute("SELECT snap FROM option_chain_snapshot WHERE symbol=%s AND expiry=%s AND trade_date=%s "
+                        "ORDER BY ts", (symbol, expiry, date))
+            return [r[0] for r in cur.fetchall()]
+
+    def chain_snapshot_expiries(self, symbol, date):
+        with self._cursor() as cur:
+            cur.execute("SELECT DISTINCT expiry FROM option_chain_snapshot WHERE symbol=%s AND trade_date=%s ORDER BY 1",
+                        (symbol, date))
+            return [r[0].isoformat() for r in cur.fetchall()]
+
     def sr_rows(self, symbol, expiry, date):
         with self._cursor() as cur:
             cur.execute("SELECT slot, strike, oi, valid_from, valid_to, reason FROM sr_levels "

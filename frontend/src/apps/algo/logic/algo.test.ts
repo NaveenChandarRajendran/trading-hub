@@ -13,7 +13,7 @@ const index = (symbol: string, closed: ClosedTrade[], extra: Partial<IndexStatus
   lastCandle: null, spot: 22800, dataAgeSec: 3, state: 'watching', blocked: '', ...extra,
 });
 const status = (indices: IndexStatus[], meta: Partial<AlgoStatus['meta']> = {}) =>
-  ({ meta: { mode: 'paper', asOf: '2026-10-23 10:30:00', tokenExpired: false, tradingDay: true,
+  ({ meta: { mode: 'paper', variant: 'A', asOf: '2026-10-23 10:30:00', tokenExpired: false, tradingDay: true,
     health: { state: 'ok', reason: '' }, ...meta }, indices }) as AlgoStatus;
 
 describe('trade review', () => {
