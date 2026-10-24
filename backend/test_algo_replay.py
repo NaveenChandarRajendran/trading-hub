@@ -1,5 +1,5 @@
-"""Replay (algo_replay.py): candles from a day's log or from 1-minute data, exits between candle closes, premiums from
-the option's candles, the Replay account booking, and the report. Simulation only."""
+"""Replay (algo_replay.py): candles from the database (algo_candles / algo_levels) or from 1-minute data, exits
+between candle closes, premiums from the option's candles, the Replay account booking, and the report. Simulation only."""
 import json
 import os
 import shutil
@@ -8,9 +8,8 @@ from datetime import datetime
 
 import pytest
 
-from algo_replay import (book_replay_account, candles_from_log, candles_from_minutes, fill_at_target, levels_from_log,
+from algo_replay import (book_replay_account, candles_from_db, candles_from_minutes, fill_at_target, levels_from_db,
                          parse_levels, replay_index, report)
-from algo_service import parse_log_file
 from store import IST, PaperJsonStore
 from test_algo_variants import DAY, LEVELS
 
@@ -31,20 +30,14 @@ def five():
     return out
 
 
-def test_log_parsing_gives_candles_rsi_and_levels(tmp_path):
-    lines = [
-        '09:30:00 NIFTY     LEVELS  Levels locked at 09:30: R1 22,800 | {"levels": {"R1": 22800.0, "S1": 22700.0}}',
-        f'09:35:10 NIFTY     CANDLE  09:35 candle O 1 | {{"candle": {{"time": {ep("09:30")}, "open": 1, "high": 2, "low": 0.5, "close": 1.5}}, "filters": {{"rsi": 44.4}}}}',
-        '09:40:00 NIFTY     ERROR   timer: ValueError: x | {}',
-        '    Traceback (most recent call last):',
-        '    ValueError: x',
-    ]
-    p = tmp_path / f"algo-{D}.log"
-    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    rows = parse_log_file(str(p), D)
-    assert levels_from_log(rows) == {"NIFTY": {"R1": 22800.0, "S1": 22700.0}}
-    assert candles_from_log(rows, "NIFTY") == [{"time": ep("09:30"), "open": 1, "high": 2, "low": 0.5, "close": 1.5, "rsi": 44.4}]
-    assert rows[2]["data"]["traceback"].startswith("Traceback (most recent call last):")
+def test_candles_and_levels_come_from_the_database(tmp_path):
+    store = PaperJsonStore(str(tmp_path))  # same interface as PaperPgStore
+    store.algo_save_levels({"trade_date": D, "index": "NIFTY", "expiry": "2026-10-27", "locked_at": datetime(2026, 10, 23, 9, 30, tzinfo=IST),
+                            "levels": {"R1": 22800.0, "S1": 22700.0}, "spot": 22730.2})
+    store.algo_save_candle({"trade_date": D, "index": "NIFTY", "candle_start": datetime.fromtimestamp(ep("09:30"), IST).isoformat(),
+                            "open": 1, "high": 2, "low": 0.5, "close": 1.5, "rsi": 44.4})
+    assert levels_from_db(store, D) == {"NIFTY": {"R1": 22800.0, "S1": 22700.0}}
+    assert candles_from_db(store, D, "NIFTY") == [{"time": ep("09:30"), "open": 1, "high": 2, "low": 0.5, "close": 1.5, "rsi": 44.4}]
     assert parse_levels("NIFTY:R1=22800,S1=22700;BANKNIFTY:R1=54800") == {
         "NIFTY": {"R1": 22800.0, "S1": 22700.0}, "BANKNIFTY": {"R1": 54800.0}}
 
@@ -107,16 +100,3 @@ def test_replay_account_books_each_variant_separately_and_the_report():
         assert "- **Breakdown PE** entry 09:50 spot 22,661.7" in text
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-
-
-def test_replay_of_the_real_23_oct_log_if_present():
-    path = os.path.join(os.path.dirname(__file__), "logs", f"algo-{D}.log")
-    if not os.path.exists(path):
-        pytest.skip("no 23-Oct log on this machine")
-    rows = parse_log_file(path, D)
-    lv = levels_from_log(rows)
-    assert lv["NIFTY"]["S1"] == 22700.0 and lv["BANKNIFTY"]["R1"] == 54800.0
-    b = replay_index("NIFTY", D, candles_from_log(rows, "NIFTY"), lv["NIFTY"], "B")
-    assert [(t["entryAt"], t["side"], t["points"]) for t in b["trades"]] == [("09:50", "PE", 51.7)]
-    d = replay_index("NIFTY", D, candles_from_log(rows, "NIFTY"), lv["NIFTY"], "D")
-    assert any(e["at"] == "13:50" and "S2 pullback" in e["message"] for e in d["events"])  # the 13:45 retest of 22,600

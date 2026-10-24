@@ -1,8 +1,8 @@
 """
 store.py - where the per-minute snapshots live.
 
-PgStore   : Postgres (use this). Survives backend restarts, PC shutdowns and page refreshes.
-JsonStore : one JSON file per day in ./data (fallback when DATABASE_URL is not set, and for tests).
+PgStore   : Postgres, the single source of truth (main.py refuses to start without DATABASE_URL).
+JsonStore : a file-backed test double with the same methods. Never used by main.py (no JSON fallback).
 
 Both expose the same four methods used by tracker.py:
     load(symbol, expiry, date)  -> (strikes, snaps)      date = 'YYYY-MM-DD' (IST trading day)
@@ -24,6 +24,30 @@ IST = timezone(timedelta(hours=5, minutes=30))
 log = logging.getLogger("store")
 
 SNAP_FIELDS = ("spot", "strikes_used", "call_chg", "put_chg", "call_ltp", "put_ltp", "call_ltp_chg", "put_ltp_chg")
+LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
+CANDLE_COLS = ("candle_start", "open", "high", "low", "close", "minutes", "rsi", "toi_strength", "toi_sentiment",
+               "oi_change", "oi_change_points", "components", "components_move")
+SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gross_pnl", "charges", "net_pnl")
+OC_LEG = ("oi", "prev_oi", "ltp", "prev_close", "volume", "iv")
+OC_COLS = ("strike", "spot") + tuple(f"ce_{k}" for k in OC_LEG) + tuple(f"pe_{k}" for k in OC_LEG)
+
+
+def event_uid(ev):
+    """Dedupe key of a decision-log row: ts (IST, seconds) | index | variant | type | setup | message.
+    The same formula as the migration in schema.sql, so imported and live rows never duplicate."""
+    import hashlib
+    ts = ev["ts"]
+    if isinstance(ts, str):
+        ts = datetime.fromisoformat(ts)
+    key = "|".join([ts.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S"), ev["index"], ev["variant"], ev["type"],
+                    ev.get("setup") or "", ev["message"]])
+    return hashlib.md5(key.encode("utf-8")).hexdigest()
+
+
+def _event_row(r):
+    details = r[7] or {}
+    return {"ts": r[0].astimezone(IST).isoformat(), "trade_date": r[1].isoformat(), "index": r[2], "variant": r[3],
+            "type": r[4], "kind": details.get("kind", r[4]), "setup": r[5], "message": r[6], "details": details}
 
 
 class JsonStore:
@@ -206,22 +230,34 @@ class PgStore:
 
     # ---------------------------------------------------- S/R level history (sr_levels.py)
     def save_chain_snapshot(self, symbol, expiry, date, snap):
+        """One snapshot (chain_snapshots.make_snapshot) -> one oc_snapshots row per strike."""
+        from psycopg2.extras import execute_values
+        ts = datetime.strptime(snap["ts"], "%Y-%m-%d %H:%M").replace(tzinfo=IST)
+        rows = [(date, ts, symbol, expiry, r[0], snap["spot"], *r[1:]) for r in snap["rows"]]
+        if not rows:
+            return
         with self._cursor() as cur:
-            cur.execute("INSERT INTO option_chain_snapshot (symbol, expiry, trade_date, ts, spot, snap) "
-                        "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (symbol, expiry, ts) DO UPDATE SET spot=EXCLUDED.spot, "
-                        "snap=EXCLUDED.snap", (symbol, expiry, date, snap["ts"], snap["spot"], json.dumps(snap)))
+            execute_values(cur, f'INSERT INTO oc_snapshots (trade_date, ts, "index", expiry, {", ".join(OC_COLS)}) '
+                                "VALUES %s ON CONFLICT (\"index\", expiry, ts, strike) DO NOTHING", rows)
 
     def chain_snapshots(self, symbol, expiry, date):
+        """The day's snapshots rebuilt as chain_snapshots.make_snapshot dicts, oldest first."""
+        from chain_snapshots import COLUMNS
         with self._cursor() as cur:
-            cur.execute("SELECT snap FROM option_chain_snapshot WHERE symbol=%s AND expiry=%s AND trade_date=%s "
-                        "ORDER BY ts", (symbol, expiry, date))
-            return [r[0] for r in cur.fetchall()]
+            cur.execute(f'SELECT ts, {", ".join(OC_COLS)} FROM oc_snapshots WHERE "index"=%s AND expiry=%s '
+                        "AND trade_date=%s ORDER BY ts, strike", (symbol, expiry, date))
+            out = {}
+            for r in cur.fetchall():
+                ts = r[0].astimezone(IST).strftime("%Y-%m-%d %H:%M")
+                snap = out.setdefault(ts, {"ts": ts, "spot": r[2], "columns": COLUMNS, "rows": []})
+                snap["rows"].append([r[1], *r[3:]])
+            return [out[k] for k in sorted(out)]
 
     def chain_snapshot_expiries(self, symbol, date):
         with self._cursor() as cur:
-            cur.execute("SELECT DISTINCT expiry FROM option_chain_snapshot WHERE symbol=%s AND trade_date=%s ORDER BY 1",
+            cur.execute('SELECT DISTINCT expiry FROM oc_snapshots WHERE "index"=%s AND trade_date=%s ORDER BY 1',
                         (symbol, date))
-            return [r[0].isoformat() for r in cur.fetchall()]
+            return [r[0] for r in cur.fetchall()]
 
     def sr_rows(self, symbol, expiry, date):
         with self._cursor() as cur:
@@ -292,7 +328,7 @@ def _locked(cls):
 
 @_locked
 class PaperJsonStore:
-    """Everything in one file, data/paper.json, rewritten on every change (fine for one person's trades)."""
+    """Test double of PaperPgStore: everything in one JSON file, rewritten on every change. main.py never uses it."""
     kind = "json"
 
     def __init__(self, data_dir="data"):
@@ -360,20 +396,85 @@ class PaperJsonStore:
     def order_levels(self, acc, day):
         return list(self.d.get("order_levels", {}).get(str(acc), {}).get(day, {}).values())
 
-    # ---- OI breakout algo (algo_service.py)
-    def algo_add_event(self, day, ev):
-        self.d.setdefault("algo_events", {}).setdefault(day, []).append(ev)
+    # ---- OI breakout algo: the same interface as PaperPgStore (test double, never used by main.py)
+    def _algo(self, table):
+        return self.d.setdefault(table, {})
+
+    def algo_add_event(self, ev):
+        uid = event_uid(ev)
+        seen = self._algo("algo_uids")
+        if uid in seen:
+            return False
+        seen[uid] = 1
+        row = {**{k: ev.get(k) for k in ("ts", "trade_date", "index", "variant", "type", "setup", "message")},
+               "kind": ev.get("kind") or ev["type"], "details": {**(ev.get("details") or {}), "kind": ev.get("kind") or ev["type"]}}
+        row["setup"] = row["setup"] or ""
+        self._algo("algo_events").setdefault(ev["trade_date"], []).append(json.loads(json.dumps(row, default=str)))
         self._write()
+        return True
 
-    def algo_events(self, day):
-        return list(self.d.get("algo_events", {}).get(day, []))
+    def algo_events(self, day, variant=None, index=None):
+        rows = self._algo("algo_events").get(day, [])
+        return [dict(r) for r in rows if (not variant or r["variant"] == variant or r["index"] == "*")
+                and (not index or r["index"] in (index, "*"))]
 
-    def algo_save_state(self, day, symbol, state):
-        self.d.setdefault("algo_state", {}).setdefault(day, {})[symbol] = state
+    def algo_save_state(self, day, index, variant, state):
+        self._algo("algo_state").setdefault(day, {})[f"{index}|{variant}"] = json.loads(json.dumps(state, default=str))
         self._write()
 
     def algo_states(self, day):
-        return dict(self.d.get("algo_state", {}).get(day, {}))
+        return {tuple(k.split("|")): v for k, v in self._algo("algo_state").get(day, {}).items()}
+
+    def algo_states_between(self, from_day, to_day):
+        out = []
+        for day in sorted(self._algo("algo_state")):
+            if from_day <= day <= to_day:
+                for k, v in sorted(self._algo("algo_state")[day].items()):
+                    i, var = k.split("|")
+                    out.append((day, i, var, v))
+        return out
+
+    def algo_save_levels(self, row):
+        days = self._algo("algo_levels").setdefault(row["trade_date"], {})
+        if row["index"] in days:
+            return False
+        days[row["index"]] = {"index": row["index"], "expiry": row["expiry"], "lockedAt": str(row["locked_at"]),
+                              "levels": dict(row["levels"]), "spot": row.get("spot")}
+        self._write()
+        return True
+
+    def algo_levels(self, day):
+        return dict(self._algo("algo_levels").get(day, {}))
+
+    def algo_save_candle(self, row):
+        days = self._algo("algo_candles").setdefault(row["trade_date"], {})
+        key = f"{row['index']}|{row['candle_start']}"
+        if key in days:
+            return False
+        days[key] = json.loads(json.dumps({"trade_date": row["trade_date"], "index": row["index"],
+                                           **{c: row.get(c) for c in CANDLE_COLS}}, default=str))
+        self._write()
+        return True
+
+    def algo_candles(self, day, index=None):
+        rows = self._algo("algo_candles").get(day, {}).values()
+        return sorted((dict(r) for r in rows if not index or r["index"] == index), key=lambda r: (r["index"], r["candle_start"]))
+
+    def algo_save_summaries(self, rows):
+        t = self._algo("algo_daily_summary")
+        for r in rows:
+            t[f"{r['trade_date']}|{r['index']}|{r['variant']}"] = {k: r.get(k) for k in ("trade_date", "index", "variant", *SUMMARY_COLS)}
+        self._write()
+
+    def algo_summaries(self, from_day, to_day, index=None, variant=None):
+        rows = [dict(r) for r in self._algo("algo_daily_summary").values()
+                if from_day <= r["trade_date"] <= to_day and (not index or r["index"] == index)
+                and (not variant or r["variant"] == variant)]
+        return sorted(rows, key=lambda r: (r["trade_date"], r["index"], r["variant"]))
+
+    def algo_days(self, from_day, to_day):
+        days = set(self._algo("algo_state")) | set(self._algo("algo_events"))
+        return sorted(d for d in days if from_day <= d <= to_day)
 
     def orders(self, acc, day):
         return sorted(self.d["orders"].get(str(acc), {}).get(day, {}).values(), key=lambda o: o["created_at"])
@@ -397,8 +498,8 @@ class PaperPgStore:
     kind = "postgres"
     _ORDER_COLS = ("id", "security_id", "side", "order_type", "lots", "lot_size", "price", "trigger_price", "status",
                    "avg_price", "slippage_capped", "reason", "blocked", "created_at", "updated_at", "filled_at",
-                   "source", "setup")
-    _ORDER_DEFAULTS = {"source": "manual", "setup": ""}
+                   "source", "setup", "variant")
+    _ORDER_DEFAULTS = {"source": "manual", "setup": "", "variant": ""}
 
     def __init__(self, pg):
         self.pg = pg
@@ -472,30 +573,122 @@ class PaperPgStore:
                         (acc, r["order_id"], day, r["symbol"], r["expiry"], r["spot"], r["levelsAt"],
                          json.dumps(r["levels"]), z.get("slot"), z.get("strike"), r["created_at"]))
 
-    # ---- OI breakout algo (algo_service.py)
-    def algo_add_event(self, day, ev):
+    # ---- OI breakout algo (algo_service.py). Every day argument is the IST trading date 'YYYY-MM-DD'.
+    def algo_add_event(self, ev):
+        """ev: {ts, trade_date, index, variant, type, kind, setup, message, details}. A repeat (same uid) is ignored."""
+        details = {**(ev.get("details") or {}), "kind": ev.get("kind") or ev["type"]}
         with self.pg._cursor() as cur:
-            cur.execute("INSERT INTO algo_events (trade_date, at, symbol, setup, kind, message, data) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s)", (day, ev["at"], ev["symbol"], ev.get("setup", ""), ev["kind"],
-                                                         ev["message"], json.dumps(ev.get("data", {}))))
+            cur.execute('INSERT INTO algo_events (trade_date, ts, "index", variant, type, setup, message, details, uid) '
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (uid) DO NOTHING",
+                        (ev["trade_date"], ev["ts"], ev["index"], ev["variant"], ev["type"], ev.get("setup", ""),
+                         ev["message"], json.dumps(details, default=str), event_uid(ev)))
+            return cur.rowcount == 1
 
-    def algo_events(self, day):
+    def algo_events(self, day, variant=None, index=None):
+        q = ('SELECT ts, trade_date, "index", variant, type, setup, message, details FROM algo_events '
+             "WHERE trade_date=%s")
+        args = [day]
+        if variant:
+            q += " AND (variant=%s OR \"index\"='*')"
+            args.append(variant)
+        if index:
+            q += " AND (\"index\"=%s OR \"index\"='*')"
+            args.append(index)
         with self.pg._cursor() as cur:
-            cur.execute("SELECT at, symbol, setup, kind, message, data FROM algo_events WHERE trade_date=%s ORDER BY id",
-                        (day,))
-            return [{"at": r[0].astimezone(IST).isoformat(), "symbol": r[1], "setup": r[2], "kind": r[3],
-                     "message": r[4], "data": r[5]} for r in cur.fetchall()]
+            cur.execute(q + " ORDER BY ts, id", args)
+            return [_event_row(r) for r in cur.fetchall()]
 
-    def algo_save_state(self, day, symbol, state):
+    def algo_save_state(self, day, index, variant, state):
         with self.pg._cursor() as cur:
-            cur.execute("INSERT INTO algo_state (trade_date, symbol, state, updated_at) VALUES (%s,%s,%s,now()) "
-                        "ON CONFLICT (trade_date, symbol) DO UPDATE SET state=EXCLUDED.state, updated_at=now()",
-                        (day, symbol, json.dumps(state)))
+            cur.execute('INSERT INTO algo_state (trade_date, "index", variant, state, updated_at) VALUES (%s,%s,%s,%s,now()) '
+                        'ON CONFLICT (trade_date, "index", variant) DO UPDATE SET state=EXCLUDED.state, updated_at=now()',
+                        (day, index, variant, json.dumps(state, default=str)))
 
     def algo_states(self, day):
+        """{(index, variant): state} of one day."""
         with self.pg._cursor() as cur:
-            cur.execute("SELECT symbol, state FROM algo_state WHERE trade_date=%s", (day,))
-            return {r[0]: r[1] for r in cur.fetchall()}
+            cur.execute('SELECT "index", variant, state FROM algo_state WHERE trade_date=%s', (day,))
+            return {(r[0], r[1]): r[2] for r in cur.fetchall()}
+
+    def algo_states_between(self, from_day, to_day):
+        """[(day, index, variant, state)] for a date range (reports)."""
+        with self.pg._cursor() as cur:
+            cur.execute('SELECT trade_date, "index", variant, state FROM algo_state WHERE trade_date BETWEEN %s AND %s '
+                        'ORDER BY trade_date, "index", variant', (from_day, to_day))
+            return [(r[0].isoformat(), r[1], r[2], r[3]) for r in cur.fetchall()]
+
+    def algo_save_levels(self, row):
+        """The day's locked levels; the first lock of the day wins (a re-import never changes it)."""
+        lv = row["levels"]
+        with self.pg._cursor() as cur:
+            cur.execute('INSERT INTO algo_levels (trade_date, "index", expiry, locked_at, r1, r2, r3, s1, s2, s3, spot) '
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (trade_date, \"index\") DO NOTHING",
+                        (row["trade_date"], row["index"], row["expiry"], row["locked_at"],
+                         *[lv.get(s) for s in LEVEL_SLOTS], row.get("spot")))
+            return cur.rowcount == 1
+
+    def algo_levels(self, day):
+        with self.pg._cursor() as cur:
+            cur.execute('SELECT "index", expiry, locked_at, r1, r2, r3, s1, s2, s3, spot FROM algo_levels '
+                        "WHERE trade_date=%s", (day,))
+            return {r[0]: {"index": r[0], "expiry": r[1], "lockedAt": r[2].astimezone(IST).isoformat(),
+                           "levels": {s: v for s, v in zip(LEVEL_SLOTS, r[3:9]) if v is not None}, "spot": r[9]}
+                    for r in cur.fetchall()}
+
+    def algo_save_candle(self, row):
+        with self.pg._cursor() as cur:
+            cur.execute(f'INSERT INTO algo_candles (trade_date, "index", {", ".join(CANDLE_COLS)}) '
+                        f"VALUES (%s,%s,{', '.join(['%s'] * len(CANDLE_COLS))}) "
+                        'ON CONFLICT (trade_date, "index", candle_start) DO NOTHING',
+                        (row["trade_date"], row["index"], *[row.get(c) for c in CANDLE_COLS]))
+            return cur.rowcount == 1
+
+    def algo_candles(self, day, index=None):
+        q = f'SELECT trade_date, "index", {", ".join(CANDLE_COLS)} FROM algo_candles WHERE trade_date=%s'
+        args = [day]
+        if index:
+            q += ' AND "index"=%s'
+            args.append(index)
+        with self.pg._cursor() as cur:
+            cur.execute(q + ' ORDER BY "index", candle_start', args)
+            out = []
+            for r in cur.fetchall():
+                d = {"trade_date": r[0].isoformat(), "index": r[1], **dict(zip(CANDLE_COLS, r[2:]))}
+                d["candle_start"] = d["candle_start"].astimezone(IST).isoformat()
+                out.append(d)
+            return out
+
+    def algo_save_summaries(self, rows):
+        with self.pg._cursor() as cur:
+            for r in rows:
+                cur.execute(f'INSERT INTO algo_daily_summary (trade_date, "index", variant, {", ".join(SUMMARY_COLS)}, '
+                            f"updated_at) VALUES (%s,%s,%s,{', '.join(['%s'] * len(SUMMARY_COLS))}, now()) "
+                            'ON CONFLICT (trade_date, "index", variant) DO UPDATE SET '
+                            + ", ".join(f"{c}=EXCLUDED.{c}" for c in SUMMARY_COLS) + ", updated_at=now()",
+                            (r["trade_date"], r["index"], r["variant"], *[r.get(c) for c in SUMMARY_COLS]))
+
+    def algo_summaries(self, from_day, to_day, index=None, variant=None):
+        q = (f'SELECT trade_date, "index", variant, {", ".join(SUMMARY_COLS)} FROM algo_daily_summary '
+             "WHERE trade_date BETWEEN %s AND %s")
+        args = [from_day, to_day]
+        if index:
+            q += ' AND "index"=%s'
+            args.append(index)
+        if variant:
+            q += " AND variant=%s"
+            args.append(variant)
+        with self.pg._cursor() as cur:
+            cur.execute(q + ' ORDER BY trade_date, "index", variant', args)
+            return [{"trade_date": r[0].isoformat(), "index": r[1], "variant": r[2], **dict(zip(SUMMARY_COLS, r[3:]))}
+                    for r in cur.fetchall()]
+
+    def algo_days(self, from_day, to_day):
+        """IST trading dates with any algo state or events in the range."""
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT trade_date FROM algo_state WHERE trade_date BETWEEN %s AND %s UNION "
+                        "SELECT trade_date FROM algo_events WHERE trade_date BETWEEN %s AND %s ORDER BY 1",
+                        (from_day, to_day, from_day, to_day))
+            return [r[0].isoformat() for r in cur.fetchall()]
 
     def order_levels(self, acc, day):
         with self.pg._cursor() as cur:

@@ -1,10 +1,8 @@
 """
 main.py - FastAPI server for the Trending OI page.
 
-Run (Windows Command Prompt, in this folder):
-    set DHAN_CLIENT_ID=...
-    set DHAN_ACCESS_TOKEN=...
-    python main.py
+Run (in this folder): python main.py
+DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN and DATABASE_URL are read from backend/.env.local (variables already set win).
 Options:  --port 8000  --strikes 7  --track NIFTY,BANKNIFTY  --force  --host 127.0.0.1
 
 Endpoints:
@@ -15,12 +13,14 @@ Endpoints:
     GET  /api/quotes?symbols=HDFCBANK,ICICIBANK   (live prices of NSE stocks, for index components)
     GET  /api/history?symbol=HDFCBANK             (daily candles, for the previous close)
     GET  /api/sr/history?symbol=NIFTY&expiry=&date=   (OI support / resistance level history, see sr_api.py)
+    /api/algo/*                                  (OI breakout algo, paper only: status, events, day, reports; algo_api.py)
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
     /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
 
-Storage: set DATABASE_URL (e.g. postgresql://USER:PASSWORD@localhost:5432/algo_trading) to keep every snapshot in
-Postgres. Without it the backend falls back to JSON files in ./data.
+Storage: Postgres only (DATABASE_URL, e.g. postgresql://USER:PASSWORD@localhost:5432/algo_trading). Without it, or
+when the database can't be reached, the backend refuses to start; there is no JSON-file fallback. ./data only holds
+caches (Dhan instrument lists).
 """
 import argparse
 import logging
@@ -50,7 +50,8 @@ import sr_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
-from store import IST, JsonStore, PaperJsonStore, PaperPgStore, PgStore
+from envfile import load_env_file
+from store import IST, PaperPgStore, PgStore
 from tracker import Tracker
 
 ALLOWED_INTERVALS = (1, 3, 5, 10, 15, 30)
@@ -347,31 +348,43 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     return app
 
 
+ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local")
+NO_DB = ("DATABASE_URL is not set. The backend stores everything in Postgres and has no file fallback.\n"
+         "Add this line to backend/.env.local and start again:\n"
+         "    DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/algo_trading")
+
+
+def open_stores(env_file=ENV_FILE):
+    """(PgStore, PaperPgStore) from DATABASE_URL (read from backend/.env.local). Exits with a clear message when it is
+    missing or the database can't be reached: never a fallback."""
+    load_env_file(env_file)
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if not dsn:
+        raise SystemExit(NO_DB)
+    try:
+        store = PgStore(dsn)
+    except Exception as e:
+        raise SystemExit(f"Cannot connect to Postgres with DATABASE_URL from backend/.env.local: {e}\n"
+                         "Check that the PostgreSQL service is running and the user, password and database name "
+                         "in DATABASE_URL are right.")
+    logging.getLogger("main").info("Storing everything in Postgres")
+    return store, PaperPgStore(store)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--strikes", type=int, default=7, help="strikes each side of ATM (7 -> 15 strikes)")
     ap.add_argument("--track", default="NIFTY,BANKNIFTY", help="symbols tracked from start (nearest expiry)")
-    ap.add_argument("--data-dir", default="data", help="JSON fallback folder (used only without DATABASE_URL)")
+    ap.add_argument("--data-dir", default="data", help="cache folder (Dhan instrument lists); data lives in Postgres")
     ap.add_argument("--force", action="store_true", help="poll even when the market is closed (testing)")
     a = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     import uvicorn
 
-    dsn = os.getenv("DATABASE_URL")
-    if dsn:
-        try:
-            store = PgStore(dsn)
-        except Exception as e:  # do not silently fall back: the user expects Postgres
-            sys.exit(f"Cannot connect to Postgres using DATABASE_URL: {e}")
-        logging.getLogger("main").info("Storing snapshots in Postgres")
-        paper_store = PaperPgStore(store)
-    else:
-        store = JsonStore(a.data_dir)
-        logging.getLogger("main").warning("DATABASE_URL is not set: using JSON files in %s (set it to use Postgres)", a.data_dir)
-        paper_store = PaperJsonStore(a.data_dir)
+    store, paper_store = open_stores()
     client = DhanClient()
     tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force)
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]

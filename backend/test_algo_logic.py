@@ -2,7 +2,8 @@
 from datetime import datetime
 
 import algo_config as cfg
-from algo_logic import lock_levels, new_state, on_candle, on_tick
+from algo_logic import lock_levels, new_state, on_tick
+from algo_logic import on_candle as _on_candle
 from store import IST
 
 LEVELS = {"R1": 22800.0, "R2": 23000.0, "R3": 23100.0, "S1": 22600.0, "S2": 22500.0, "S3": 22200.0}
@@ -10,6 +11,11 @@ GOOD_CE = {"toi": {"sentiment": "Bullish", "strength": 52.0}, "oiChange": {"verd
            "components": {"verdict": "Neutral", "indexMove": 0.02, "priced": 50, "total": 50}, "rsi": 61.0}
 GOOD_PE = {"toi": {"sentiment": "Bearish", "strength": -48.0}, "oiChange": {"verdict": "BEARISH", "points": -25.0},
            "components": {"verdict": "Bearish", "indexMove": -0.3, "priced": 50, "total": 50}, "rsi": 38.0}
+
+
+def on_candle(*a, **k):
+    """These tests describe variant A (the 23-Oct rules); the live default is B since 25-Oct."""
+    return _on_candle(*a, variant=k.pop("variant", "A"), **k)
 
 
 def at(hm):

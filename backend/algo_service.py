@@ -7,9 +7,14 @@ Market data: the paper service's single Dhan feed (index ticks -> 1-minute candl
 Dhan intraday candles at start (RSI warm-up, minutes missed before a restart). Filters read the tracker's Trending OI
 rows, the shared option-chain cache and the stock quotes the Dashboard uses (AlgoData, built in main.py).
 
-Every decision goes to the decision log: store (algo_events) + logs/algo-YYYY-MM-DD.log. The per-index state
-(locked levels, setups, open trade, trade count, closed trades) is saved after every change, so a restart resumes it
-and never enters the same signal twice.
+Live variant (cfg.RULE_VARIANT, B) places paper orders; the shadow variants (cfg.SHADOW_VARIANTS: A, C, D) run on the
+same candles and filters in signals-only mode: would-be entries and exits are logged with their variant tag, never an
+order (test_algo_shadows.py).
+
+Postgres is the single source of truth: decision log (algo_events, with variant and type), levels (algo_levels),
+candles with filter values (algo_candles), state per index and variant (algo_state), daily summary at 15:35
+(algo_daily_summary). logs/algo-YYYY-MM-DD.log is a write-only plain-text backup: the app never reads it.
+A restart resumes from algo_state and never enters the same signal twice.
 """
 import json
 import logging
@@ -24,6 +29,7 @@ from typing import Callable
 import algo_config as cfg
 from algo_filters import components_verdict, oi_change_verdict, rsi
 from algo_logic import fmt, hm, lock_levels, new_state, on_candle, on_tick
+from algo_reports import day_view, trade_points, write_day_summaries
 from candles import aggregate, bucket_start, epoch, in_session
 from dhan_client import SCRIP as INDEX_IDS
 from dhan_feed import to_book
@@ -34,6 +40,9 @@ from store import IST
 
 log = logging.getLogger("algo")
 IDX, FNO = "IDX_I", "NSE_FNO"
+# fine-grained kind -> algo_events.type (the kind stays in details.kind)
+EVENT_TYPE = {"armed": "signal", "cancel": "signal", "expire": "signal", "stale": "feed"}
+SUMMARY_AT = (15, 35)  # IST: algo_daily_summary is written once the session is over
 
 
 @dataclass
@@ -50,8 +59,9 @@ class AlgoData:
 class AlgoBroker:
     """The Algo account's paper engine for the day. Every order is stored with source="algo" and its setup."""
 
-    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS):
+    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS, variant=None):
         self.store, self.instruments, self.clock, self.holidays = store, instruments, clock, holidays
+        self.variant = variant or cfg.RULE_VARIANT
         self.account = store.active_account(cfg.ACCOUNT_NAME) or store.create_account(cfg.CAPITAL, clock(),
                                                                                        name=cfg.ACCOUNT_NAME)
         self.engine, self.day, self.tags, self._unsaved = None, None, {}, []
@@ -75,7 +85,7 @@ class AlgoBroker:
             if ev.kind == "order":
                 if setup is not None and data["id"] not in self.tags:
                     self.tags[data["id"]] = setup
-                data.update(source="algo", setup=self.tags.get(data["id"], ""))
+                data.update(source="algo", setup=self.tags.get(data["id"], ""), variant=self.variant)
             self._unsaved.append((ev.kind, day, data))
         save = {"order": self.store.save_order, "trade": self.store.save_trade, "position": self.store.save_position}
         while self._unsaved:
@@ -107,6 +117,12 @@ class AlgoBroker:
         fills = [e.data for e in events if e.kind == "trade"]
         return fills[-1]["price"] if fills else None
 
+    def charges_since(self, security_id, order_id):
+        """Charges of every fill in security_id from the order order_id on (the entry and its exit)."""
+        ids = [t for t in self.engine.trades if t.security_id == security_id]
+        start = next((i for i, t in enumerate(ids) if t.order_id == order_id), None)
+        return round(sum(t.charges.total for t in ids[start:]), 2) if start is not None else 0.0
+
     def last_sell_price(self, security_id):
         sells = [t for t in self.engine.trades if t.security_id == security_id and t.side != BUY]
         return sells[-1].price if sells else None
@@ -132,11 +148,15 @@ class AlgoBroker:
 
 class AlgoService:
     def __init__(self, store, paper, instruments, data: AlgoData, clock, mode=cfg.MODE, log_dir=cfg.LOG_DIR,
-                 holidays=NSE_HOLIDAYS):
+                 holidays=NSE_HOLIDAYS, variant=None, shadows=None):
         self.store, self.paper, self.instruments, self.data, self.clock = store, paper, instruments, data, clock
         self.mode, self.log_dir, self.holidays = mode, log_dir, holidays
+        self.variant = (variant or cfg.RULE_VARIANT).upper()
+        self.shadow_variants = tuple(v for v in (cfg.VARIANTS if shadows is None else shadows) if v != self.variant)
+        self.shadows = {}  # (symbol, variant) -> algo_logic state of a shadow (signals only)
+        self._summary_day = None
         self.lock = threading.RLock()
-        self.broker = AlgoBroker(store, instruments, clock, holidays) if mode != "off" else None
+        self.broker = AlgoBroker(store, instruments, clock, holidays, self.variant) if mode != "off" else None
         self.day = None
         self._started_at = None  # first timer tick inside today's session (watchdog reference before any tick)
         self.states = {}  # symbol -> algo_logic state (+ "lastCandle", "closed")
@@ -188,13 +208,19 @@ class AlgoService:
             self._file_day, self._file = day, os.path.join(self.log_dir, f"algo-{day}.log")
         return self._file
 
-    def record(self, symbol, kind, message, setup="", data=None, now=None, tb=None):
+    def record(self, symbol, kind, message, setup="", data=None, now=None, tb=None, variant=None):
+        """One decision-log line: algo_events (Postgres) + the plain-text backup file. Candles go to algo_candles."""
         now = now or self.clock()
+        variant = variant or self.variant
         st = self.states.get(symbol) or {}
         data = {**(data or {}), "spot": self.spot.get(symbol), "levels": st.get("levels"), "mode": self.mode}
-        ev = {"at": now.isoformat(timespec="seconds"), "symbol": symbol, "setup": setup, "kind": kind,
-              "message": message, "data": data}
-        line = f"{now:%H:%M:%S} {symbol:<9} {kind.upper():<7} {('[' + setup + '] ') if setup else ''}{message}"
+        if tb:
+            data["traceback"] = tb
+        ev = {"ts": now.isoformat(timespec="seconds"), "trade_date": now.date().isoformat(), "index": symbol,
+              "variant": variant, "type": EVENT_TYPE.get(kind, kind), "kind": kind, "setup": setup,
+              "message": message, "details": data}
+        line = (f"{now:%H:%M:%S} {symbol:<9} {variant} {kind.upper():<9} "
+                f"{('[' + setup + '] ') if setup else ''}{message}")
         try:
             with open(self._log_file(now), "a", encoding="utf-8") as f:
                 f.write(line + " | " + json.dumps(data, default=str) + "\n")
@@ -202,10 +228,11 @@ class AlgoService:
                     f.write("".join("    " + x + "\n" for x in tb.rstrip().splitlines()))
         except Exception as e:
             log.warning("algo log file: %s", e)
-        try:
-            self.store.algo_add_event(now.date().isoformat(), ev)
-        except Exception as e:
-            log.warning("algo event not stored: %s", e)
+        if kind != "candle":
+            try:
+                self.store.algo_add_event(ev)
+            except Exception as e:
+                log.warning("algo event not stored: %s", e)
         log.info(line)
         return ev
 
@@ -242,11 +269,18 @@ class AlgoService:
         if value:
             self.record(symbol, kind, value, now=now)
 
-    def _save_state(self, symbol):
+    def _save_state(self, symbol, variant=None):
+        variant = variant or self.variant
+        st = self.states[symbol] if variant == self.variant else self.shadows[(symbol, variant)]
         try:
-            self.store.algo_save_state(self.day.isoformat(), symbol, self.states[symbol])
+            self.store.algo_save_state(self.day.isoformat(), symbol, variant, st)
         except Exception as e:
             log.warning("algo state not saved: %s", e)
+
+    def _all_states(self, sym):
+        """[(variant, state, is_live)] for one index: the live variant first, then the shadows."""
+        return [(self.variant, self.states[sym], True)] + [(v, self.shadows[(sym, v)], False) for v in self.shadow_variants
+                                                            if (sym, v) in self.shadows]
 
     # ------------------------------------------------------------ day / restore
     def _ensure_day(self, now):
@@ -258,20 +292,26 @@ class AlgoService:
             saved = self.store.algo_states(self.day.isoformat())
         except Exception as e:
             log.warning("algo state not loaded: %s", e)
-        self.states = {}
+        self.states, self.shadows = {}, {}
         for sym in cfg.SYMBOLS:
-            st = saved.get(sym) or new_state(sym, self.day.isoformat())
-            st.setdefault("lastCandle", None)
-            st.setdefault("closed", [])
-            self.states[sym] = st
+            for v in (self.variant,) + self.shadow_variants:
+                st = saved.get((sym, v)) or new_state(sym, self.day.isoformat())
+                st.setdefault("lastCandle", None)
+                st.setdefault("closed", [])
+                st.update(variant=v, live=v == self.variant)
+                if v == self.variant:
+                    self.states[sym] = st
+                else:
+                    self.shadows[(sym, v)] = st
         self.minutes = {s: {} for s in cfg.SYMBOLS}
         self.notes = {}
-        if saved:
+        shadows = f"; shadows {', '.join(self.shadow_variants)} (signals only)" if self.shadow_variants else ""
+        if any(k[1] == self.variant for k in saved):
             self.record("*", "info", f"Restarted: resumed today's state ({', '.join(f'{s} {st['trades']} trades' for s, st in self.states.items())})", now=now)
             self._reconcile(now)
         else:
-            self.record("*", "info", f"Algo started for {self.day} in {self.mode.upper()} mode, rule variant "
-                                     f"{cfg.RULE_VARIANT}", now=now)
+            self.record("*", "info", f"Algo started for {self.day} in {self.mode.upper()} mode, live variant "
+                                     f"{self.variant}{shadows}", now=now)
         self._warm(now)
 
     def _reconcile(self, now):
@@ -323,8 +363,8 @@ class AlgoService:
                     self._ticks(sym, now)
             elif seg == FNO and pkt["kind"] == "full" and self.broker is not None:
                 self.broker.on_book(sid, to_book(pkt), now)
-                for sym, st in self.states.items():
-                    if st["open"] and st["open"].get("securityId") == sid:
+                for sym in list(self.states):
+                    if any(st["open"] and st["open"].get("securityId") == sid for _, st, _ in self._all_states(sym)):
                         self._ticks(sym, now)
 
     def _minute(self, sym, ltp, now):
@@ -342,17 +382,21 @@ class AlgoService:
         return self.broker.ltp(o["securityId"])
 
     def _ticks(self, sym, now):
-        st = self.states.get(sym)
-        if not st or not st["open"]:
+        if sym not in self.states:
             return
-        o = st["open"]
-        if o.get("staleExit") and not o.get("exiting"):
-            o["exiting"] = True
-            self._exit(sym, "Data was stale for more than 5 minutes with the position open: exit when data returned", now)
-            return
-        act = on_tick(st, self.spot[sym], self.option_ltp(sym))
-        if act:
-            self._exit(sym, act["reason"], now)
+        for v, st, live in self._all_states(sym):
+            o = st["open"]
+            if not o:
+                continue
+            exit_ = self._exit if live else (lambda s, r, n, v=v: self._shadow_exit(s, v, r, n))
+            if o.get("staleExit") and not o.get("exiting"):
+                o["exiting"] = True
+                exit_(sym, "Data was stale for more than 5 minutes with the position open: exit when data returned", now)
+                continue
+            ltp = self.broker.ltp(o["securityId"]) if self.broker and o.get("securityId") else None
+            act = on_tick(st, self.spot[sym], ltp)
+            if act:
+                exit_(sym, act["reason"], now)
 
     # ------------------------------------------------------------ timer
     def tick(self, now):
@@ -393,6 +437,22 @@ class AlgoService:
         if self.broker and now.time() >= cfg.SQUARE_OFF:
             with self.lock:
                 self.broker.on_time(now)
+        if (now.hour, now.minute) >= SUMMARY_AT and self._summary_day != now.date():
+            self._summary_day = now.date()
+            self.write_summary(now.date().isoformat(), now)
+
+    def write_summary(self, day, now=None):
+        """algo_daily_summary for one day (live + shadows); also on demand (POST /api/algo/summary)."""
+        try:
+            rows = write_day_summaries(self.store, day)
+            self.record("*", "info", f"Daily summary written for {day}: " + "; ".join(
+                f"{r['index']} {r['variant']}{' (live)' if r['is_live'] else ''} {r['entries']} entries, "
+                f"{r['points']:+.2f} pts" + (f", net {r['net_pnl']:+,.2f}" if r['net_pnl'] is not None else "")
+                for r in rows), now=now)
+            return rows
+        except Exception as e:
+            self._error("daily summary", e)
+            return []
 
     def in_session(self, now):
         return self.trading_day(now) and cfg.SESSION_FROM <= now.time() < cfg.SESSION_TO
@@ -487,9 +547,10 @@ class AlgoService:
         for sym in cfg.SYMBOLS:
             for sid in self._atm_options(sym):
                 keys.add((FNO, sid))
-            o = self.states[sym]["open"]
-            if o and o.get("securityId"):
-                keys.add((FNO, o["securityId"]))
+            for _, st, _ in self._all_states(sym):
+                o = st["open"]
+                if o and o.get("securityId"):
+                    keys.add((FNO, o["securityId"]))
         self.paper.set_feed_keys("algo", keys)
 
     def trade_expiry(self, sym, today):
@@ -545,17 +606,21 @@ class AlgoService:
         """Stale exit, 15:15, and what needs the network next: "levels" or the end of a candle to evaluate."""
         st = self.states[sym]
         # stale data with an open position: exit as soon as data returns
-        o = st["open"]
         last = self.last_tick[sym]
-        if o and last and (now - last).total_seconds() > cfg.STALE_EXIT_SEC and not o.get("staleExit"):
-            o["staleExit"] = True
-            self.record(sym, "error", f"Spot data stale > {cfg.STALE_EXIT_SEC // 60} min with a position open: "
-                                      "will exit at market when data returns", setup=o["setup"], now=now)
-            self._save_state(sym)
-        # 15:15 square-off
-        if o and not o.get("exiting") and now.time() >= cfg.SQUARE_OFF:
-            o["exiting"] = True
-            self._exit(sym, f"Square-off {cfg.SQUARE_OFF:%H:%M}", now)
+        for v, s_, live in self._all_states(sym):
+            o = s_["open"]
+            if o and last and (now - last).total_seconds() > cfg.STALE_EXIT_SEC and not o.get("staleExit"):
+                o["staleExit"] = True
+                self.record(sym, "error", f"Spot data stale > {cfg.STALE_EXIT_SEC // 60} min with a position open: "
+                                          "will exit at market when data returns", setup=o["setup"], now=now, variant=v)
+                self._save_state(sym, v)
+            # 15:15 square-off
+            if o and not o.get("exiting") and now.time() >= cfg.SQUARE_OFF:
+                o["exiting"] = True
+                if live:
+                    self._exit(sym, f"Square-off {cfg.SQUARE_OFF:%H:%M}", now)
+                else:
+                    self._shadow_exit(sym, v, f"Square-off {cfg.SQUARE_OFF:%H:%M}", now)
         # levels at 09:30
         if st["levels"] is None and now.time() >= cfg.LEVELS_AT:
             if not st.get("levelsRetryAt") or now.isoformat() >= st["levelsRetryAt"]:
@@ -608,6 +673,15 @@ class AlgoService:
                             data={"expiry": exp, "chainSpot": spot}, now=now)
             st.pop("levelsRetryAt", None)
             self._save_state(sym)
+            for v in self.shadow_variants:  # the shadows trade the same locked levels
+                sh = self.shadows[(sym, v)]
+                sh["levels"], sh["levelsAt"] = dict(levels), st["levelsAt"]
+                self._save_state(sym, v)
+        try:
+            self.store.algo_save_levels({"trade_date": now.date().isoformat(), "index": sym, "expiry": exp,
+                                         "locked_at": now, "levels": levels, "spot": spot})
+        except Exception as e:
+            self._error(f"{sym} levels not stored", e, sym)
 
     def candle5(self, sym, end):
         start = end - timedelta(minutes=cfg.CANDLE_MIN)
@@ -663,10 +737,11 @@ class AlgoService:
             self._save_state(sym)
             return
         block = self._block(sym, now) if self.mode != "off" else ""
-        actions = on_candle(st, c, end, f, block)
+        actions = on_candle(st, c, end, f, block, self.variant)
         self.record(sym, "candle", f"{hm(end)} candle O {fmt(c['open'])} H {fmt(c['high'])} L {fmt(c['low'])} "
                                    f"C {fmt(c['close'])} · RSI {fmt(round(f['rsi'], 1)) if f['rsi'] is not None else '-'}",
                     data={"candle": c, "filters": f}, now=now)
+        self._store_candle(sym, c, f)
         self._save_state(sym)  # before any order: a restart can never repeat this candle's entry
         for a in actions:
             if a["type"] == "event":
@@ -677,6 +752,77 @@ class AlgoService:
             elif a["type"] == "exit":
                 self._exit(sym, a["reason"], now)
         self._save_state(sym)
+        # shadows: the same candle and filter values, signals only (no account, so no day-loss limit)
+        shadow_block = "; ".join(x for x in block.split("; ") if not x.startswith("day loss")) if block else ""
+        for v in self.shadow_variants:
+            sh = self.shadows[(sym, v)]
+            if sh["lastCandle"] == end.isoformat():
+                continue
+            sh["lastCandle"] = end.isoformat()
+            self._save_state(sym, v)
+            for a in on_candle(sh, c, end, f, shadow_block, v):
+                if a["type"] == "event":
+                    name = a["data"].pop("setupName", "") or (sh["setup"]["name"] if sh["setup"] and a["kind"] == "armed" else "")
+                    self.record(sym, a["kind"], a["message"], setup=name, data={**a["data"], "filters": f}, now=now,
+                                variant=v)
+                elif a["type"] == "enter":
+                    self._shadow_enter(sym, v, a, f, now)
+                elif a["type"] == "exit":
+                    self._shadow_exit(sym, v, a["reason"], now)
+            self._save_state(sym, v)
+
+    def _store_candle(self, sym, c, f):
+        toi, oic, comp = f.get("toi") or {}, f.get("oiChange") or {}, f.get("components") or {}
+        try:
+            self.store.algo_save_candle({
+                "trade_date": self.day.isoformat(), "index": sym, "candle_start": datetime.fromtimestamp(c["time"], IST),
+                "open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "minutes": c.get("minutes"),
+                "rsi": f.get("rsi"), "toi_strength": toi.get("strength"), "toi_sentiment": toi.get("sentiment"),
+                "oi_change": oic.get("verdict"), "oi_change_points": oic.get("points"),
+                "components": comp.get("verdict"), "components_move": comp.get("indexMove")})
+        except Exception as e:
+            self._error(f"{sym} candle not stored", e, sym)
+
+    # ------------------------------------------------------------ shadows (signals only: never an order)
+    def _pick_option(self, sym, side, spot):
+        sids = self._atm_options(sym, spot)
+        pick = sorted((self.options[s] | {"securityId": s} for s in sids if self.options[s]["type"] == side),
+                      key=lambda x: abs(x["strike"] - spot))
+        return pick[0] if pick else None
+
+    def _shadow_enter(self, sym, v, a, f, now):
+        sh = self.shadows[(sym, v)]
+        o = sh["open"]
+        spot = self.spot[sym] or o["entrySpot"]
+        opt = self._pick_option(sym, a["side"], spot)
+        inst = (self.instruments.get(opt["securityId"]) or {}) if opt else {}
+        o.update(securityId=opt["securityId"] if opt else None, option=opt["name"] if opt else None,
+                 strike=opt["strike"] if opt else None, entryAt=now.strftime("%H:%M:%S"), entrySpotLive=spot,
+                 entryPrice=self.broker.ltp(opt["securityId"]) if opt and self.broker else None,
+                 qty=cfg.LOTS * inst.get("lotSize", 0) or None)
+        self.record(sym, "entry", f"SHADOW {v} would BUY {o.get('option') or a['side']} @ {fmt(o['entryPrice'])} · "
+                                  f"spot {fmt(spot)} · target {fmt(o['target'])} · stop: spot {a['data']['spotStop']} "
+                                  f"or premium -{cfg.PREMIUM_STOP_PCT:g}%. Why: {a['reason']}", setup=a["setup"],
+                    data={**a["data"], "filters": f, "option": opt}, now=now, variant=v)
+        self._save_state(sym, v)
+
+    def _shadow_exit(self, sym, v, reason, now):
+        sh = self.shadows[(sym, v)]
+        o = sh["open"]
+        if not o:
+            return
+        price = self.broker.ltp(o["securityId"]) if self.broker and o.get("securityId") else None
+        trade = {k: o.get(k) for k in ("setup", "side", "option", "strike", "entryAt", "entrySpot", "entrySpotLive",
+                                       "entryPrice", "target", "stop", "reason", "qty")}
+        trade.update(exitAt=now.strftime("%H:%M:%S"), exitSpot=self.spot[sym], exitPrice=price, exitReason=reason,
+                     pnl=None, shadow=True)
+        trade["points"] = trade_points(trade)
+        sh["closed"].append(trade)
+        sh["open"] = None
+        self.record(sym, "exit", f"SHADOW {v} would SELL {o.get('option') or o['side']} @ {fmt(price)} · spot "
+                                 f"{fmt(self.spot[sym])} · {trade['points']:+.2f} pts. Why: {reason}", setup=o["setup"],
+                    data={"trade": trade}, now=now, variant=v)
+        self._save_state(sym, v)
 
     # ------------------------------------------------------------ orders (paper engine only)
     def _enter(self, sym, a, f, now):
@@ -740,8 +886,11 @@ class AlgoService:
         pnl = round((price - o["entryPrice"]) * qty, 2) if price is not None and o.get("entryPrice") and qty else None
         trade = {k: o.get(k) for k in ("setup", "side", "option", "strike", "expiry", "entryAt", "entrySpot",
                                        "entrySpotLive", "entryPrice", "target", "stop", "reason", "qty", "orderId")}
+        charges = (self.broker.charges_since(o["securityId"], o["orderId"])
+                   if self.mode == "paper" and o.get("orderId") else None)
         trade.update(exitAt=now.strftime("%H:%M:%S"), exitSpot=self.spot[sym], exitPrice=price, exitReason=reason,
-                     pnl=pnl)
+                     pnl=pnl, charges=charges, variant=self.variant)
+        trade["points"] = trade_points(trade)
         st["closed"].append(trade)
         st["open"] = None
         self.notes.pop((sym, "exitfail"), None)
@@ -801,8 +950,14 @@ class AlgoService:
                     "spot": self.spot[sym], "dataAgeSec": round((now - last).total_seconds()) if last else None,
                     "state": self._state_label(st, now),
                     "blocked": self.notes.get((sym, "block")) or "",
+                    "shadows": [{"variant": v, "state": self._state_label(sh, now), "trades": sh.get("trades", 0),
+                                 "open": sh.get("open"), "closed": sh.get("closed", []),
+                                 "points": round(sum(trade_points(t) for t in sh.get("closed", [])), 2)}
+                                for (s_, v), sh in sorted(self.shadows.items()) if s_ == sym],
                 })
-            return {"meta": {"mode": self.mode, "variant": cfg.RULE_VARIANT, "asOf": now.strftime("%Y-%m-%d %H:%M:%S"),
+            return {"meta": {"mode": self.mode, "variant": self.variant, "shadows": list(self.shadow_variants),
+                             "summaryAt": f"{SUMMARY_AT[0]:02d}:{SUMMARY_AT[1]:02d}",
+                             "asOf": now.strftime("%Y-%m-%d %H:%M:%S"),
                              "tokenExpired": self.data.token_expired(), "tradingDay": self.trading_day(now), "health": self.health(now),
                              "account": self.broker.account if self.broker else None,
                              "funds": self.broker.funds() if self.broker else None,
@@ -830,58 +985,12 @@ class AlgoService:
             return "entry window over"
         return "watching"
 
-    def events(self, day=None):
-        return self.day_log(day)["rows"]
+    def events(self, day=None, variant=None):
+        return self.day_log(day, variant)["rows"]
 
-    def day_log(self, day=None):
-        """Decision log (newest first) and closed trades of one IST day. Days missing from the store in use (e.g. a
-        day run with Postgres, viewed from a JSON-store run) are read back from that day's log file."""
+    def day_log(self, day=None, variant=None):
+        """Decision log (newest first) and closed trades of one IST day, from Postgres only."""
         day = day or self.clock().date().isoformat()
-        rows = self.store.algo_events(day)
-        source = "store"
-        if not rows:
-            rows = parse_log_file(os.path.join(self.log_dir, f"algo-{day}.log"), day)
-            source = "log file" if rows else "none"
-        trades = []
-        try:
-            states = self.store.algo_states(day) if source == "store" else {}
-        except Exception:
-            states = {}
-        for sym, st in sorted(states.items()):
-            trades += [{**t, "symbol": sym} for t in st.get("closed", [])]
-        if not trades:  # from the exit lines (each carries its trade)
-            trades = [{**e["data"]["trade"], "symbol": e["symbol"]} for e in rows
-                      if e["kind"] == "exit" and isinstance(e.get("data", {}).get("trade"), dict)]
-        trades.sort(key=lambda t: t.get("entryAt") or "")
-        return {"date": day, "source": source, "rows": list(reversed(rows)), "trades": trades}
-
-
-def parse_log_file(path, day):
-    """logs/algo-YYYY-MM-DD.log -> decision-log rows (oldest first), the same shape as the store's.
-    Line: "HH:MM:SS SYMBOL KIND [setup] message | {json}"; indented lines below a row are its traceback."""
-    if not os.path.exists(path):
-        return []
-    rows = []
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if line.startswith("    ") and rows:
-                d = rows[-1]["data"]
-                d["traceback"] = (d.get("traceback", "") + line[4:] + "\n")
-                continue
-            head, sep, js = line.partition(" | ")
-            parts = head.split(None, 3)
-            if len(parts) < 4 or len(parts[0]) != 8:
-                continue
-            t, sym, kind, rest = parts
-            setup = ""
-            if rest.startswith("[") and "] " in rest:
-                setup, rest = rest[1:].split("] ", 1)
-            try:
-                data = json.loads(js) if sep else {}
-            except ValueError:
-                data = {}
-            rows.append({"at": f"{day}T{t}+05:30", "symbol": sym, "setup": setup, "kind": kind.lower(),
-                         "message": rest, "data": data})
-    return rows
-
+        v = day_view(self.store, day, variant)
+        trades = [t for t in v["trades"] if not variant or t["variant"] == variant]
+        return {"date": day, "variant": variant or "", "rows": v["events"], "trades": trades}

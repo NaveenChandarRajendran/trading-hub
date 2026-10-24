@@ -1,6 +1,6 @@
 """Postgres tests. They need a real database, so they only run when TEST_DATABASE_URL is set, e.g.
     set TEST_DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/some_throwaway_db
-They TRUNCATE the toi_, sr_ and option_chain_snapshot tables, so never point this at a database holding data you want to keep."""
+They TRUNCATE the toi_, sr_ and oc_snapshots tables, so never point this at a database holding data you want to keep."""
 import os
 
 import pytest
@@ -22,7 +22,7 @@ SNAP = dict(spot=55629.35, strikes_used=15, call_chg=1053810.0, put_chg=410340.0
 def store():
     s = PgStore(DSN)
     with s._cursor() as cur:
-        cur.execute("TRUNCATE toi_snapshot, toi_session, sr_levels, sr_settings, option_chain_snapshot")
+        cur.execute("TRUNCATE toi_snapshot, toi_session, sr_levels, sr_settings, oc_snapshots")
     yield s
     s.close()
 
@@ -104,9 +104,18 @@ def test_sr_level_rows_open_close_and_settings(store):
 
 
 def test_chain_snapshots_roundtrip(store):
-    snap = {"ts": "2026-10-23 09:16", "fetchedAt": "2026-10-23T09:16:03+05:30", "spot": 22700.5, "columns": ["strike"],
-            "rows": [[22700.0, 1.0]]}
+    """One row per strike in oc_snapshots, read back as the snapshot dict replays use."""
+    from chain_snapshots import COLUMNS, make_snapshot
+    oc = {22650.0: {"ce": {"oi": 10, "previous_oi": 8, "last_price": 120.5}, "pe": {"oi": 20, "previous_oi": 25, "last_price": 90.0}},
+          22700.0: {"ce": {"oi": 30, "previous_oi": 31, "last_price": 95.0}, "pe": {"oi": 40, "previous_oi": 35, "last_price": 110.0}}}
+    snap = make_snapshot("2026-10-23 09:16", "2026-10-23T09:16:03+05:30", 22700.5, oc)
     store.save_chain_snapshot("NIFTY", "2026-10-27", "2026-10-23", snap)
-    store.save_chain_snapshot("NIFTY", "2026-10-27", "2026-10-23", {**snap, "spot": 22701.0})  # same minute: replaced
-    assert store.chain_snapshots("NIFTY", "2026-10-27", "2026-10-23") == [{**snap, "spot": 22701.0}]
+    store.save_chain_snapshot("NIFTY", "2026-10-27", "2026-10-23", snap)  # the same minute again: no duplicate rows
+    got = store.chain_snapshots("NIFTY", "2026-10-27", "2026-10-23")
+    assert len(got) == 1 and got[0]["ts"] == "2026-10-23 09:16" and got[0]["spot"] == 22700.5
+    assert got[0]["columns"] == COLUMNS and got[0]["rows"] == snap["rows"]
     assert store.chain_snapshot_expiries("NIFTY", "2026-10-23") == ["2026-10-27"]
+    with store._cursor() as cur:
+        cur.execute('SELECT trade_date, "index", strike, ce_oi, pe_ltp FROM oc_snapshots ORDER BY strike')
+        assert [(r[0].isoformat(), r[1], r[2], r[3], r[4]) for r in cur.fetchall()] == [
+            ("2026-10-23", "NIFTY", 22650.0, 10.0, 90.0), ("2026-10-23", "NIFTY", 22700.0, 30.0, 110.0)]

@@ -1,20 +1,20 @@
 """
 algo_replay.py - runs the OI breakout rules (algo_logic.py, any variant) on a past day. PAPER / SIMULATION ONLY.
 
-Data sources:
+Data sources (results and inputs live in Postgres; DATABASE_URL from backend/.env.local):
   dhan  Dhan historical candles: 1-minute index candles (5-minute candles = their 09:15-aligned groups, the same
         grouping as live; the previous session warms RSI up) and 1-minute candles of the option traded, so entries,
         exits and the premium stop use real premiums. Fills are booked in a paper account per variant named
         "Replay <variant>" (paper engine, never a real order). Needs a valid Dhan token.
-  log   the day's algo decision log (logs/algo-YYYY-MM-DD.log): the 5-minute candles and RSI the live algo built.
-        Index points only (no premiums, so no premium stop and no account).
+  db    the 5-minute candles and RSI the live algo stored that day (algo_candles) and its locked levels
+        (algo_levels). Index points only (no premiums, so no premium stop and no account).
 OI filters (Trending OI, OI change, Index Components) are checked only when that day's option-chain snapshots and
 Trending OI history exist; otherwise the run is labelled "OI not checked" (price + RSI only).
 
 Usage:
-    python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source log
+    python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source db
     python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source dhan
-Levels: from the day's log ("Levels locked at 09:30 ..."), or --levels "NIFTY:R1=22800,R2=23000,...;BANKNIFTY:...".
+Levels: the day's algo_levels rows, or --levels "NIFTY:R1=22800,R2=23000,...;BANKNIFTY:...".
 Report: logs/replay-<date>.md and .json.
 """
 import argparse
@@ -41,14 +41,9 @@ def ist(epoch_s):
 
 
 # ------------------------------------------------------------------ inputs
-def levels_from_log(rows):
-    """{symbol: {slot: strike}} from the day's "levels" lines."""
-    out = {}
-    for r in rows:
-        lv = (r.get("data") or {}).get("levels")
-        if r["kind"] == "levels" and isinstance(lv, dict) and lv:
-            out[r["symbol"]] = {k: float(v) for k, v in lv.items()}
-    return out
+def levels_from_db(store, day):
+    """{symbol: {slot: strike}} from the day's algo_levels rows."""
+    return {ix: {k: float(v) for k, v in row["levels"].items()} for ix, row in store.algo_levels(day).items()}
 
 
 def parse_levels(text):
@@ -60,14 +55,13 @@ def parse_levels(text):
     return out
 
 
-def candles_from_log(rows, symbol):
-    """The live algo's 5-minute candles of one index with its RSI: [{time, open, high, low, close, rsi}] ascending."""
+def candles_from_db(store, day, symbol):
+    """The live algo's 5-minute candles of one index with its RSI (algo_candles): [{time, open, high, low, close, rsi}]."""
     out = []
-    for r in rows:
-        if r["kind"] == "candle" and r["symbol"] == symbol:
-            c = r["data"]["candle"]
-            out.append({**{k: c[k] for k in ("time", "open", "high", "low", "close")},
-                        "rsi": (r["data"].get("filters") or {}).get("rsi")})
+    for r in store.algo_candles(day, symbol):
+        start = datetime.fromisoformat(r["candle_start"])
+        out.append({"time": int(start.timestamp()), "open": r["open"], "high": r["high"], "low": r["low"],
+                    "close": r["close"], "rsi": r["rsi"]})
     return sorted(out, key=lambda c: c["time"])
 
 
@@ -286,8 +280,8 @@ def main():
     ap = argparse.ArgumentParser(description="Replay the OI breakout algo on a past day (simulation only).")
     ap.add_argument("--date", required=True)
     ap.add_argument("--variants", default="A,B,C,D")
-    ap.add_argument("--source", choices=("log", "dhan"), default="dhan")
-    ap.add_argument("--levels", default="", help='"NIFTY:R1=22800,...;BANKNIFTY:..." (default: from the day\'s log)')
+    ap.add_argument("--source", choices=("db", "dhan"), default="dhan")
+    ap.add_argument("--levels", default="", help='"NIFTY:R1=22800,...;BANKNIFTY:..." (default: the day\'s algo_levels)')
     ap.add_argument("--log-dir", default=cfg.LOG_DIR)
     ap.add_argument("--data-dir", default="data")
     a = ap.parse_args()
@@ -295,22 +289,20 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows consoles default to cp1252
     except (AttributeError, ValueError):
         pass
-    from algo_service import parse_log_file
-    rows = parse_log_file(os.path.join(a.log_dir, f"algo-{a.date}.log"), a.date)
-    levels = parse_levels(a.levels) if a.levels else levels_from_log(rows)
+    pg, paper = _stores()
+    levels = parse_levels(a.levels) if a.levels else levels_from_db(paper, a.date)
     if not levels:
-        raise SystemExit("No levels: pass --levels or replay a day that has a log with 'Levels locked' lines.")
+        raise SystemExit("No levels: pass --levels or replay a day that has algo_levels rows.")
     variants = [v.strip().upper() for v in a.variants.split(",") if v.strip()]
     results, books = [], {}
-    snap_store = _snapshot_store(a.data_dir)
-    if a.source == "log":
+    if a.source == "db":
         for sym, lv in levels.items():
-            five = candles_from_log(rows, sym)
-            fa = oi_filters_from_store(snap_store, sym, a.date)
+            five = candles_from_db(paper, a.date, sym)
+            fa = oi_filters_from_store(pg, sym, a.date)
             results += [replay_index(sym, a.date, five, lv, v, filters_at=fa) for v in variants]
-        source = f"the live algo's decision log (logs/algo-{a.date}.log): its 5-minute candles and RSI; index points only"
+        source = "the live algo's stored 5-minute candles and RSI (algo_candles); index points only"
     else:
-        results, books = _replay_dhan(a, levels, variants)
+        results, books = _replay_dhan(a, levels, variants, pg, paper)
         source = "Dhan historical 1-minute candles (index + the option traded), grouped into 5-minute candles"
     text = report(a.date, results, source)
     os.makedirs(a.log_dir, exist_ok=True)
@@ -324,24 +316,26 @@ def main():
     print(f"Written: {base}.md and {base}.json")
 
 
-def _snapshot_store(data_dir):
-    """Where the tracker saved snapshots: Postgres with DATABASE_URL, else the JSON data folder."""
-    from store import JsonStore, PgStore
+def _stores():
+    """(PgStore, PaperPgStore): Postgres only (DATABASE_URL from backend/.env.local)."""
+    from envfile import load_env_file
+    from store import PaperPgStore, PgStore
+    load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local"))
     dsn = os.getenv("DATABASE_URL")
-    return PgStore(dsn) if dsn else JsonStore(data_dir)
+    if not dsn:
+        raise SystemExit("DATABASE_URL is not set: add it to backend/.env.local")
+    pg = PgStore(dsn)
+    return pg, PaperPgStore(pg)
 
 
-def _replay_dhan(a, levels, variants):
+def _replay_dhan(a, levels, variants, pg, store):
     from candles import parse_intraday, recent_sessions
     from dhan_client import DhanClient
     from instruments import OptionInstruments
-    from store import PaperJsonStore, PaperPgStore, PgStore
     client = DhanClient()
     instruments = OptionInstruments(os.path.join(a.data_dir, "option_instruments.json"))
     day = datetime.fromisoformat(a.date).date()
     sessions = recent_sessions(day)
-    dsn = os.getenv("DATABASE_URL")
-    store = PaperPgStore(PgStore(dsn)) if dsn else PaperJsonStore(a.data_dir)
     results, books = [], {}
     for sym, lv in levels.items():
         frm, to = f"{sessions[0]} 09:15:00", f"{day + timedelta(days=1)} 09:15:00"
@@ -368,7 +362,7 @@ def _replay_dhan(a, levels, variants):
             return {"name": leg.get("name", str(sid)), "candles": cache[sid], "qty": cfg.LOTS * leg["lotSize"],
                     "securityId": sid, "lotSize": leg["lotSize"]}
 
-        fa = oi_filters_from_store(_snapshot_store(a.data_dir), sym, a.date)
+        fa = oi_filters_from_store(pg, sym, a.date)
         for v in variants:
             res = replay_index(sym, a.date, five, lv, v, minutes=day_min, option=option, filters_at=fa)
             for t in res["trades"]:

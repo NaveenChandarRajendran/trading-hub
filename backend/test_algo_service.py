@@ -83,7 +83,8 @@ def env():
     clock.now = at("09:20")
     store = PaperJsonStore(tmp)
     paper = PaperService(store, FakeFeed(), Instruments(), clock=clock)
-    algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"))
+    algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"),
+                        variant="A", shadows=())
     algo.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     yield algo, paper, clock, store, tmp
     shutil.rmtree(tmp, ignore_errors=True)
@@ -114,7 +115,7 @@ def candle(algo, paper, clock, end, o, h, l, c, options=None):
 
 
 def kinds(algo, symbol="NIFTY"):
-    return [e["kind"] for e in algo.store.algo_events(DAY) if e["symbol"] in (symbol, "*")]
+    return [e["kind"] for e in algo.store.algo_events(DAY) if e["index"] in (symbol, "*")]
 
 
 def setup_levels(algo, paper, clock):
@@ -236,7 +237,7 @@ def test_restart_resumes_without_double_entry(env):
     # a new process: same store, same moment
     paper2 = PaperService(PaperJsonStore(tmp), FakeFeed(), Instruments(), clock=clock)
     algo2 = AlgoService(paper2.store, paper2, Instruments(), make_data(), clock, mode="paper",
-                        log_dir=os.path.join(tmp, "logs"))
+                        log_dir=os.path.join(tmp, "logs"), variant="A", shadows=())
     algo2.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     clock.now = at("10:05", 30)
     algo2.tick(clock.now)  # the 10:05 candle was already evaluated: not again
@@ -267,7 +268,8 @@ def test_kill_switch_stop_and_stop_exit_all(env):
 
 def test_signals_mode_logs_entries_and_exits_without_orders(env):
     algo, paper, clock, store, tmp = env
-    sig = AlgoService(store, paper, Instruments(), make_data(), clock, mode="signals", log_dir=os.path.join(tmp, "logs2"))
+    sig = AlgoService(store, paper, Instruments(), make_data(), clock, mode="signals", log_dir=os.path.join(tmp, "logs2"),
+                      variant="A", shadows=())
     sig.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     paper.listeners.remove(algo.on_packet)
     breakout_entry(sig, paper, clock)
@@ -285,13 +287,14 @@ def test_status_endpoint_shape(env):
     n = s["indices"][0]
     assert s["meta"]["mode"] == "paper" and n["symbol"] == "NIFTY" and n["state"] == "in trade"
     assert n["open"]["ltp"] == 120.0 and n["levels"]["R1"] == 22800.0 and n["trades"] == 1
-    assert algo.events()[0]["kind"] in ("entry", "candle")
+    assert algo.events()[0]["kind"] == "entry"
 
 
 # ---------------------------------------------------------------- safety
 ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_service.py", "algo_api.py", "algo_replay.py")
 ALLOWED_IMPORTS = {"json", "logging", "os", "re", "sys", "argparse", "threading", "time", "traceback", "dataclasses",
-                   "datetime", "typing", "fastapi", "algo_config", "algo_filters", "algo_logic", "algo_service", "calc", "chain_snapshots",
+                   "datetime", "typing", "fastapi", "algo_config", "algo_filters", "algo_logic", "algo_reports",
+                   "algo_service", "calc", "chain_snapshots", "envfile",
                    "candles", "dhan_client", "dhan_feed", "holidays", "instruments", "paper_engine", "sr_levels", "store"}
 # from dhan_client: the index ids, and (replay only) the market-data client; dhan_client has no order endpoint at all
 DHAN_NAMES = {"algo_replay.py": {"SCRIP", "DhanClient"}}
@@ -339,7 +342,7 @@ def test_api_routes_and_kill_switch(env):
     c = TestClient(app)
     assert c.get("/api/algo/status").json()["indices"][0]["state"] == "in trade"
     ev = c.get("/api/algo/events").json()["rows"]
-    assert ev[0]["at"] >= ev[-1]["at"]  # newest first
+    assert ev[0]["ts"] >= ev[-1]["ts"]  # newest first
     assert c.get("/api/algo/events?date=23/10/2026").status_code == 400
     r = c.post("/api/algo/stop-exit-all").json()
     assert r["indices"][0]["state"] == "stopped" and r["indices"][0]["open"] is None
@@ -362,7 +365,7 @@ def test_create_app_wires_the_algo_only_when_asked():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_past_day_log_and_trades_from_the_store_and_from_the_log_file(env):
+def test_past_day_log_and_trades_come_from_the_store_only(env):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -377,16 +380,13 @@ def test_past_day_log_and_trades_from_the_store_and_from_the_log_file(env):
     clock.now = datetime(2026, 10, 26, 9, 0, tzinfo=IST)  # Monday: Friday is a past day now
     for q in (DAY, "23-10-2026"):
         r = c.get(f"/api/algo/events?date={q}").json()
-        assert r["date"] == DAY and r["source"] == "store" and r["rows"][0]["at"] >= r["rows"][-1]["at"]
-        assert [(t["symbol"], t["setup"], t["exitPrice"]) for t in r["trades"]] == [("NIFTY", "Breakout CE", 189.95)]
+        assert r["date"] == DAY and r["rows"][0]["ts"] >= r["rows"][-1]["ts"]
+        assert [(t["index"], t["setup"], t["exitPrice"]) for t in r["trades"]] == [("NIFTY", "Breakout CE", 189.95)]
     assert c.get("/api/algo/events?date=2026/10/23").status_code == 400
-    assert c.get("/api/algo/events?date=2026-10-22").json() == {"date": "2026-10-22", "source": "none", "rows": [], "trades": []}
+    assert c.get("/api/algo/events?date=2026-10-22").json() == {"date": "2026-10-22", "variant": "", "rows": [], "trades": []}
 
-    # the same day viewed from a run with another (empty) store: read back from the log file
+    # another (empty) store: nothing, even though the day's log file exists (the app never reads the backup)
+    assert os.path.exists(os.path.join(tmp, "logs", f"algo-{DAY}.log"))
     other = AlgoService(PaperJsonStore(tempfile.mkdtemp()), None, Instruments(), make_data(), clock, mode="signals",
                         log_dir=os.path.join(tmp, "logs"))
-    d = other.day_log(DAY)
-    assert d["source"] == "log file" and d["rows"][-1]["message"].startswith("Algo started for 2026-10-23")
-    assert [(t["symbol"], t["setup"], t["pnl"]) for t in d["trades"]] == [("NIFTY", "Breakout CE", round((189.95 - 120.05) * 65, 2))]
-    kinds_ = {r["kind"] for r in d["rows"]}
-    assert {"levels", "armed", "entry", "exit", "candle"} <= kinds_
+    assert other.day_log(DAY) == {"date": DAY, "variant": "", "rows": [], "trades": []}

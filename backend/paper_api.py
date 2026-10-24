@@ -254,9 +254,13 @@ class PaperService:
                 rows = self.store.trades(self.account["id"], day)
         return [self._with_instrument(t) for t in rows]
 
-    def pnl(self, from_day, to_day):
+    def pnl(self, from_day, to_day, account=None):
+        """Day P&L of the manual account, or of a named one ("Algo": the algo's paper account, same pt_ tables)."""
         with self.lock:
-            rows = self.store.day_summary(self.account["id"], from_day, to_day)
+            acc = self.account if not account else self.store.active_account(account)
+            if acc is None:
+                return []
+            rows = self.store.day_summary(acc["id"], from_day, to_day)
         for r in rows:
             r["net"] = round(r["realized"] - r["charges"], 2)
         return rows
@@ -558,14 +562,18 @@ def register(app, svc):
         return positions()
 
     @app.get("/api/paper/pnl")
-    def pnl(from_day: str = Query("", alias="from"), to: str = ""):  # "from" is a Python keyword
+    def pnl(from_day: str = Query("", alias="from"), to: str = "", account: str = ""):  # "from" is a keyword
         today = svc.clock().date()
         to_day = _day(to, "to") or today.isoformat()
         start = _day(from_day, "from") or (Date.fromisoformat(to_day) - timedelta(days=365)).isoformat()
         if start > to_day:
             raise HTTPException(400, "from must not be after to")
         holidays = sorted(d for d in svc.holidays if start <= d <= to_day)
-        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays}, "rows": svc.pnl(start, to_day)}
+        if account and account.lower() not in ("algo", "manual"):
+            raise HTTPException(400, "account must be manual or algo")
+        name = "Algo" if account.lower() == "algo" else None
+        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays, "account": name or "Manual"},
+                "rows": svc.pnl(start, to_day, name)}
 
     @app.get("/api/paper/chain")
     def chain(symbol: str = "NIFTY", expiry: str = ""):

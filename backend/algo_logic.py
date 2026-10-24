@@ -77,6 +77,16 @@ def checks_text(checks):
     return "; ".join(f"{c['name']} {'OK' if c['ok'] else 'FAIL'}: {c['value']}" for c in checks)
 
 
+def no_room(side, close, target):
+    """True when spot is already at or through the target zone: no move left to capture (every variant skips)."""
+    return target is not None and ((side == "CE" and close >= target) or (side == "PE" and close <= target))
+
+
+def no_room_text(close, target, side, slot):
+    return (f"no room: spot {fmt(close)} is already {'at or above' if side == 'CE' else 'at or below'} the {slot} "
+            f"target zone {fmt(target)}")
+
+
 def entry_block(state, now, block=""):
     """Why a new entry is not allowed right now ("" = allowed). block: the runner's reason (stopped, stale data,
     token expired, day loss limit, mode)."""
@@ -166,6 +176,9 @@ def _range(state, c, now, filters, block, candle, base, out):
         if why:
             out.append(event("skip", f"{name} no entry: {why}. {touch}", **base))
             continue
+        if no_room(side, c["close"], target):
+            out.append(event("skip", f"{name} {no_room_text(c['close'], target, side, 'S1' if key == 'R1' else 'R1')}. {touch}", **base))
+            continue
         toi_txt = (f"{toi['sentiment']} {abs(toi['strength']):.1f}%" if toi
                    else "not checked" if filters.get("oiChecked") is False else "no data")
         reason = f"{name}: {touch}. Range R1 - S1 = {fmt(width)}. Trending OI {toi_txt} (not blocking)"
@@ -216,12 +229,15 @@ def _on_candle_a(state, c, now, filters, block=""):
         elif confirm:
             state["setup"] = None
             why = entry_block(state, now, block)
+            bull = s["side"] == "CE"
+            target = r2 if bull else s2
+            target = None if target is None else target - buf if bull else target + buf
             if why:
                 out.append(event("skip", f"{name} pullback at {hm(now)} but no entry: {why}", **base))
+            elif no_room(s["side"], c["close"], target):
+                out.append(event("skip", f"{name} pullback at {hm(now)} but "
+                                          f"{no_room_text(c['close'], target, s['side'], 'R2' if bull else 'S2')}", **base))
             else:
-                bull = s["side"] == "CE"
-                target = r2 if bull else s2
-                target = None if target is None else target - buf if bull else target + buf
                 reason = (f"{name}: break {s['breakText']}; pullback {candle}: {confirm_txt}. "
                           f"Filters at the break: {checks_text(s['checks'])}")
                 out.append(_enter(state, s["side"], name, target, "below" if bull else "above",
@@ -353,10 +369,9 @@ def _on_candle_v(state, c, now, filters, block, v):
             nxt = next_slot(slot)
             target = L.get(nxt) if nxt else None
             target = None if target is None else target - buf if bull else target + buf
-            if target is not None and ((bull and c["close"] >= target) or (not bull and c["close"] <= target)):
-                out.append(event("skip", f"{name} {'pullback' if pull else 'continuation'} at {hm(now)} but no room: "
-                                          f"spot {fmt(c['close'])} is already {'at or above' if bull else 'at or below'} "
-                                          f"the {nxt} target zone {fmt(target)}", setupName=name, **base))
+            if no_room(side, c["close"], target):
+                out.append(event("skip", f"{name} {'pullback' if pull else 'continuation'} at {hm(now)} but "
+                                          f"{no_room_text(c['close'], target, side, nxt)}", setupName=name, **base))
                 if v != "D":
                     del setups[slot]
                 continue

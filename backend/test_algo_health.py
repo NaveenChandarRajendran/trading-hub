@@ -34,7 +34,8 @@ def env():
     store = PaperJsonStore(tmp)
     feed = WatchFeed()
     paper = PaperService(store, feed, Instruments(), clock=clock)
-    algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"))
+    algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"),
+                        variant="A", shadows=())
     algo.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     yield algo, paper, clock, store, feed, tmp
     shutil.rmtree(tmp, ignore_errors=True)
@@ -65,7 +66,7 @@ def test_silent_index_is_logged_retried_with_backoff_and_logged_when_back(env):
     run_timer(algo, clock, at("10:00", 1), at("10:04"), step=5, paper=paper)
     stale = [e["message"] for e in events(store, "stale") if e["message"].startswith("Feed stale: no NIFTY")]
     assert len(stale) == 1 and stale[0].startswith("Feed stale: no NIFTY tick for 12") and "last tick 10:00:00, spot 22,700" in stale[0]
-    tries = [e["message"] for e in events(store, "feed") if e["symbol"] == "NIFTY"]
+    tries = [e["message"] for e in events(store, "feed") if e["index"] == "NIFTY"]
     assert tries[0] == "Reconnect attempt 1 for NIFTY: resubscribed every instrument; next try in 30 s if still stale"
     assert tries[1].startswith("Reconnect attempt 2 for NIFTY: reconnecting the feed; next try in 60 s")
     assert feed.calls[:2] == ["resubscribe", "reconnect: no NIFTY tick for 151 s"]
@@ -90,7 +91,7 @@ def test_heartbeat_every_15_minutes_in_the_session(env):
     tick(paper, clock, at("09:15", 3), 22690)
     run_timer(algo, clock, at("09:15", 4), at("09:45", 30), step=30)
     beats = events(store, "heartbeat")
-    assert [b["at"][11:19] for b in beats] == ["09:15:04", "09:30:04", "09:45:04"]
+    assert [b["ts"][11:19] for b in beats] == ["09:15:04", "09:30:04", "09:45:04"]
     assert beats[0]["message"].startswith("Heartbeat: NIFTY last tick 09:15:03 spot 22,690 · BANKNIFTY no tick yet")
 
 
@@ -116,16 +117,17 @@ def test_exceptions_are_logged_with_traceback_and_the_loop_keeps_going(env):
     assert any(e["message"] == "NIFTY candle evaluation: RuntimeError: Dhan down" for e in events(store, "error"))
     algo.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     candle(algo, paper, clock, "10:20", 22700, 22705, 22695, 22702)  # next candle evaluated normally
-    assert any(e["message"].startswith("10:20 candle") for e in events(store, "candle"))
+    assert [c["candle_start"][11:16] for c in store.algo_candles(DAY, "NIFTY")][-1] == "10:15"  # the 10:15-10:20 candle
 
 
 def test_only_candles_opening_at_or_after_0930_and_inside_the_session(env):
     algo, paper, clock, store, feed, _ = env
     setup_levels(algo, paper, clock)  # 09:30:05: the 09:25-09:30 candle is not evaluated
-    assert not events(store, "candle")
+    assert not store.algo_candles(DAY)
     candle(algo, paper, clock, "09:35", 22700, 22705, 22695, 22702)
-    assert [e["message"][:5] for e in events(store, "candle")] == ["09:35"]
+    assert [c["candle_start"][11:16] for c in store.algo_candles(DAY, "NIFTY")] == ["09:30"]  # 09:30-09:35
     clock.now = at("15:40")
     algo.tick(clock.now)
-    ends = [e["message"][:5] for e in events(store, "candle")] + [e["message"] for e in events(store, "stale")]
-    assert all(not x.startswith("15:35") and not x.startswith("15:40") for x in ends)
+    starts = [c["candle_start"][11:16] for c in store.algo_candles(DAY)]
+    assert all(s <= "15:25" for s in starts)
+    assert not [e for e in events(store, "stale") if "15:35" in e["message"] or "15:40" in e["message"]]

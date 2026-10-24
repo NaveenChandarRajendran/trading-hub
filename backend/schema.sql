@@ -132,36 +132,139 @@ ALTER TABLE pt_accounts ADD COLUMN IF NOT EXISTS name text;
 ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';
 ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS setup text NOT NULL DEFAULT '';
 
--- OI breakout algo (algo_service.py): decision log and per-index state (resume after a restart).
+-- Which variant placed an algo order (A-D; '' for manual orders).
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS variant text NOT NULL DEFAULT '';
+
+-- ================================================================ OI breakout algo (algo_service.py)
+-- Every date column is the IST trading date written by the app (never derived from UTC timestamps).
+-- Decision log: one row per signal / skip / entry / exit / error / heartbeat / feed / levels / info line.
 CREATE TABLE IF NOT EXISTS algo_events (
     id          bigserial   PRIMARY KEY,
     trade_date  date        NOT NULL,
-    at          timestamptz NOT NULL,
-    symbol      text        NOT NULL,
+    ts          timestamptz NOT NULL,
+    "index"     text        NOT NULL,       -- NIFTY | BANKNIFTY | * (both)
+    variant     text        NOT NULL DEFAULT 'A',
+    type        text        NOT NULL,       -- signal | skip | entry | exit | error | heartbeat | feed | levels | info
     setup       text        NOT NULL DEFAULT '',
-    kind        text        NOT NULL,       -- levels | armed | skip | cancel | expire | entry | exit | error | info
     message     text        NOT NULL,
-    data        jsonb       NOT NULL DEFAULT '{}'
+    details     jsonb       NOT NULL DEFAULT '{}',  -- kind (fine-grained), spot, levels, filter values, trade
+    uid         text                        -- md5 of ts|index|variant|type|setup|message: imports never duplicate
 );
+-- migration from the 23-Oct layout (at, symbol, kind, data; no variant): rename in place, keep every row
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_events' AND column_name = 'at') THEN
+        ALTER TABLE algo_events RENAME COLUMN at TO ts;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_events' AND column_name = 'symbol') THEN
+        ALTER TABLE algo_events RENAME COLUMN symbol TO "index";
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_events' AND column_name = 'kind') THEN
+        ALTER TABLE algo_events RENAME COLUMN kind TO type;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_events' AND column_name = 'data') THEN
+        ALTER TABLE algo_events RENAME COLUMN data TO details;
+    END IF;
+END $$;
+ALTER TABLE algo_events ADD COLUMN IF NOT EXISTS variant text NOT NULL DEFAULT 'A';
+ALTER TABLE algo_events ADD COLUMN IF NOT EXISTS uid text;
+-- old fine-grained kinds -> type (the kind stays in details.kind)
+UPDATE algo_events SET details = details || jsonb_build_object('kind', type) WHERE NOT details ? 'kind';
+UPDATE algo_events SET type = CASE type WHEN 'armed' THEN 'signal' WHEN 'cancel' THEN 'signal' WHEN 'expire' THEN 'signal'
+                                        WHEN 'stale' THEN 'feed' ELSE type END
+    WHERE type IN ('armed', 'cancel', 'expire', 'stale');
+UPDATE algo_events SET uid = md5(concat_ws('|', to_char(ts AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS'),
+                                           "index", variant, type, setup, message))
+    WHERE uid IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS algo_events_uid ON algo_events (uid);
 CREATE INDEX IF NOT EXISTS algo_events_day ON algo_events (trade_date, id);
+CREATE INDEX IF NOT EXISTS algo_events_day_index ON algo_events (trade_date, "index");
+CREATE INDEX IF NOT EXISTS algo_events_day_variant ON algo_events (trade_date, variant);
 
+-- Per index and variant (live + shadows): locked levels, setups, open trade, trade count, closed trades.
 CREATE TABLE IF NOT EXISTS algo_state (
     trade_date  date        NOT NULL,
-    symbol      text        NOT NULL,
-    state       jsonb       NOT NULL,       -- algo_logic state: locked levels, setup, open trade, trade count
+    "index"     text        NOT NULL,
+    variant     text        NOT NULL DEFAULT 'A',
+    state       jsonb       NOT NULL,
     updated_at  timestamptz NOT NULL,
-    PRIMARY KEY (trade_date, symbol)
+    PRIMARY KEY (trade_date, "index", variant)
+);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_state' AND column_name = 'symbol') THEN
+        ALTER TABLE algo_state RENAME COLUMN symbol TO "index";
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'algo_state' AND column_name = 'variant') THEN
+        ALTER TABLE algo_state ADD COLUMN variant text NOT NULL DEFAULT 'A';
+        ALTER TABLE algo_state DROP CONSTRAINT IF EXISTS algo_state_pkey;
+        ALTER TABLE algo_state ADD PRIMARY KEY (trade_date, "index", variant);
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS algo_state_day_variant ON algo_state (trade_date, variant);
+
+-- The levels locked at 09:30: one row per index per day.
+CREATE TABLE IF NOT EXISTS algo_levels (
+    trade_date  date             NOT NULL,
+    "index"     text             NOT NULL,
+    expiry      text             NOT NULL,
+    locked_at   timestamptz      NOT NULL,
+    r1 double precision, r2 double precision, r3 double precision,
+    s1 double precision, s2 double precision, s3 double precision,
+    spot        double precision,           -- spot of the chain the levels came from
+    PRIMARY KEY (trade_date, "index")
 );
 
--- Option-chain snapshots, one per tracked expiry per minute in market hours (chain_snapshots.py): ATM +/- 25 strikes
--- with OI, previous OI, LTP, previous close, volume, IV per leg, so replays can check the OI filters on past days.
-CREATE TABLE IF NOT EXISTS option_chain_snapshot (
-    symbol      text             NOT NULL,
-    expiry      date             NOT NULL,
-    trade_date  date             NOT NULL,
-    ts          text             NOT NULL,       -- 'YYYY-MM-DD HH:MM' IST, the tracker's minute
-    spot        double precision NOT NULL,
-    snap        jsonb            NOT NULL,       -- {"ts", "fetchedAt", "spot", "columns", "rows": [[strike, ...], ...]}
-    PRIMARY KEY (symbol, expiry, ts)
+-- Every evaluated 5-minute candle with RSI and the filter values at its close.
+CREATE TABLE IF NOT EXISTS algo_candles (
+    trade_date        date             NOT NULL,
+    "index"           text             NOT NULL,
+    candle_start      timestamptz      NOT NULL,
+    open double precision, high double precision, low double precision, close double precision,
+    minutes           integer,                  -- 1-minute candles it was built from (5 = complete)
+    rsi               double precision,
+    toi_strength      double precision,         -- Trending OI strength %, signed as the app shows it
+    toi_sentiment     text,                     -- Bullish | Bearish
+    oi_change         text,                     -- BULLISH | BEARISH | NEUTRAL (OI & OI Change verdict)
+    oi_change_points  double precision,
+    components        text,                     -- Bullish | Bearish | Neutral | NULL (not ready)
+    components_move   double precision,         -- index % points from components
+    PRIMARY KEY (trade_date, "index", candle_start)
 );
-CREATE INDEX IF NOT EXISTS option_chain_snapshot_day ON option_chain_snapshot (symbol, trade_date);
+
+-- One row per day, index and variant (live + shadows), written at 15:35 IST and recomputable on demand.
+-- P&L columns are for the live variant only (shadows: NULL; points for all).
+CREATE TABLE IF NOT EXISTS algo_daily_summary (
+    trade_date  date             NOT NULL,
+    "index"     text             NOT NULL,
+    variant     text             NOT NULL,
+    is_live     boolean          NOT NULL,
+    signals     integer          NOT NULL,     -- breakouts armed + range touches
+    entries     integer          NOT NULL,
+    wins        integer          NOT NULL,
+    losses      integer          NOT NULL,
+    points      double precision NOT NULL,     -- index points captured (PE: entry - exit)
+    gross_pnl   double precision,
+    charges     double precision,
+    net_pnl     double precision,
+    updated_at  timestamptz      NOT NULL,
+    PRIMARY KEY (trade_date, "index", variant)
+);
+CREATE INDEX IF NOT EXISTS algo_daily_summary_day_variant ON algo_daily_summary (trade_date, variant);
+
+-- Option-chain snapshots: one row per strike per tracked minute (chain_snapshots.py, ATM +/- 25 strikes), so replays
+-- can check the OI filters on past days.
+CREATE TABLE IF NOT EXISTS oc_snapshots (
+    trade_date   date             NOT NULL,
+    ts           timestamptz      NOT NULL,     -- the tracker's minute (IST)
+    "index"      text             NOT NULL,
+    expiry       text             NOT NULL,
+    strike       double precision NOT NULL,
+    spot         double precision NOT NULL,
+    ce_oi double precision, ce_prev_oi double precision, ce_ltp double precision, ce_prev_close double precision,
+    ce_volume double precision, ce_iv double precision,
+    pe_oi double precision, pe_prev_oi double precision, pe_ltp double precision, pe_prev_close double precision,
+    pe_volume double precision, pe_iv double precision,
+    PRIMARY KEY ("index", expiry, ts, strike)
+);
+CREATE INDEX IF NOT EXISTS oc_snapshots_day_index ON oc_snapshots (trade_date, "index");
