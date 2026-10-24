@@ -5,7 +5,7 @@ import { inr, signed } from '../../shared/grid';
 import { errorText } from '../../shared/live/liveStatus';
 import { Alert, EmptyState, Pill, Segmented, Stat, Status } from '../../shared/ui';
 import { KIND_TONE, LEVEL_ORDER, feedStatus, filterEvents, reviewText, stateTone, tradeRows, type LogFilter } from './logic/algo';
-import { algoApi, type AlgoEvent, type AlgoStatus, type IndexStatus } from './logic/api';
+import { algoApi, type AlgoStatus, type DayLog, type IndexStatus } from './logic/api';
 import './algo.css';
 
 const STATUS_MS = 5000;
@@ -20,7 +20,7 @@ const tone = (v: number | null | undefined) => (!v ? '' : v > 0 ? 'up' : 'down')
 export default function AlgoApp() {
   const [status, setStatus] = useState<AlgoStatus | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [events, setEvents] = useState<AlgoEvent[]>([]);
+  const [dayLog, setDayLog] = useState<DayLog | null>(null);
   const [date, setDate] = useState('');
   const [filter, setFilter] = useState<LogFilter>('all');
   const [symbol, setSymbol] = useState('');
@@ -38,7 +38,7 @@ export default function AlgoApp() {
   }, []);
   const loadEvents = useCallback(async () => {
     try {
-      setEvents((await algoApi.events(date)).rows);
+      setDayLog(await algoApi.events(date));
     } catch { /* the status call shows the error */ }
   }, [date]);
 
@@ -68,12 +68,16 @@ export default function AlgoApp() {
     }
   };
 
-  const trades = useMemo(() => tradeRows(status), [status]);
+  const today = status?.meta.asOf.slice(0, 10) ?? '';
+  const pastDay = !!date && date !== today; // the date picker shows another day: its trades come with its log
+  const day = pastDay ? date : today;
+  const trades = useMemo(() => (pastDay ? dayLog?.trades ?? [] : tradeRows(status)), [pastDay, dayLog, status]);
+  const events = dayLog && (!date || dayLog.date === date) ? dayLog.rows : [];
   const rows = useMemo(() => filterEvents(events, filter, symbol, candles), [events, filter, symbol, candles]);
   const feed = feedStatus(status, error);
+  const health = status?.meta.health;
   const stopped = status?.indices.some((i) => i.stopped) ?? false;
   const funds = status?.meta.funds;
-  const day = status?.meta.asOf.slice(0, 10) ?? '';
   const mode = status?.meta.mode;
 
   const copyReview = async () => {
@@ -108,9 +112,11 @@ export default function AlgoApp() {
                 && void act(algoApi.stopExitAll, 'Stopped and exit sent for all algo positions.')}>Stop + exit all</button>
           </div>
         </div>
-        {(error != null || notice) && (
+        {(error != null || notice || (health && (health.state === 'stale' || health.state === 'error'))) && (
           <div className="algo-alerts">
             {error != null && <Alert kind="error">{errorText(error)} Is the backend running with ALGO_MODE set?</Alert>}
+            {error == null && health?.state === 'error' && <Alert kind="error">{health.reason}</Alert>}
+            {error == null && health?.state === 'stale' && <Alert kind="warn">{health.reason}. No new entries until ticks return.</Alert>}
             {notice && <Alert kind="info">{notice}</Alert>}
           </div>
         )}
@@ -133,10 +139,10 @@ export default function AlgoApp() {
 
       <section className="card">
         <div className="card-head">
-          <h3 className="card-title">Today's trades</h3>
+          <h3 className="card-title">{pastDay ? `Trades · ${day}` : "Today's trades"}</h3>
           <button className="btn" disabled={!trades.length} onClick={() => void copyReview()}>Copy review</button>
         </div>
-        {!trades.length ? <EmptyState>No closed trades yet today.</EmptyState> : (
+        {!trades.length ? <EmptyState>{pastDay ? `No closed trades on ${day}.` : 'No closed trades yet today.'}</EmptyState> : (
           <div className="algo-scroll">
             <table className="t">
               <thead><tr><th>Index</th><th>Setup</th><th>Option</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Exit reason</th><th /></tr></thead>
@@ -174,6 +180,10 @@ export default function AlgoApp() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Day" />
           </span>
         </div>
+        {dayLog?.source === 'log file' && (
+          <p className="muted algo-line">Read from the log file: this day is not in the store the backend uses now (it ran with another
+            DATABASE_URL setting).</p>
+        )}
         {!rows.length ? <EmptyState>Nothing logged{date ? ` on ${date}` : ' yet today'}.</EmptyState> : (
           <ol className="algo-log">
             {rows.map((e, n) => (

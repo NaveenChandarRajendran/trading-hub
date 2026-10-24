@@ -53,6 +53,7 @@ export interface AlgoStatus {
     asOf: string;
     tokenExpired: boolean;
     tradingDay: boolean;
+    health: { state: 'ok' | 'stale' | 'error' | 'off'; reason: string };
     account: { id: number; name: string; capital: number } | null;
     funds: { realized: number; charges: number; unrealized: number; dayPnl: number; available: number } | null;
     entryWindow: string;
@@ -68,7 +69,7 @@ export interface AlgoEvent {
   at: string; // ISO, IST
   symbol: string; // "NIFTY" | "BANKNIFTY" | "*"
   setup: string;
-  kind: string; // levels | candle | armed | skip | cancel | expire | entry | exit | error | info
+  kind: string; // levels | candle | armed | skip | cancel | expire | entry | exit | error | info | stale | feed | heartbeat
   message: string;
   data: Record<string, unknown>;
 }
@@ -76,8 +77,17 @@ export interface AlgoEvent {
 export const algoApi = {
   status: (signal?: AbortSignal) => getJson<AlgoStatus>(API_BASE, '/api/algo/status', signal),
   events: (date = '', signal?: AbortSignal) =>
-    getJson<{ date: string; rows: AlgoEvent[] }>(API_BASE, `/api/algo/events${date ? `?date=${date}` : ''}`, signal),
+    getJson<DayLog>(API_BASE, `/api/algo/events${date ? `?date=${date}` : ''}`, signal),
   stop: () => requestJson<AlgoStatus>(API_BASE, '/api/algo/stop', { method: 'POST' }),
   stopExitAll: () => requestJson<AlgoStatus>(API_BASE, '/api/algo/stop-exit-all', { method: 'POST' }),
   resume: () => requestJson<AlgoStatus>(API_BASE, '/api/algo/resume', { method: 'POST' }),
 };
+
+/** One IST day: decision log (newest first) and closed trades. source "log file": the day is not in the store the
+ *  backend uses now (e.g. that day ran with Postgres), so it was read back from logs/algo-<day>.log. */
+export interface DayLog {
+  date: string;
+  source: 'store' | 'log file' | 'none';
+  rows: AlgoEvent[];
+  trades: (ClosedTrade & { symbol: string })[];
+}

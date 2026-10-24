@@ -13,7 +13,8 @@ const index = (symbol: string, closed: ClosedTrade[], extra: Partial<IndexStatus
   lastCandle: null, spot: 22800, dataAgeSec: 3, state: 'watching', blocked: '', ...extra,
 });
 const status = (indices: IndexStatus[], meta: Partial<AlgoStatus['meta']> = {}) =>
-  ({ meta: { mode: 'paper', asOf: '2026-10-23 10:30:00', tokenExpired: false, tradingDay: true, ...meta }, indices }) as AlgoStatus;
+  ({ meta: { mode: 'paper', asOf: '2026-10-23 10:30:00', tokenExpired: false, tradingDay: true,
+    health: { state: 'ok', reason: '' }, ...meta }, indices }) as AlgoStatus;
 
 describe('trade review', () => {
   it('rows from both indices in entry order', () => {
@@ -44,6 +45,8 @@ describe('decision log filter', () => {
     expect(filterEvents(rows, 'all', '', true)).toHaveLength(5);
     expect(filterEvents(rows, 'trades', '', false).map((e) => e.kind)).toEqual(['entry']);
     expect(filterEvents(rows, 'problems', 'NIFTY', false).map((e) => e.kind)).toEqual(['skip', 'error']);
+    expect(filterEvents([ev('NIFTY', 'stale'), ev('*', 'feed'), ev('*', 'heartbeat')], 'problems', '', false).map((e) => e.kind))
+      .toEqual(['stale', 'feed']);
     expect(filterEvents(rows, 'all', 'BANKNIFTY', false).map((e) => e.symbol)).toEqual(['BANKNIFTY', '*']);
   });
 });
@@ -55,6 +58,9 @@ describe('labels', () => {
     expect(feedStatus(status([], { tokenExpired: true }), null).label).toContain('token expired');
     expect(feedStatus(status([], { mode: 'off' }), null).kind).toBe('idle');
     expect(feedStatus(null, new Error('x')).kind).toBe('error');
+    expect(feedStatus(status([index('NIFTY', [])], { health: { state: 'stale', reason: 'Feed stale: no NIFTY tick since 15:14:03' } }), null))
+      .toEqual({ kind: 'stale', label: 'Stale' });
+    expect(feedStatus(status([index('NIFTY', [])], { health: { state: 'error', reason: 'tick handler: ValueError' } }), null).kind).toBe('error');
   });
 
   it('state tones', () => {

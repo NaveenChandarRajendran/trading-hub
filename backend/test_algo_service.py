@@ -84,7 +84,7 @@ def env():
     store = PaperJsonStore(tmp)
     paper = PaperService(store, FakeFeed(), Instruments(), clock=clock)
     algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"))
-    algo.filters = lambda sym, end, now: dict(GOOD_CE)
+    algo.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     yield algo, paper, clock, store, tmp
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -189,7 +189,7 @@ def test_spot_stop_on_the_candle_close_and_square_off_at_1515(env):
     assert algo.states["NIFTY"]["closed"][0]["exitReason"].startswith("Spot stop: 10:10 candle")
 
     algo, paper, clock, store, tmp = env
-    algo.filters = lambda sym, end, now: {**GOOD_CE, "toi": None}  # bullish Trending OI would block a range PE
+    algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}  # bullish Trending OI would block a range PE
     candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22790, opts)  # range touch at R1 -> PE
     assert algo.states["NIFTY"]["open"]["setup"] == "Range PE (R1 rejection)"
     tick(paper, clock, at("15:14", 50), 22700)
@@ -204,13 +204,13 @@ def test_max_trades_and_day_loss_block_new_entries(env):
     algo, paper, clock, *_ = env
     setup_levels(algo, paper, clock)
     algo.states["NIFTY"]["trades"] = cfg.MAX_TRADES_PER_INDEX
-    algo.filters = lambda sym, end, now: {**GOOD_CE, "toi": None}
+    algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
     candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22790)
     msgs = [e["message"] for e in algo.store.algo_events(DAY) if e["kind"] == "skip"]
     assert any("max 4 trades for NIFTY today" in m for m in msgs)
 
     algo.states["NIFTY"]["trades"] = 0
-    algo.filters = lambda sym, end, now: {**GOOD_CE, "toi": None}
+    algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
     algo.broker.day_pnl = lambda: -2000.0
     candle(algo, paper, clock, "10:40", 22795, 22798, 22770, 22780)  # re-arms the R1 touch
     candle(algo, paper, clock, "10:45", 22780, 22801, 22775, 22785)
@@ -237,7 +237,7 @@ def test_restart_resumes_without_double_entry(env):
     paper2 = PaperService(PaperJsonStore(tmp), FakeFeed(), Instruments(), clock=clock)
     algo2 = AlgoService(paper2.store, paper2, Instruments(), make_data(), clock, mode="paper",
                         log_dir=os.path.join(tmp, "logs"))
-    algo2.filters = lambda sym, end, now: dict(GOOD_CE)
+    algo2.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     clock.now = at("10:05", 30)
     algo2.tick(clock.now)  # the 10:05 candle was already evaluated: not again
     st = algo2.states["NIFTY"]
@@ -268,7 +268,7 @@ def test_kill_switch_stop_and_stop_exit_all(env):
 def test_signals_mode_logs_entries_and_exits_without_orders(env):
     algo, paper, clock, store, tmp = env
     sig = AlgoService(store, paper, Instruments(), make_data(), clock, mode="signals", log_dir=os.path.join(tmp, "logs2"))
-    sig.filters = lambda sym, end, now: dict(GOOD_CE)
+    sig.filters = lambda sym, end, now, r=None: dict(GOOD_CE)
     paper.listeners.remove(algo.on_packet)
     breakout_entry(sig, paper, clock)
     entry = [e for e in store.algo_events(DAY) if e["kind"] == "entry"]
@@ -290,7 +290,7 @@ def test_status_endpoint_shape(env):
 
 # ---------------------------------------------------------------- safety
 ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_service.py", "algo_api.py")
-ALLOWED_IMPORTS = {"json", "logging", "os", "re", "threading", "dataclasses", "datetime", "typing", "fastapi",
+ALLOWED_IMPORTS = {"json", "logging", "os", "re", "threading", "time", "traceback", "dataclasses", "datetime", "typing", "fastapi",
                    "algo_config", "algo_filters", "algo_logic", "candles", "dhan_client", "dhan_feed", "holidays",
                    "paper_engine", "sr_levels", "store"}
 ORDER_WORDS = ("/orders", "/super/orders", "/forever", "placeorder", "place_order(", "modify_order", "cancel_order",
@@ -337,7 +337,7 @@ def test_api_routes_and_kill_switch(env):
     assert c.get("/api/algo/status").json()["indices"][0]["state"] == "in trade"
     ev = c.get("/api/algo/events").json()["rows"]
     assert ev[0]["at"] >= ev[-1]["at"]  # newest first
-    assert c.get("/api/algo/events?date=23-10-2026").status_code == 400
+    assert c.get("/api/algo/events?date=23/10/2026").status_code == 400
     r = c.post("/api/algo/stop-exit-all").json()
     assert r["indices"][0]["state"] == "stopped" and r["indices"][0]["open"] is None
     assert c.post("/api/algo/resume").json()["indices"][0]["stopped"] is False
@@ -357,3 +357,33 @@ def test_create_app_wires_the_algo_only_when_asked():
         assert any(r.path == "/api/algo/status" for r in app.routes) and app.state.algo.mode == "signals"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_past_day_log_and_trades_from_the_store_and_from_the_log_file(env):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import algo_api
+    algo, paper, clock, store, tmp = env
+    breakout_entry(algo, paper, clock)
+    books(paper, clock, at("10:20"), {ce(22800): 190.0})
+    tick(paper, clock, at("10:21"), 22991)
+    app = FastAPI()
+    algo_api.register(app, algo)
+    c = TestClient(app)
+    clock.now = datetime(2026, 10, 26, 9, 0, tzinfo=IST)  # Monday: Friday is a past day now
+    for q in (DAY, "23-10-2026"):
+        r = c.get(f"/api/algo/events?date={q}").json()
+        assert r["date"] == DAY and r["source"] == "store" and r["rows"][0]["at"] >= r["rows"][-1]["at"]
+        assert [(t["symbol"], t["setup"], t["exitPrice"]) for t in r["trades"]] == [("NIFTY", "Breakout CE", 189.95)]
+    assert c.get("/api/algo/events?date=2026/10/23").status_code == 400
+    assert c.get("/api/algo/events?date=2026-10-22").json() == {"date": "2026-10-22", "source": "none", "rows": [], "trades": []}
+
+    # the same day viewed from a run with another (empty) store: read back from the log file
+    other = AlgoService(PaperJsonStore(tempfile.mkdtemp()), None, Instruments(), make_data(), clock, mode="signals",
+                        log_dir=os.path.join(tmp, "logs"))
+    d = other.day_log(DAY)
+    assert d["source"] == "log file" and d["rows"][-1]["message"].startswith("Algo started for 2026-10-23")
+    assert [(t["symbol"], t["setup"], t["pnl"]) for t in d["trades"]] == [("NIFTY", "Breakout CE", round((189.95 - 120.05) * 65, 2))]
+    kinds_ = {r["kind"] for r in d["rows"]}
+    assert {"levels", "armed", "entry", "exit", "candle"} <= kinds_

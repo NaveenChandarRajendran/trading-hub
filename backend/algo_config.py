@@ -45,5 +45,8 @@ DAY_LOSS_STOP_PCT = 2.0  # of CAPITAL: no new entries after this day loss (reali
 # reliability
 STALE_NO_ENTRY_SEC = 120
 STALE_EXIT_SEC = 300  # with an open position: exit at market when data returns
+STALE_RETRY_SEC = (30, 60, 120, 300)  # an index silent while the feed is up: resubscribe, then reconnect, backing off
+HEARTBEAT_MIN = 15  # a heartbeat line in the decision log every 15 minutes during the session
+SESSION_FROM, SESSION_TO = time(9, 15), time(15, 30)  # candles are evaluated only inside the session
 ATM_STRIKES_EACH_SIDE = 1  # option strikes kept subscribed around ATM, so a market order always has a price
 LOG_DIR = "logs"

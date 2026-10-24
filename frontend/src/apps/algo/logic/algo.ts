@@ -42,7 +42,7 @@ const IN: Record<LogFilter, (k: string) => boolean> = {
   all: (k) => k !== 'candle',
   trades: (k) => k === 'entry' || k === 'exit',
   signals: (k) => ['armed', 'skip', 'cancel', 'expire', 'entry', 'exit', 'levels'].includes(k),
-  problems: (k) => k === 'error' || k === 'skip',
+  problems: (k) => ['error', 'skip', 'stale', 'feed'].includes(k),
 };
 
 /** Decision log rows for a filter and index ("" = both); candles only with "all + candles". */
@@ -53,7 +53,7 @@ export function filterEvents(rows: AlgoEvent[], filter: LogFilter, symbol: strin
 
 export const KIND_TONE: Record<string, Tone> = {
   entry: 'accent', exit: 'accent', armed: 'up', skip: 'warn', cancel: 'neutral', expire: 'neutral', error: 'down',
-  levels: 'neutral', info: 'neutral', candle: 'neutral',
+  levels: 'neutral', info: 'neutral', candle: 'neutral', stale: 'warn', feed: 'warn', heartbeat: 'neutral',
 };
 
 export function stateTone(state: string): Tone {
@@ -68,6 +68,9 @@ export function feedStatus(s: AlgoStatus | null, error: unknown): { kind: 'live'
   if (error) return { kind: 'error', label: 'Backend not reachable' };
   if (!s) return { kind: 'idle', label: 'Loading…' };
   if (s.meta.mode === 'off') return { kind: 'idle', label: 'Algo off (ALGO_MODE=off)' };
+  const h = s.meta.health;
+  if (h?.state === 'error') return { kind: 'error', label: 'Error' };
+  if (h?.state === 'stale') return { kind: 'stale', label: 'Stale' };
   if (s.meta.tokenExpired) return { kind: 'error', label: 'Dhan token expired: no new entries' };
   if (!s.meta.tradingDay) return { kind: 'idle', label: 'Not a trading day' };
   const ages = s.indices.map((i) => i.dataAgeSec).filter((a): a is number => a != null);

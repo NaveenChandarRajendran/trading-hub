@@ -15,6 +15,8 @@ import json
 import logging
 import os
 import threading
+import time as _time
+import traceback
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
@@ -136,6 +138,7 @@ class AlgoService:
         self.lock = threading.RLock()
         self.broker = AlgoBroker(store, instruments, clock, holidays) if mode != "off" else None
         self.day = None
+        self._started_at = None  # first timer tick inside today's session (watchdog reference before any tick)
         self.states = {}  # symbol -> algo_logic state (+ "lastCandle", "closed")
         self.minutes = {s: {} for s in cfg.SYMBOLS}  # symbol -> {minute start epoch: 1-minute candle}
         self.spot = {s: None for s in cfg.SYMBOLS}
@@ -145,8 +148,16 @@ class AlgoService:
         self._file_day, self._file = None, None
         self._stop = threading.Event()
         self._thread = None
+        self.watch = {}  # symbol -> {"since", "attempt", "next"} while its ticks are stale
+        self.last_error = None  # (at, message) of the newest exception, shown on the page for 10 minutes
+        self._errors_seen = {}  # (where, message) -> last time logged, so a repeating error is logged once a minute
+        self._next_heartbeat = None
+        self._last_feed_action = None  # one resubscribe / reconnect per 30 s, whichever index asks
         if paper is not None:
             paper.listeners.append(self.on_packet)
+            feed = getattr(paper, "feed", None)
+            if feed is not None:
+                feed.on_event = self._feed_event
 
     # ------------------------------------------------------------ lifecycle
     def start(self):
@@ -163,9 +174,8 @@ class AlgoService:
         while not self._stop.wait(1.0):
             try:
                 self.tick(self.clock())
-            except Exception as e:
-                log.exception("algo tick failed")
-                self._note("*", "error", f"{e.__class__.__name__}: {e}", kind="error")
+            except Exception as e:  # never stops the loop
+                self._error("timer", e)
 
     def trading_day(self, now):
         return now.weekday() < 5 and now.date().isoformat() not in self.holidays
@@ -178,7 +188,7 @@ class AlgoService:
             self._file_day, self._file = day, os.path.join(self.log_dir, f"algo-{day}.log")
         return self._file
 
-    def record(self, symbol, kind, message, setup="", data=None, now=None):
+    def record(self, symbol, kind, message, setup="", data=None, now=None, tb=None):
         now = now or self.clock()
         st = self.states.get(symbol) or {}
         data = {**(data or {}), "spot": self.spot.get(symbol), "levels": st.get("levels"), "mode": self.mode}
@@ -188,6 +198,8 @@ class AlgoService:
         try:
             with open(self._log_file(now), "a", encoding="utf-8") as f:
                 f.write(line + " | " + json.dumps(data, default=str) + "\n")
+                if tb:  # the full traceback under the line, indented
+                    f.write("".join("    " + x + "\n" for x in tb.rstrip().splitlines()))
         except Exception as e:
             log.warning("algo log file: %s", e)
         try:
@@ -196,6 +208,31 @@ class AlgoService:
             log.warning("algo event not stored: %s", e)
         log.info(line)
         return ev
+
+    def _error(self, where, exc, symbol="*"):
+        """Logs an exception with its traceback (decision log + file) and keeps going. The same error repeating
+        is logged once a minute; the page shows the newest one for 10 minutes."""
+        now = self.clock()
+        msg = f"{where}: {exc.__class__.__name__}: {exc}"
+        self.last_error = (now, msg)
+        key = (where, str(exc))
+        last = self._errors_seen.get(key)
+        if last and (now - last).total_seconds() < 60:
+            return
+        self._errors_seen[key] = now
+        log.error("algo %s", msg, exc_info=exc)
+        try:
+            self.record(symbol, "error", msg, data={"where": where},
+                        tb="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)), now=now)
+        except Exception:
+            log.exception("algo error could not be recorded")
+
+    def _feed_event(self, level, message):
+        """Disconnects, stale feed and reconnect attempts from dhan_feed.py, into the decision log."""
+        try:
+            self.record("*", "feed", message)
+        except Exception:
+            log.exception("feed event not recorded")
 
     def _note(self, symbol, key, value, kind="info", now=None):
         """Logs a condition once each time it changes (stale data, token, day loss...)."""
@@ -267,6 +304,12 @@ class AlgoService:
 
     # ------------------------------------------------------------ market data
     def on_packet(self, pkt, now):
+        try:
+            self._on_packet(pkt, now)
+        except Exception as e:  # never breaks the feed
+            self._error("tick handler", e)
+
+    def _on_packet(self, pkt, now):
         if self.mode == "off" or pkt.get("kind") not in ("full", "ticker", "quote"):
             return
         seg, sid, ltp = pkt.get("segment"), pkt.get("security_id"), pkt.get("ltp")
@@ -312,17 +355,129 @@ class AlgoService:
 
     # ------------------------------------------------------------ timer
     def tick(self, now):
+        """Once a second. Network calls (levels, filters) run outside the lock: the feed thread needs it for
+        every tick, so it must never wait on Dhan. Each index is guarded separately."""
         if self.mode == "off" or not self.trading_day(now):
             return
         with self.lock:
             self._ensure_day(now)
             if self.broker:
                 self.broker.ensure_day(now)
-            self._subscriptions()
-            for sym in cfg.SYMBOLS:
-                self._index_tick(sym, now)
-            if self.broker and now.time() >= cfg.SQUARE_OFF:
+            try:
+                self._subscriptions()
+            except Exception as e:
+                self._error("subscriptions", e)
+            self._heartbeat(now)
+        work = []
+        for sym in cfg.SYMBOLS:
+            try:
+                with self.lock:
+                    self._watch(sym, now)
+                    need = self._index_tick(sym, now)
+                if need == "levels":
+                    self._lock_levels(sym, now)
+                elif need:
+                    work.append((sym, need))
+            except Exception as e:
+                self._error(f"{sym} timer", e, sym)
+        for sym, end in work:
+            try:
+                with self.lock:
+                    r = self.rsi_now(sym, end)
+                f = self.filters(sym, end, now, r)
+                with self.lock:
+                    self._close_candle(sym, end, now, f)
+            except Exception as e:
+                self._error(f"{sym} candle evaluation", e, sym)
+        if self.broker and now.time() >= cfg.SQUARE_OFF:
+            with self.lock:
                 self.broker.on_time(now)
+
+    def in_session(self, now):
+        return self.trading_day(now) and cfg.SESSION_FROM <= now.time() < cfg.SESSION_TO
+
+    def _watch(self, sym, now):
+        """Watchdog per index: no tick for 2 minutes in the session -> "Feed stale" in the log, then resubscribe /
+        reconnect with backoff (every attempt logged); "Feed back" when ticks return."""
+        w = self.watch.get(sym)
+        last = self.last_tick[sym]
+        if not self.in_session(now):
+            return
+        start = datetime.combine(now.date(), cfg.SESSION_FROM, tzinfo=now.tzinfo)
+        ref = last if last and last >= start else max(start, self._started_at or start)
+        age = (now - ref).total_seconds()
+        if age <= cfg.STALE_NO_ENTRY_SEC:
+            if w:
+                gap = int((now - w["since"]).total_seconds())
+                self.record(sym, "feed", f"Feed back: {sym} ticks resumed after {gap // 60} min {gap % 60} s "
+                                         f"(no ticks {w['since']:%H:%M:%S}-{now:%H:%M:%S})", now=now)
+                self.watch.pop(sym, None)
+            return
+        feed = getattr(self.paper, "feed", None)
+        fs = getattr(feed, "status", {}) or {}
+        if not w:
+            w = self.watch[sym] = {"since": ref, "attempt": 0, "next": now}
+            pkt_age = _time.time() - fs["lastPacketAt"] if fs.get("lastPacketAt") else None
+            self.record(sym, "stale", f"Feed stale: no {sym} tick for {age:.0f} s (last tick "
+                                      f"{f'{last:%H:%M:%S}, spot {fmt(self.spot[sym])}' if last else 'none today'}); "
+                                      f"feed {'connected' if fs.get('connected') else 'NOT connected'}, any packet "
+                                      f"{'never' if pkt_age is None else f'{pkt_age:.0f} s ago'}", now=now)
+        if feed is None or now < w["next"]:
+            return
+        w["attempt"] += 1
+        n = w["attempt"]
+        delay = cfg.STALE_RETRY_SEC[min(n - 1, len(cfg.STALE_RETRY_SEC) - 1)]
+        w["next"] = now + timedelta(seconds=delay)
+        if self._last_feed_action and (now - self._last_feed_action).total_seconds() < 30:
+            self.record(sym, "feed", f"Reconnect attempt {n} for {sym}: feed already reset at "
+                                     f"{self._last_feed_action:%H:%M:%S}; next try in {delay} s if still stale", now=now)
+            return
+        self._last_feed_action = now
+        if n % 2 and fs.get("connected") and hasattr(feed, "resubscribe"):
+            feed.resubscribe()
+            action = "resubscribed every instrument"
+        elif hasattr(feed, "reconnect"):
+            feed.reconnect(f"no {sym} tick for {age:.0f} s")
+            action = "reconnecting the feed"
+        else:
+            action = "no reconnect available"
+        self.record(sym, "feed", f"Reconnect attempt {n} for {sym}: {action}; next try in {delay} s if still stale",
+                    now=now)
+
+    def _heartbeat(self, now):
+        """Every 15 minutes in the session: last tick time and spot per index, feed state."""
+        if not self.in_session(now):
+            return
+        if self._started_at is None:
+            self._started_at = now
+        if self._next_heartbeat and now < self._next_heartbeat:
+            return
+        step = cfg.HEARTBEAT_MIN * 60
+        open_ = datetime.combine(now.date(), cfg.SESSION_FROM, tzinfo=now.tzinfo)
+        self._next_heartbeat = open_ + timedelta(seconds=((now - open_).total_seconds() // step + 1) * step)
+        fs = getattr(getattr(self.paper, "feed", None), "status", {}) or {}
+        parts = [f"{s} last tick {self.last_tick[s]:%H:%M:%S} spot {fmt(self.spot[s])}" if self.last_tick[s]
+                 else f"{s} no tick yet" for s in cfg.SYMBOLS]
+        feed = (f"feed {'connected' if fs.get('connected') else 'NOT connected'}, {fs.get('reconnects', 0)} reconnects"
+                if fs else "feed status unknown")
+        self.record("*", "heartbeat", f"Heartbeat: {' · '.join(parts)} · {feed}", now=now)
+
+    def health(self, now):
+        """What the page's status dot shows: ok / stale / error with the reason."""
+        if self.mode == "off":
+            return {"state": "off", "reason": "ALGO_MODE=off"}
+        if self.data.token_expired():
+            return {"state": "error", "reason": "Dhan token expired: no new entries. Send a new one with POST /api/token"}
+        if self.last_error and (now - self.last_error[0]).total_seconds() < 600:
+            return {"state": "error", "reason": f"{self.last_error[1]} (at {self.last_error[0]:%H:%M:%S})"}
+        if self.in_session(now):
+            fs = getattr(getattr(self.paper, "feed", None), "status", {}) or {}
+            if fs and not fs.get("connected"):
+                return {"state": "error", "reason": f"Feed disconnected: {fs.get('lastError') or 'reconnecting'}"}
+            stale = [f"no {s} tick since {w['since']:%H:%M:%S}" for s, w in self.watch.items()]
+            if stale:
+                return {"state": "stale", "reason": "Feed stale: " + "; ".join(stale)}
+        return {"state": "ok", "reason": ""}
 
     def _subscriptions(self):
         if self.paper is None:
@@ -386,6 +541,7 @@ class AlgoService:
         return text
 
     def _index_tick(self, sym, now):
+        """Stale exit, 15:15, and what needs the network next: "levels" or the end of a candle to evaluate."""
         st = self.states[sym]
         # stale data with an open position: exit as soon as data returns
         o = st["open"]
@@ -402,11 +558,18 @@ class AlgoService:
         # levels at 09:30
         if st["levels"] is None and now.time() >= cfg.LEVELS_AT:
             if not st.get("levelsRetryAt") or now.isoformat() >= st["levelsRetryAt"]:
-                self._lock_levels(sym, now)
-        # closed 5-minute candles (evaluated 10 s after the close, after the tracker's hh:mm:03 poll)
+                return "levels"
+            return None
+        # closed 5-minute candles (evaluated 10 s after the close, after the tracker's hh:mm:03 poll): only candles
+        # that close inside the session and open at or after the 09:30 level lock
         end = self._last_closed_end(now - timedelta(seconds=10))
-        if end and st["lastCandle"] != end.isoformat() and st["levels"]:
-            self._close_candle(sym, end, now)
+        if not end or st["lastCandle"] == end.isoformat() or not st["levels"]:
+            return None
+        start = end - timedelta(minutes=cfg.CANDLE_MIN)
+        if start.time() < cfg.LEVELS_AT or end.time() > cfg.SESSION_TO:
+            st["lastCandle"] = end.isoformat()  # used for RSI only
+            return None
+        return end
 
     @staticmethod
     def _last_closed_end(t):
@@ -420,6 +583,7 @@ class AlgoService:
         return open_ + timedelta(minutes=n * cfg.CANDLE_MIN)
 
     def _lock_levels(self, sym, now):
+        """Fetches the chain (outside the lock) and locks the levels."""
         st = self.states[sym]
         try:
             exp = self.data.expiries(sym)[0]
@@ -435,11 +599,14 @@ class AlgoService:
             return
         late = "" if now.time() < (datetime.combine(now.date(), cfg.LEVELS_AT) + timedelta(minutes=2)).time() \
             else f" (late: backend started after {cfg.LEVELS_AT:%H:%M})"
-        for ev in lock_levels(st, levels, now):
-            self.record(sym, "levels", ev["message"] + f" · expiry {exp} · spot {fmt(spot)}{late}",
-                        data={"expiry": exp, "chainSpot": spot}, now=now)
-        st.pop("levelsRetryAt", None)
-        self._save_state(sym)
+        with self.lock:
+            if st["levels"] is not None:
+                return
+            for ev in lock_levels(st, levels, now):
+                self.record(sym, "levels", ev["message"] + f" · expiry {exp} · spot {fmt(spot)}{late}",
+                            data={"expiry": exp, "chainSpot": spot}, now=now)
+            st.pop("levelsRetryAt", None)
+            self._save_state(sym)
 
     def candle5(self, sym, end):
         start = end - timedelta(minutes=cfg.CANDLE_MIN)
@@ -456,8 +623,9 @@ class AlgoService:
         vals = rsi([c["close"] for c in five], cfg.RSI_PERIOD)
         return vals[-1] if vals else None
 
-    def filters(self, sym, end, now):
-        f = {"toi": None, "oiChange": None, "components": None, "rsi": self.rsi_now(sym, end)}
+    def filters(self, sym, end, now, rsi_value=None):
+        """Filter values at a candle close (network: call without the lock)."""
+        f = {"toi": None, "oiChange": None, "components": None, "rsi": rsi_value}
         try:
             exp = self.data.expiries(sym)[0]
         except Exception as e:
@@ -483,15 +651,16 @@ class AlgoService:
             f["componentsError"] = str(e)
         return f
 
-    def _close_candle(self, sym, end, now):
+    def _close_candle(self, sym, end, now, f):
         st = self.states[sym]
+        if st["lastCandle"] == end.isoformat():
+            return
         st["lastCandle"] = end.isoformat()
         c = self.candle5(sym, end)
         if c is None:
-            self.record(sym, "info", f"No ticks for the {hm(end)} candle: nothing evaluated", now=now)
+            self.record(sym, "stale", f"No ticks for the {hm(end)} candle: nothing evaluated", now=now)
             self._save_state(sym)
             return
-        f = self.filters(sym, end, now)
         block = self._block(sym, now) if self.mode != "off" else ""
         actions = on_candle(st, c, end, f, block)
         self.record(sym, "candle", f"{hm(end)} candle O {fmt(c['open'])} H {fmt(c['high'])} L {fmt(c['low'])} "
@@ -631,7 +800,7 @@ class AlgoService:
                     "blocked": self.notes.get((sym, "block")) or "",
                 })
             return {"meta": {"mode": self.mode, "asOf": now.strftime("%Y-%m-%d %H:%M:%S"),
-                             "tokenExpired": self.data.token_expired(), "tradingDay": self.trading_day(now),
+                             "tokenExpired": self.data.token_expired(), "tradingDay": self.trading_day(now), "health": self.health(now),
                              "account": self.broker.account if self.broker else None,
                              "funds": self.broker.funds() if self.broker else None,
                              "entryWindow": f"{cfg.ENTRY_FROM:%H:%M}-{cfg.ENTRY_TO:%H:%M}",
@@ -657,6 +826,57 @@ class AlgoService:
         return "watching"
 
     def events(self, day=None):
+        return self.day_log(day)["rows"]
+
+    def day_log(self, day=None):
+        """Decision log (newest first) and closed trades of one IST day. Days missing from the store in use (e.g. a
+        day run with Postgres, viewed from a JSON-store run) are read back from that day's log file."""
         day = day or self.clock().date().isoformat()
-        return list(reversed(self.store.algo_events(day)))
+        rows = self.store.algo_events(day)
+        source = "store"
+        if not rows:
+            rows = parse_log_file(os.path.join(self.log_dir, f"algo-{day}.log"), day)
+            source = "log file" if rows else "none"
+        trades = []
+        try:
+            states = self.store.algo_states(day) if source == "store" else {}
+        except Exception:
+            states = {}
+        for sym, st in sorted(states.items()):
+            trades += [{**t, "symbol": sym} for t in st.get("closed", [])]
+        if not trades:  # from the exit lines (each carries its trade)
+            trades = [{**e["data"]["trade"], "symbol": e["symbol"]} for e in rows
+                      if e["kind"] == "exit" and isinstance(e.get("data", {}).get("trade"), dict)]
+        trades.sort(key=lambda t: t.get("entryAt") or "")
+        return {"date": day, "source": source, "rows": list(reversed(rows)), "trades": trades}
+
+
+def parse_log_file(path, day):
+    """logs/algo-YYYY-MM-DD.log -> decision-log rows (oldest first), the same shape as the store's.
+    Line: "HH:MM:SS SYMBOL KIND [setup] message | {json}"; indented lines below a row are its traceback."""
+    if not os.path.exists(path):
+        return []
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line.startswith("    ") and rows:
+                d = rows[-1]["data"]
+                d["traceback"] = (d.get("traceback", "") + line[4:] + "\n")
+                continue
+            head, sep, js = line.partition(" | ")
+            parts = head.split(None, 3)
+            if len(parts) < 4 or len(parts[0]) != 8:
+                continue
+            t, sym, kind, rest = parts
+            setup = ""
+            if rest.startswith("[") and "] " in rest:
+                setup, rest = rest[1:].split("] ", 1)
+            try:
+                data = json.loads(js) if sep else {}
+            except ValueError:
+                data = {}
+            rows.append({"at": f"{day}T{t}+05:30", "symbol": sym, "setup": setup, "kind": kind.lower(),
+                         "message": rest, "data": data})
+    return rows
 

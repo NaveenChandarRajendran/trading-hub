@@ -22,6 +22,9 @@ import struct
 import threading
 import time
 
+from datetime import datetime, time as dtime, timedelta, timezone
+
+from holidays import NSE_HOLIDAYS
 from paper_engine import Book
 
 log = logging.getLogger("dhan_feed")
@@ -117,6 +120,22 @@ class FeedDisconnected(Exception):
         self.code = code
 
 
+class FeedStale(Exception):
+    """No packet for too long during market hours: the connection may be half-open, so it is dropped and re-made."""
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+STALE_AFTER = 120  # seconds without any packet during market hours -> reconnect
+RECV_POLL = 5  # seconds: recv() never waits longer than this, so a silent socket is noticed
+
+
+def nse_market_open(now=None):
+    """09:15-15:30 IST on NSE trading days: when packets are expected for subscribed instruments."""
+    now = now or datetime.now(IST)
+    return (now.weekday() < 5 and now.date().isoformat() not in NSE_HOLIDAYS
+            and dtime(9, 15) <= now.time() < dtime(15, 30))
+
+
 def _default_connect(url):
     import websockets  # imported here so the parser works without the package installed
     return websockets.connect(url, max_size=None, ping_interval=None)  # Dhan's server sends the pings
@@ -125,16 +144,23 @@ def _default_connect(url):
 class DhanFeed:
     """Keeps one feed connection open, reconnecting with backoff, and re-subscribes everything after a reconnect.
     Runs its own asyncio loop in a daemon thread (start/stop); on_packet(pkt) is called from that thread.
-    After a token-expired disconnect (807) it waits for set_token() instead of retrying."""
+    After a token-expired disconnect (807) it waits for set_token() instead of retrying.
+    Watchdog: recv() is polled every recv_poll s; with no packet for stale_after s while market_open(), the connection
+    is dropped and re-made with backoff (a half-open socket otherwise blocks recv() forever, silently).
+    on_event(level, message) reports every disconnect, stale feed and reconnect attempt (the algo logs them)."""
 
     def __init__(self, client_id=None, token=None, on_packet=None, connect=_default_connect,
-                 backoff=(1, 2, 5, 10, 30)):
+                 backoff=(1, 2, 5, 10, 30), stale_after=STALE_AFTER, market_open=nse_market_open, on_event=None,
+                 recv_poll=RECV_POLL):
         self.client_id = client_id or os.getenv("DHAN_CLIENT_ID", "")
         self.token = token or os.getenv("DHAN_ACCESS_TOKEN", "")
         self.on_packet = on_packet or (lambda pkt: None)
         self._connect = connect
         self.backoff = backoff
-        self.status = {"connected": False, "tokenExpired": False, "lastError": "", "lastPacketAt": None}
+        self.stale_after, self.market_open, self.recv_poll = stale_after, market_open, recv_poll
+        self.on_event = on_event or (lambda level, message: None)
+        self.status = {"connected": False, "tokenExpired": False, "lastError": "", "lastPacketAt": None,
+                       "stale": False, "reconnects": 0, "connectedAt": None}
         self._subs = {}  # (segment, security_id) -> mode
         self._lock = threading.Lock()
         self._stopping = False
@@ -172,6 +198,27 @@ class DhanFeed:
         self.token = token.strip()
         self.status["tokenExpired"] = False
         self._wake_threadsafe()
+
+    def resubscribe(self):
+        """Sends every subscription again on the open connection (an instrument that went quiet)."""
+        by_mode = {}
+        for key, mode in self.subscriptions().items():
+            by_mode.setdefault(mode, []).append(key)
+        for mode, keys in by_mode.items():
+            self._send_threadsafe(subscription_messages(keys, mode))
+
+    def reconnect(self, reason):
+        """Drops the connection; the run loop reconnects with backoff."""
+        self._event("warning", f"Feed reconnect requested: {reason}")
+        if self._loop and self._ws:
+            asyncio.run_coroutine_threadsafe(self._ws.close(), self._loop)
+
+    def _event(self, level, message):
+        getattr(log, level, log.info)(message)
+        try:
+            self.on_event(level, message)
+        except Exception:
+            log.exception("feed on_event failed")
 
     def start(self):
         self._thread = threading.Thread(target=lambda: asyncio.run(self.run()), name="dhan-feed", daemon=True)
@@ -238,7 +285,10 @@ class DhanFeed:
             try:
                 async with self._connect(FEED_URL.format(token=self.token, client_id=self.client_id)) as ws:
                     self._ws = ws
-                    self.status.update(connected=True, lastError="")
+                    connected_at = time.time()
+                    self.status.update(connected=True, lastError="", stale=False, connectedAt=connected_at)
+                    if attempt:
+                        self._event("info", f"Feed connected again after {attempt} attempt{'s' if attempt > 1 else ''}")
                     attempt = 0
                     by_mode = {}
                     for key, mode in self.subscriptions().items():
@@ -246,21 +296,35 @@ class DhanFeed:
                     for mode, keys in by_mode.items():
                         await self._send(subscription_messages(keys, mode))
                     while not self._stopping:
-                        self._handle(await ws.recv())
+                        try:
+                            frame = await asyncio.wait_for(ws.recv(), self.recv_poll)
+                        except asyncio.TimeoutError:
+                            frame = None
+                        if frame is not None:
+                            self._handle(frame)
+                        last = max(self.status["lastPacketAt"] or 0, connected_at)
+                        if self.market_open() and time.time() - last > self.stale_after:
+                            raise FeedStale(f"no packet for {time.time() - last:.0f} s during market hours")
             except FeedDisconnected as e:
                 self.status["lastError"] = str(e)
                 if e.code == TOKEN_EXPIRED:
                     self.status["tokenExpired"] = True
-                log.warning("feed disconnected by server: %s", e)
+                self._event("warning", f"Feed disconnected by Dhan: {e}")
+            except FeedStale as e:
+                self.status.update(lastError=f"Feed stale: {e}", stale=True)
+                self._event("warning", f"Feed stale: {e}; reconnecting")
             except Exception as e:
                 if not self._stopping:
-                    self.status["lastError"] = f"Feed connection lost: {e}"
-                    log.warning("feed connection lost: %s", e)
+                    self.status["lastError"] = f"Feed connection lost: {e or e.__class__.__name__}"
+                    self._event("warning", f"Feed connection lost: {e or e.__class__.__name__}")
             finally:
                 self._ws = None
                 self.status["connected"] = False
             if self._stopping:
                 break
             if not self.status["tokenExpired"]:
-                await self._wait(self.backoff[min(attempt, len(self.backoff) - 1)])
+                wait = self.backoff[min(attempt, len(self.backoff) - 1)]
                 attempt += 1
+                self.status["reconnects"] += 1
+                self._event("info", f"Feed reconnect attempt {attempt} in {wait} s")
+                await self._wait(wait)

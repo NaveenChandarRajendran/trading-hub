@@ -131,7 +131,7 @@ def run_feed(sessions, subs=(("NSE_FNO", SID),)):
     """Runs the client against fake connections; stops when they are used up."""
     packets, urls = [], []
     conns = [FakeWS(s) for s in sessions]
-    feed = DhanFeed("CID", "TOKEN", on_packet=packets.append, backoff=(0,))
+    feed = DhanFeed("CID", "TOKEN", on_packet=packets.append, backoff=(0,), market_open=lambda: False)
 
     def connect(url):
         urls.append(url)
@@ -159,7 +159,7 @@ def test_client_passes_packets_and_resubscribes_after_reconnect():
 
 
 def test_token_expired_disconnect_waits_for_new_token():
-    feed = DhanFeed("CID", "TOKEN", backoff=(0,))
+    feed = DhanFeed("CID", "TOKEN", backoff=(0,), market_open=lambda: False)
     calls = []
 
     def connect(url):
@@ -180,6 +180,59 @@ def test_token_expired_disconnect_waits_for_new_token():
 
     asyncio.run(scenario())
     assert len(calls) >= 2 and "token=NEW" in calls[1]
+
+
+class SilentWS(FakeWS):
+    """A half-open socket: recv() never returns and never raises."""
+
+    async def recv(self):
+        if self.frames:
+            return self.frames.pop(0)
+        await asyncio.Event().wait()
+
+
+def test_silent_socket_is_detected_logged_and_reconnected():
+    events, packets, conns = [], [], [SilentWS([full_packet()]), FakeWS([ticker_packet()])]
+    feed = DhanFeed("CID", "TOKEN", on_packet=packets.append, backoff=(0,), stale_after=0.2, recv_poll=0.05,
+                    market_open=lambda: True, on_event=lambda level, m: events.append(m))
+
+    def connect(url):
+        if not conns:
+            feed._stopping = True
+            raise ConnectionError("no more fake sessions")
+        return conns.pop(0)
+
+    feed._connect = connect
+    asyncio.run(asyncio.wait_for(feed.run(), 5))
+    assert [p["kind"] for p in packets] == ["full", "ticker"]  # data again after the reconnect
+    assert any(m.startswith("Feed stale: no packet for") and m.endswith("reconnecting") for m in events)
+    assert "Feed reconnect attempt 1 in 0 s" in events and "Feed connected again after 1 attempt" in events
+    assert feed.status["reconnects"] >= 1
+
+
+def test_silent_socket_outside_market_hours_is_left_alone():
+    events = []
+    feed = DhanFeed("CID", "TOKEN", backoff=(0,), stale_after=0.05, recv_poll=0.02, market_open=lambda: False,
+                    on_event=lambda level, m: events.append(m))
+    feed._connect = lambda url: SilentWS([])
+
+    async def scenario():
+        task = asyncio.create_task(feed.run())
+        await asyncio.sleep(0.3)
+        assert feed.status["connected"] and not events
+        feed._stopping = True
+        await asyncio.wait_for(task, 2)
+
+    asyncio.run(scenario())
+
+
+def test_market_hours():
+    from datetime import datetime
+    from dhan_feed import IST, nse_market_open
+    assert nse_market_open(datetime(2026, 10, 23, 9, 15, tzinfo=IST))
+    assert nse_market_open(datetime(2026, 10, 23, 15, 29, tzinfo=IST))
+    assert not nse_market_open(datetime(2026, 10, 23, 15, 30, tzinfo=IST))
+    assert not nse_market_open(datetime(2026, 10, 24, 11, 0, tzinfo=IST))  # Saturday
 
 
 def test_subscribe_is_idempotent_and_unsubscribe_removes():
