@@ -131,6 +131,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   **Trend** (Trading Hub rule) and **Dharani** (the teacher's setup). Books reuse the paper engine and get the same
   ticks from PaperService. The owner's own Paper Trading screen stays the main account ("manual"): hand trades and the
   "stop + target" button. Dashboard: three account cards with balances.
+- Backtest (owner 25-Oct-2026, `docs/backtest.md`): 5 years of Dhan data (index minutes, rolling option prices),
+  `bt_data.py` + `backtest.py`, the live rule functions reused; MegaBull rules and Dharani tested, Trend not (no past
+  chain OI). One click: `Run_Backtest.bat`.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
