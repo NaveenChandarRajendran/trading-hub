@@ -73,6 +73,7 @@ class PaperService:
         self._feed_subs = set()
         self._watch = {}  # group -> {(segment, id)} kept subscribed: "auto" (autopaper.py), "orderflow" (index futures)
         self.orderflow = None  # orderflow.OrderFlowService: estimated delta from the index futures' Full packets
+        self.books = []  # strategy_books.StrategyBook: one paper account per auto strategy, fed the same ticks
         self._feed_status = None
         self._timer = None
         self._stopping = threading.Event()
@@ -106,6 +107,11 @@ class PaperService:
         with self.lock:
             self._ensure_day(now)
             self._publish(self.engine.on_time(now))
+        for b in list(self.books):
+            try:
+                b.on_time(now)
+            except Exception:
+                log.exception("strategy book %s timer failed", b.name)
         status = self.feed_status()
         if status != self._feed_status:
             self._feed_status = status
@@ -233,6 +239,10 @@ class PaperService:
         """Feed subscriptions = what the clients show + open positions + pending orders."""
         need = {(FNO, p.security_id) for p in self.engine.positions.values() if p.open_qty > 0} | self._traded | set().union(*self._watch.values())
         need |= {(FNO, o.security_id) for o in self.engine.orders.values() if o.status in OPEN_STATES}
+        for b in list(self.books):  # the strategy books' open positions and pending stops need live prices too
+            e = b.engine
+            need |= {(FNO, sid) for sid, p in list(e.positions.items()) if p.open_qty > 0}
+            need |= {(FNO, o.security_id) for o in list(e.orders.values()) if o.status in OPEN_STATES}
         for c in list(self.clients):
             need |= c.subs
         add, drop = need - self._feed_subs, self._feed_subs - need
@@ -261,6 +271,11 @@ class PaperService:
                     self._ensure_day(now)
                     prev_book = self.engine.books.get(key[1])
                     self._publish(self.engine.on_tick(key[1], book, now))
+                for b in list(self.books):
+                    try:
+                        b.on_tick(key[1], book, now)
+                    except Exception:
+                        log.exception("strategy book %s tick failed", b.name)
                 if self.orderflow and key[1] in self.instruments.future_ids():
                     try:
                         self.orderflow.on_packet(key[1], pkt, prev_book)

@@ -34,11 +34,15 @@ from sig_rules import NOT_CHECKED, PASS, trading_hub_exit
 log = logging.getLogger("autopaper")
 TICK = 0.05
 TH, MB = "tradingHub", "megabull"
-ACCOUNT_NAMES = {TH: "Trading Hub", MB: "MegaBull"}
 D2 = "dharaniV2"
-# rule (sig_rules result "rule") -> paper account. A rule is a "slot": one open position per slot per index, so
-# MegaBull's v1 rule and Dharani v2 (owner, 25-Oct-2026) can both hold a trade on the same account.
-RULE_ACCOUNT = {TH: TH, MB: MB, D2: MB}
+DH = "dharani"  # the app's own Rs 1 lakh paper account for the Dharani rule (strategy_books.StrategyBook)
+MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): manual trades and "stop + target"
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", MANUAL: "Paper Trading (manual)"}
+# rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar, SuperTrend
+# Nifty); the app's paper trading = one Rs 1 lakh account per strategy (Trend, Dharani). A rule is also a "slot": one
+# open position per slot per index.
+RULE_ACCOUNT = {TH: TH, MB: MB, D2: DH}
+APP = {TH, DH, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
 def _entry_rsi(state, side):
@@ -85,11 +89,16 @@ class AccountError(Exception):
 
 # ======================================================================= accounts
 class TradingHubAccount:
-    """The Trading Hub paper account (paper_api.PaperService)."""
+    """A paper account in the app: a strategy book (strategy_books.StrategyBook: Trend, Dharani) or the main paper
+    account (paper_api.PaperService, key "manual"). Both offer the same calls."""
     key, rule = TH, "tradingHub"
 
-    def __init__(self, paper):
+    def __init__(self, paper, key=TH):
         self.paper = paper
+        self.key = key
+
+    def funds(self):
+        return self.paper.funds() if hasattr(self.paper, "funds") else None
 
     def available(self):
         return True, ""
@@ -321,12 +330,15 @@ class AutoTrader:
             self._roll_day()
             out = {"auto": self.state["auto"], "day": self.state["day"], "accounts": {}}
             for key, acc in self.accounts.items():
+                if key == MANUAL:  # the owner's own screen: not an auto account
+                    continue
                 ok, why = acc.available()
                 trades = [t for t in self.state["trades"] if t["account"] == key]
                 out["accounts"][key] = {
                     "name": ACCOUNT_NAMES[key], "available": ok, "message": why, "halted": self.state["halted"].get(key, ""),
                     "tradesToday": len(trades), "netToday": round(sum(t.get("netPnl") or 0 for t in trades if t["status"] == "closed"), 2),
                     "maxTrades": self.cfg["limits"]["maxTradesPerDay"], "maxLoss": self.cfg["limits"]["maxLossPerDay"],
+                    "funds": acc.funds() if key in APP and hasattr(acc, "funds") else None,
                 }
             out["open"] = [self._public(t) for t in self.state["trades"] if t["status"] == "open"]
             out["today"] = [self._public(t) for t in self.state["trades"]]
@@ -397,7 +409,7 @@ class AutoTrader:
             exp = self._expiry(acc, symbol)
             self._watch[symbol] = acc.neighbours(symbol, exp, spot)
             ids = [i for v in self._watch.values() for i in v]
-            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
+            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] in APP]
             acc.paper.watch(ids + open_ids + self.shadow_ids())
         except Exception as e:
             log.warning("could not subscribe ATM options for %s: %s", symbol, e)
@@ -449,7 +461,7 @@ class AutoTrader:
             if result.get("premiumNear"):  # Dharani v2: the strike whose premium is nearest the target (teacher: 250)
                 ref = self._strike_by_premium(symbol, exp, side, result["premiumNear"]) or ref
             inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, ref, side))
-            if account == TH:
+            if account in APP:
                 acc.paper.watch([i for v in self._watch.values() for i in v] + [inst["id"]] + self.shadow_ids())
                 for _ in range(30):  # up to 15 s for the first price
                     if acc.ready(inst):
@@ -534,7 +546,7 @@ class AutoTrader:
 
     def _start_exit_shadow(self, trade):
         inst = trade["instrument"]
-        dhan_id = inst["id"] if trade["account"] == TH else self._dhan_option(trade["symbol"], inst["expiry"], inst["strike"], inst["optionType"])
+        dhan_id = inst["id"] if trade["account"] in APP else self._dhan_option(trade["symbol"], inst["expiry"], inst["strike"], inst["optionType"])
         with self.lock:
             self.state["shadows"].append({
                 "kind": "exit", "tradeId": trade["id"], "symbol": trade["symbol"], "side": trade["side"], "dhanId": dhan_id,
@@ -580,7 +592,7 @@ class AutoTrader:
         acc = self.accounts.get(TH)
         if acc:
             ids = [i for v in self._watch.values() for i in v]
-            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
+            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] in APP]
             try:
                 acc.paper.watch(ids + open_ids + self.shadow_ids())
             except Exception:
@@ -696,7 +708,7 @@ class AutoTrader:
         """Signal exit check on a completed 5-minute candle (Trading Hub rule only)."""
         self._last_state[symbol] = state
         for t in list(self.state["trades"]):
-            if t["status"] == "open" and t["symbol"] == symbol and t["account"] == TH:
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == TH:
                 why = trading_hub_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
@@ -798,7 +810,7 @@ class AutoTrader:
                 if t["target"] is not None and ltp >= t["target"]:
                     threading.Thread(target=self._exit, args=(t, "Target"), daemon=True).start()
                     continue
-            poll = 2 if t["account"] == TH else 10
+            poll = 2 if t["account"] in APP else 10
             if t.get("stopOrderId") and time.monotonic() - self._last_stop_poll.get(t["id"], 0) >= poll:
                 self._last_stop_poll[t["id"]] = time.monotonic()
                 try:
@@ -808,7 +820,7 @@ class AutoTrader:
                 if st and st["status"] == "FILLED":
                     t["exitOrderId"] = t["stopOrderId"]
                     self._close(t, "Stop", st["avgPrice"])
-                elif t["account"] == TH and acc.position_qty(t["instrument"]) == 0:
+                elif t["account"] in APP and acc.position_qty(t["instrument"]) == 0:
                     self._close(t, "Time" if now.time() >= cutoff else "Manual", acc.last_sell_price(t["instrument"]))
 
     def start(self):
@@ -828,7 +840,7 @@ class AutoTrader:
     def bracket(self, security_id, stop_pct=None, target_pct=None):
         """Attach a stop and a target to an open Trading Hub paper position the owner bought by hand. Tracked like an
         auto trade (stop pending, target watched), logged with rule "Manual"."""
-        acc = self.accounts[TH]
+        acc = self.accounts.get(MANUAL) or self.accounts[TH]
         inst_raw = acc.paper.instruments.get(security_id)
         if not inst_raw:
             raise AccountError(f"{security_id} is not a NIFTY / BANKNIFTY option")
@@ -839,13 +851,13 @@ class AutoTrader:
             raise AccountError("This position already has a stop and target")
         pos = next(p for p in acc.paper.positions() if p["security_id"] == security_id)
         fill = pos["avg_buy"]
-        cfg = self.cfg[TH]
+        cfg = self.cfg[TH]  # the manual bracket keeps the Trend percentages (-15 % / +20 %)
         sp, tp = stop_pct or cfg["stopPct"], target_pct or cfg["targetPct"]
         inst = {"id": security_id, "name": inst_raw["name"], "strike": inst_raw["strike"], "expiry": inst_raw["expiry"],
                 "optionType": inst_raw["optionType"], "lotSize": inst_raw["lotSize"]}
         lots = qty // inst["lotSize"]
         trade = {
-            "id": f"manual-{security_id}-{self.clock():%H%M%S}", "account": TH, "symbol": inst_raw["symbol"], "rule": "Manual",
+            "id": f"manual-{security_id}-{self.clock():%H%M%S}", "account": acc.key, "symbol": inst_raw["symbol"], "rule": "Manual",
             "setup": None, "grade": "n.a.", "side": inst["optionType"], "instrument": inst, "qty": qty, "lots": lots,
             "entryOrderId": None, "entryTime": self.clock().strftime("%H:%M:%S"), "entryPrice": round(fill, 2),
             "stop": floor_tick(fill * (1 - sp / 100)), "target": ceil_tick(fill * (1 + tp / 100)), "stopOrderId": None,

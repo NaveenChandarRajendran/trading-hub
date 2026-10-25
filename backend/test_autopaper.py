@@ -249,6 +249,7 @@ def test_skipped_setup_would_have_worked(tmp_path):
     assert t.shadow_summary() == {"skipped": 1, "wouldHaveWorked": 1}
 
 
+
 class FakeMegaBull(FakeAccount):
     key, rule = "megabull", "megabull"
 
@@ -257,52 +258,57 @@ class FakeMegaBull(FakeAccount):
         return {**inst, "id": 1 if side == "CE" else 2}
 
 
-def test_dharani_v2_has_its_own_slot_but_never_buys_the_option_v1_holds(tmp_path):
-    acc, alerts = FakeMegaBull(), []
+class FakeDharaniBook(FakeAccount):
+    key = "dharani"
+
+    def funds(self):
+        return {"available": 100000.0}
+
+
+def two_accounts(tmp_path):
+    mb, dh, alerts = FakeMegaBull(), FakeDharaniBook(), []
     cfg = {**CFG, "logDir": str(tmp_path), "megabull": {"lots": 1, "stopPct": 10, "targetPct": 20},
-           "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
-    t = AutoTrader(cfg, [acc], clock=Clock(), alert=lambda k, m: alerts.append((k, m)),
+           "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20}, "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
+    t = AutoTrader(cfg, [mb, dh], clock=Clock(), alert=lambda k, m: alerts.append((k, m)),
                    state_path=os.path.join(str(tmp_path), "state.json"))
     t.set_auto(True)
-    v1 = {**GO, "rule": "megabull", "name": "MEGABULL RULE", "setup": "Dharani v1", "symbol": "NIFTY", "side": "PE"}
-    v2 = {**GO, "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "symbol": "NIFTY", "side": "PE"}
+    return t, mb, dh, alerts
+
+
+def test_megabull_rule_and_dharani_trade_on_separate_accounts(tmp_path):
+    t, mb, dh, _ = two_accounts(tmp_path)
+    v1 = {**GO, "rule": "megabull", "name": "MEGABULL RULE", "setup": "SuperTrend Nifty", "symbol": "NIFTY", "side": "PE"}
+    d = {**GO, "rule": "dharaniV2", "name": "DHARANI RULE", "setup": "Dharani", "symbol": "NIFTY", "side": "PE"}
     assert t.on_signal(v1, STATE) == "Entry sent"
     wait_idle(t)
-    assert t.positions("NIFTY") == {"megabull": True, "dharaniV2": False}
-    assert t.on_signal(v2, STATE) == "Entry sent"  # its own slot is free ...
+    assert t.on_signal(d, STATE) == "Entry sent"
     wait_idle(t)
-    assert len(t.state["trades"]) == 1  # ... but the same PE option is already held by v1: skipped
-    assert any("already held by another rule" in m for _, m in alerts)
-    assert t.on_signal({**v2, "side": "CE"}, STATE) == "Entry sent"  # the call is a different option
-    wait_idle(t)
-    assert [tr["slot"] for tr in t.state["trades"]] == ["megabull", "dharaniV2"]
-    assert t.positions("NIFTY") == {"megabull": True, "dharaniV2": True}
-    assert t.on_signal({**v2, "side": "CE"}, STATE) == "Position already open on this index"
+    assert [(tr["account"], tr["slot"]) for tr in t.state["trades"]] == [("megabull", "megabull"), ("dharani", "dharaniV2")]
+    assert mb.sent[0][0] == "BUY" and dh.sent[0][0] == "BUY"  # each on its own account
+    assert t.positions("NIFTY") == {"tradingHub": False, "megabull": True, "dharaniV2": True} or \
+        t.positions("NIFTY") == {"megabull": True, "dharaniV2": True}
+    assert t.on_signal(d, STATE) == "Position already open on this index"
+    st = t.status()
+    assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "Dharani"
 
 
-def test_dharani_v2_entry_has_no_target_picks_strike_by_premium_and_exits_on_supertrend(tmp_path):
-    acc, alerts = FakeMegaBull(), []
-    cfg = {**CFG, "logDir": str(tmp_path), "megabull": {"lots": 1, "stopPct": 10, "targetPct": 20},
-           "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
-    t = AutoTrader(cfg, [acc], clock=Clock(), alert=lambda k, m: alerts.append((k, m)),
-                   state_path=os.path.join(str(tmp_path), "state.json"))
+def test_dharani_entry_has_no_target_picks_strike_by_premium_and_exits_on_supertrend(tmp_path):
+    t, _mb, dh, _ = two_accounts(tmp_path)
 
     class Chain:
         def chain(self, symbol, expiry):
             return {"rows": [{"strike": 25000, "ce": {"last_price": 410}}, {"strike": 25200, "ce": {"last_price": 262}},
                              {"strike": 25300, "ce": {"last_price": 205}}]}
     t.chain_source = Chain()
-    t.set_auto(True)
-    v2 = {**GO, "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "symbol": "NIFTY", "side": "CE",
-          "noTarget": True, "premiumNear": 250}
+    d = {**GO, "rule": "dharaniV2", "name": "DHARANI RULE", "setup": "Dharani", "symbol": "NIFTY", "side": "CE",
+         "noTarget": True, "premiumNear": 250}
     st = {"spot": 25012.0, "idx": {"bar": {"close": 25150}, "ind": {"st_line": 25050, "rsi": 74}}, "fut": None}
-    assert t.on_signal(v2, st) == "Entry sent"
+    assert t.on_signal(d, st) == "Entry sent"
     wait_idle(t)
     tr = t.state["trades"][0]
     assert tr["instrument"]["strike"] == 25200  # premium 262 is nearest 250
-    assert tr["target"] is None and tr["stop"] == 90.0 and tr["rsi"] == 74 and tr["slot"] == "dharaniV2"
-    acc.ltp_value = 500.0
-    t._last_poll = {}
+    assert tr["target"] is None and tr["stop"] == 90.0 and tr["rsi"] == 74 and tr["account"] == "dharani"
+    dh.ltp_value = 500.0
     t.tick()
     assert tr["status"] == "open"  # no fixed target to hit
     st["idx"]["bar"]["close"] = 25040  # closed below the SuperTrend line

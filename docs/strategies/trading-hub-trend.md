@@ -1,7 +1,8 @@
 # Trading Hub rule (Method S "Trend")
 
 Owner: R. Diwakaran. Source: BRIEF_Dashboard_and_AutoPaper.md (23-Oct-2026) + owner answers 23-Oct-2026.
-Code: `backend/sig_rules.py` `trading_hub_rule`. PAPER ONLY (Trading Hub paper account). Both NIFTY and BANKNIFTY.
+Code: `backend/sig_rules.py` `trading_hub_rule`. PAPER ONLY, on the app's own **Trend** paper account (Rs 1,00,000,
+`strategy_books.py`; owner 25-Oct-2026: one account per strategy). Both NIFTY and BANKNIFTY.
 
 Evaluated on every completed 5-minute candle (09:15-aligned, IST). Put side shown; calls mirror it.
 

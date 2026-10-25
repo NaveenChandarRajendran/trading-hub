@@ -1,5 +1,6 @@
 """
-sig_dharani_v2.py - Dharani v2: the teacher's tuned Quantman setups, copied as taught (owner, 25-Oct-2026).
+sig_dharani_v2.py - the "Dharani" rule: the teacher's tuned Quantman setups, copied as taught (owner, 25-Oct-2026).
+Traded on the app's own Rs 1 lakh "dharani" paper account (strategy_books.py). Internal id: dharaniV2.
 docs/strategies/dharani-v2.md is the written rule; this file must match it.
 
 NIFTY and BANKNIFTY (owner 25-Oct-2026; the teacher tested NIFTY), 3-minute candles (09:15-aligned, IST), evaluated
@@ -158,7 +159,7 @@ def dharani_v2_rule(state):
     green = all(c["state"] == PASS for c in checks)
     blocked = [b for b in gates(state, "dharaniV2", MB_LAST_ENTRY) if not b.startswith("No new entries")]
     return {
-        "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "account": "MegaBull paper",
+        "rule": "dharaniV2", "name": "DHARANI RULE", "setup": "Dharani", "account": "Dharani (app paper)",
         "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
         "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True,

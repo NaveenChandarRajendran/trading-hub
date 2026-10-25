@@ -398,12 +398,12 @@ class SignalService:
                                 f"{trade['rule']} {event}", f"{trade['instrument']['name']} entry {trade['entryPrice']} stop {trade['stop']} target {trade['target']}")
 
     def manual_positions(self, symbol):
-        """Open Trading Hub paper positions on this index that no auto trade is managing (for the paper card's
-        "Place stop + target together" button)."""
-        acc = self.trader.accounts.get("tradingHub") if self.trader else None
+        """Open positions on the owner's own Paper Trading screen (main paper account) on this index that no auto
+        trade is managing (for the paper card's "Place stop + target together" button)."""
+        acc = self.trader.accounts.get("manual") if self.trader else None
         if not acc:
             return []
-        managed = {t["instrument"]["id"] for t in self.trader.state["trades"] if t["status"] == "open" and t["account"] == "tradingHub"}
+        managed = {t["instrument"]["id"] for t in self.trader.state["trades"] if t["status"] == "open" and t["account"] == "manual"}
         try:
             rows = acc.paper.positions()
         except Exception:
@@ -464,8 +464,8 @@ class SignalService:
         st = self.trader.status() if self.trader else {"today": []}
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
-        for key, name in (("tradingHub", "Trading Hub"), ("megabull", "MegaBull (4 Pillar / Dharani v1)"),
-                          ("dharaniV2", "MegaBull Dharani v2")):
+        for key, name in (("tradingHub", "Trend (app paper, Rs 1 lakh)"), ("megabull", "MegaBull (4 Pillar / SuperTrend Nifty)"),
+                          ("dharaniV2", "Dharani (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)
             lines.append(f"{name}: {len(ts)} trades, net Rs {net:,.2f}")

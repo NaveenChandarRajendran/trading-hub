@@ -146,7 +146,7 @@ def test_dharani_put_go():
     s["bars"][-1]["low"] = 22630  # pressed the lower band
     s.update(prev=prev, piv=pivots(**prev), sr={"levels": {"R": [], "S": [{"strike": 22500, "oi": 1}]}})
     r = megabull_rule(s)
-    assert r["setup"] == "Dharani v1" and r["side"] == "PE"
+    assert r["setup"] == "SuperTrend Nifty" and r["side"] == "PE"
     assert all(states(r)[k] == PASS for k in ("trigger", "confirmation", "pillar1", "pillar2", "pillar3", "pillar4", "room"))
     assert r["go"]
     s["ind"]["rsi"][-1] = 50  # 45-55 = no trade

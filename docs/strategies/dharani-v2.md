@@ -1,9 +1,11 @@
-# Dharani v2 rule (teacher's tuned Quantman setups, copied as taught)
+# Dharani rule (teacher's tuned Quantman setups, copied as taught)
 
 Owner: R. Diwakaran. Source: Dharmidharan's paid webinar video (owner's screenshots, 25-Oct-2026): Quantman setups
 "L1 08 FINAL CE" and "L1 10 PE ALT", and owner answers 25-Oct-2026 ("replicate the same setup, the one with more
-tuning"; SuperTrend trail exit; 3-minute candles). Code: `backend/sig_dharani_v2.py`. PAPER ONLY (MegaBull paper
-account). Runs alongside Dharani v1 (`megabull.md`) until the 15 Nov review; tracked separately in the Excel.
+tuning"; SuperTrend trail exit; 3-minute candles). Code: `backend/sig_dharani_v2.py` (internal id dharaniV2).
+PAPER ONLY, on the app's own **Dharani** paper account (Rs 1,00,000, `strategy_books.py`), not MegaBull (owner,
+25-Oct-2026). Runs alongside SuperTrend Nifty (`megabull.md`, our own version) until the 15 Nov review; tracked
+separately in the Excel ("Option Buy - Dharani" tab).
 The teacher's five further portfolio strategies are in his paid course and are not included.
 
 ## Data
@@ -32,12 +34,12 @@ Order flow is not part of this setup.
   (monthly expiries only, so options cost more; owner 25-Oct-2026). Setting: `autopaper.json` dharaniV2.premiumNear.
 - Entry window: signal candles closing 09:18 to 15:00 (the teacher trades from 09:15).
 - **Exit when a 3-minute candle closes back through SuperTrend** (call: index closes below the line; put: futures close
-  above it). No fixed target. Safety stop: SL at fill × 0.90 (owner's MegaBull −10%). Hard exit 15:15 (the teacher's
+  above it). No fixed target. Safety stop: SL-M at fill × 0.90 (−10%). Hard exit 15:15 (the teacher's
   ends 15:28).
-- One open v2 position per index at a time; a new entry is allowed after an exit when all conditions are true again. Never buys
-  the option Dharani v1 holds. Daily limits are the MegaBull account's (6 trades, ₹10,000 loss; the teacher allows 10).
+- One open position per index at a time; a new entry is allowed after an exit when all conditions are true again.
+  Daily limits are the Dharani account's own (6 trades, ₹10,000 loss; the teacher allows 10).
 - Shadow log: SuperTrend on the side and exactly one other condition missed = skipped setup; a GO the account could
-  not take (MegaBull off, Auto OFF, a limit) = "GO, not sent".
+  not take (Auto OFF, a limit) = "GO, not sent".
 - Log: `Auto Paper Logs/dharani_v2_<day>.csv`, one row per 3-minute evaluation with every check's value.
 
 ## Teacher's backtest (NIFTY, 2019-04 to 2026-07, gross of costs, his numbers)

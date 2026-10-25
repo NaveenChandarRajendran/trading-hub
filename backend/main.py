@@ -327,7 +327,12 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
                     if leg and leg.get("lotSize"):
                         return leg["lotSize"]
             return None
-        accounts = [autopaper.TradingHubAccount(paper),
+        from strategy_books import StrategyBook
+        books = {k: StrategyBook(k, paper, data_dir="data") for k in ("trend", "dharani")}
+        paper.books = list(books.values())
+        accounts = [autopaper.TradingHubAccount(books["trend"], autopaper.TH),
+                    autopaper.TradingHubAccount(books["dharani"], autopaper.DH),
+                    autopaper.TradingHubAccount(paper, autopaper.MANUAL),
                     autopaper.MegaBullAccount(lambda: MegaBullClient(cfg["keysFile"], request_log=megabull_logger(cfg["logDir"])),
                                               mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2), lot_size=dhan_lot)]
         trader = autopaper.AutoTrader(cfg, accounts, alert=alert, on_order=on_order,

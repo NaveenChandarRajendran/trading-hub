@@ -1,12 +1,13 @@
-# MegaBull rule (4 Pillar = BANKNIFTY, Dharani v1 = NIFTY)
+# MegaBull rule (4 Pillar = BANKNIFTY, SuperTrend Nifty = NIFTY)
 
 Owner: R. Diwakaran. Sources: tracker sheets 'Option Buy-4 Pillar Startegy' and 'Option Buy - Dharani Setup' (header
 notes), 'Rules and Data Log', the brief (23-Oct-2026) and owner answers (23-Oct-2026). Code: `backend/sig_rules.py`
 `megabull_rule`. PAPER ONLY (MegaBull paper account). Strict rules, unchanged; GO = Grade A only.
 
-**Dharani v1 vs v2 (owner, 25-Oct-2026):** the Dharani setup here is **v1**, built from the live-webinar notes. The
-teacher's paid video gives stricter conditions (RSI above 70, close above R1, close outside the band); those run as a
-separate rule, **Dharani v2** (`dharani-v2.md`), on the same account, tracked separately until the 15 Nov review.
+**Names (owner, 25-Oct-2026):** the NIFTY setup here is **SuperTrend Nifty**, our own rule built from the live-webinar
+notes (called "Dharani" / "Dharani v1" before). The teacher's exact tuned setup is the separate **Dharani** rule
+(`dharani-v2.md`), traded on the app's own Rs 1 lakh Dharani paper account, not on MegaBull. MegaBull keeps the strict
+rules only: 4 Pillar and SuperTrend Nifty.
 
 **Status (owner, 23-Oct evening):** thresholds confirmed; the room values are guesses kept as settings
 (`autopaper.json` "rules": pivotRoom, wallRoom). MegaBull takes **Grade A only** (every pillar and filter passes); a setup
@@ -36,7 +37,7 @@ OFF until the key is saved, the read-only check and one test order have run.
 | 4 PCR | PCR ≥ 0.9 ("near 1 or above"; setting `pcr`) | PCR < 0.9 ("well below 1") |
 Volume Oscillator (5, 10): record only.
 
-## Dharani v1 (NIFTY), checked on the confirmation candle
+## SuperTrend Nifty (NIFTY), checked on the confirmation candle
 | pillar | call | put |
 |---|---|---|
 | 1 SuperTrend (10, 2) | green, close above the line | red, close below the line |

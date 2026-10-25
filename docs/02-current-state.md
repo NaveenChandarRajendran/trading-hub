@@ -124,8 +124,13 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   Quantman setups copied as taught: NIFTY and BANKNIFTY (owner added BANKNIFTY), 3-minute candles (call on the index, put on the futures), call 5 and
   put 8 conditions, exit on a SuperTrend close-through, no fixed target, −10 % safety stop, strike by premium near ₹250 (NIFTY) / ₹500 (BANKNIFTY).
   The watcher now wakes on every 3- and 5-minute close; `CandleService.get_with_futures` keeps the futures' own candles
-  and 4 sessions of history (EMA 200). The MegaBull Nifty setup is renamed Dharani v1. Auto trader positions are per
+  and 4 sessions of history (EMA 200). The MegaBull Nifty setup is renamed SuperTrend Nifty. Auto trader positions are per
   rule ("slot"), not per account; a rule never buys the option another rule holds on the same account.
+- Accounts (owner 25-Oct-2026, ADR 0006): MegaBull = strict rules only (4 Pillar, SuperTrend Nifty = old "Dharani v1").
+  The app's paper trading has one Rs 1 lakh account per auto strategy (`strategy_books.StrategyBook`, data/books/<name>):
+  **Trend** (Trading Hub rule) and **Dharani** (the teacher's setup). Books reuse the paper engine and get the same
+  ticks from PaperService. The owner's own Paper Trading screen stays the main account ("manual"): hand trades and the
+  "stop + target" button. Dashboard: three account cards with balances.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
