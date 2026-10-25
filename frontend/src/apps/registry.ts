@@ -30,14 +30,6 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./dashboard/DashboardApp')),
   },
   {
-    id: 'backtest',
-    group: 'home',
-    name: 'Backtest',
-    path: '/backtest',
-    icon: '◔',
-    component: lazy(() => import('./backtest/BacktestApp')),
-  },
-  {
     id: 'option-strategy',
     group: 'manual',
     name: 'OI & OI Change',
@@ -124,6 +116,15 @@ export const apps: AppEntry[] = [
     path: '/paper-trade',
     icon: '⇄',
     component: lazy(() => import('./paper-trade/PaperTradeApp')),
+  },
+  {
+    // owner 25-Oct-2026: at the bottom of the sidebar, below Paper Trading
+    id: 'backtest',
+    group: 'live',
+    name: 'Backtest',
+    path: '/backtest',
+    icon: '◔',
+    component: lazy(() => import('./backtest/BacktestApp')),
   },
 ];
 
