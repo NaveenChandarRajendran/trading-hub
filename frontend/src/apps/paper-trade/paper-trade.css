@@ -65,3 +65,6 @@
 .pt .pt-money dd { margin: 0; text-align: right; font-weight: 500; }
 .pt .pt-ticket-actions { display: flex; align-items: center; gap: var(--sp-2); }
 .pt .pt-ticket-actions .muted { margin-right: auto; font-size: var(--fs-sm); }
+.pt .pt-chain { white-space: nowrap; }
+.pt .pt-chain .pt-cell-sub { color: var(--text-3); font-size: var(--fs-xs); }
+.pt .pt-chain td.pt-pcr { font-weight: 400; color: var(--text-2); }

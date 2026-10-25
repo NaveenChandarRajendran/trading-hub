@@ -80,7 +80,15 @@ export interface BtStats {
   worstStreak: number;
   costs: number; // charges + slippage paid
   exits: Record<BtTrade['kind'], number>;
+  profitFactor: number | null; // money won / money lost
+  payoff: number | null; // average win / average loss (size)
+  cagr: number | null; // % a year on CAPITAL (1 lot per trade, profits not reinvested)
+  avgMonth: number | null; // net per calendar month from the first to the last trade
+  avgTrade: number | null;
 }
+
+/** The capital the yearly return is measured on (owner 25-Oct-2026: "if I had 1 lakh"). */
+export const CAPITAL = 100000;
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -114,7 +122,40 @@ export function stats(trades: BtTrade[], mode: CostMode): BtStats {
     best: p.length ? Math.max(...p) : null, worst: p.length ? Math.min(...p) : null,
     maxDrawdown: r2(dd), worstStreak: streak,
     costs: r2(trades.reduce((s, t) => s + t.charges + (mode === 'all' ? t.slippage : 0), 0)), exits,
+    ...extra(trades, p, wins, losses, eq),
   };
+}
+
+function extra(trades: BtTrade[], p: number[], wins: number[], losses: number[], net: number) {
+  const won = wins.reduce((s, x) => s + x, 0);
+  const lost = -losses.reduce((s, x) => s + x, 0);
+  const aw = wins.length ? won / wins.length : null;
+  const al = losses.length ? lost / losses.length : null;
+  let cagr: number | null = null;
+  let avgMonth: number | null = null;
+  if (trades.length) {
+    const a = trades[0].day;
+    const b = trades[trades.length - 1].day;
+    const days = (Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86400000 + 1;
+    const years = days / 365.25;
+    const end = CAPITAL + net;
+    cagr = end > 0 && years > 0 ? r2((Math.pow(end / CAPITAL, 1 / years) - 1) * 100) : null;
+    const months = (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5, 7) - +a.slice(5, 7)) + 1;
+    avgMonth = r2(net / months);
+  }
+  return {
+    profitFactor: lost > 0 ? r2(won / lost) : null, payoff: aw != null && al ? r2(aw / al) : null, cagr, avgMonth,
+    avgTrade: p.length ? r2(net / p.length) : null,
+  };
+}
+
+/** Fall from the highest point so far, at the end of each trading day (0 or below), for the drawdown chart. */
+export function drawdown(trades: BtTrade[], mode: CostMode): { time: number; value: number }[] {
+  let peak = 0;
+  return equity(trades, mode).map((p) => {
+    peak = Math.max(peak, p.value);
+    return { time: p.time, value: r2(p.value - peak) };
+  });
 }
 
 /** Running total at the end of each trading day: [{time: UTC seconds of that date, value}] for the chart. */

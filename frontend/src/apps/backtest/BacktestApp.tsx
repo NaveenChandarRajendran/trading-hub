@@ -5,9 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorText } from '../../shared/live/liveStatus';
 import { inr, signed } from '../../shared/grid';
 import { Alert, EmptyState, Pill, Segmented, Stat, Status, type Tone } from '../../shared/ui';
-import { EquityChart, type Line } from './EquityChart';
+import { DrawdownChart, EquityChart, type Line } from './EquityChart';
 import {
-  STRATEGIES, byMonth, byYear, equity, fetchResults, fetchStatus, heatLevel, keyOf, select, startRun, stats, toCsv,
+  CAPITAL, STRATEGIES, byMonth, byYear, drawdown, equity, fetchResults, fetchStatus, heatLevel, keyOf, select, startRun, stats, toCsv,
   type BtResults, type BtStatus, type CostMode, type IndexPick, type StrategyKey,
 } from './logic/backtest';
 import { STRATEGY_INFO } from './config/strategyInfo';
@@ -138,6 +138,15 @@ export default function BacktestApp() {
     if (selected.length > 1) out.push({ id: 'all', label: 'Combined', colorToken: '--text', points: equity(trades, mode), bold: true });
     return out.filter((l) => l.points.length);
   }, [res, selected, trades, mode, index]);
+  const dd = useMemo(() => drawdown(trades, mode), [trades, mode]);
+  const costRows = useMemo(() => {
+    const noCost = trades.map((t) => ({ ...t, net: t.gross, charges: 0, slippage: 0 }));
+    return [
+      { label: 'No cost', s: stats(noCost, 'all') },
+      { label: 'Charges only', s: stats(trades, 'charges') },
+      { label: `Charges + ${res?.slippagePct ?? 0.5}% slippage`, s: stats(trades, 'all') },
+    ];
+  }, [trades, res]);
   const per = useMemo(() => (res ? selected.map((k) => ({ key: k, s: stats(select(res.trades, [k], index), mode) })) : []), [res, selected, mode, index]);
   const span = res ? Object.values(res.dataSpan)[0] : null;
   const fmtDay = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -197,17 +206,42 @@ export default function BacktestApp() {
         <>
           <section className="card bt-strip">
             <Stat label="Net profit" value={rs(s.net)} tone={tone(s.net)} delta={span ? `${fmtDay(span[0])} – ${fmtDay(span[1])}` : undefined} />
-            <Stat label="Trades" value={n0(s.trades)} delta={`${s.wins} won`} />
-            <Stat label="Win rate" value={s.winRate == null ? '—' : `${s.winRate.toFixed(1)}%`} />
-            <Stat label="Max drawdown" value={`₹${n0(s.maxDrawdown)}`} delta="biggest fall from a peak" />
-            <Stat label="Avg win / loss" value={<span className="num"><span className="up">{rs(s.avgWin)}</span> / <span className="down">{rs(s.avgLoss)}</span></span>} />
+            <Stat label={`Yearly return on ₹${n0(CAPITAL / 100000)}L`} value={s.cagr == null ? '—' : `${s.cagr.toFixed(1)}%`} tone={tone(s.cagr)} delta="1 lot a trade, profits not reinvested" />
+            <Stat label="Win rate" value={s.winRate == null ? '—' : `${s.winRate.toFixed(1)}%`} delta={`${n0(s.trades)} trades · ${s.wins} won`} />
+            <Stat label="Profit factor" value={s.profitFactor == null ? '—' : s.profitFactor.toFixed(2)} delta="money won ÷ money lost" />
+            <Stat label="Payoff (win / loss)" value={s.payoff == null ? '—' : s.payoff.toFixed(2)} delta={<span className="num"><span className="up">{rs(s.avgWin)}</span> / <span className="down">{rs(s.avgLoss)}</span></span>} />
+            <Stat label="Max drawdown" value={`₹${n0(s.maxDrawdown)}`} tone="down" delta="biggest fall from a peak" />
             <Stat label="Worst losing streak" value={`${s.worstStreak} trades`} />
+            <Stat label="Avg a month" value={rs(s.avgMonth)} tone={tone(s.avgMonth)} delta={`${rs(s.avgTrade)} a trade`} />
             <Stat label={mode === 'all' ? 'Costs + slippage paid' : 'Costs paid'} value={`₹${n0(s.costs)}`} />
           </section>
 
           <section className="card">
             <div className="card-head"><h3 className="card-title">Profit curve · 1 lot · {mode === 'all' ? 'after costs and slippage' : 'after costs'}</h3></div>
             {lines.length ? <EquityChart lines={lines} /> : <EmptyState>No trades for this selection.</EmptyState>}
+            <p className="card-foot">Green above ₹0 (in profit), red below.{selected.length > 1 ? ' The green / red area is all ticked strategies together; the thin lines are each one.' : ''}</p>
+          </section>
+
+          <section className="card">
+            <div className="card-head"><h3 className="card-title">Drawdown · how far below the last high</h3><span className="muted">Worst ₹{n0(s.maxDrawdown)}</span></div>
+            {dd.length ? <DrawdownChart points={dd} /> : <EmptyState>No trades for this selection.</EmptyState>}
+          </section>
+
+          <section className="card">
+            <div className="card-head"><h3 className="card-title">What costs do to the result</h3></div>
+            <table className="t">
+              <thead><tr><th>Cost model</th><th className="num">Net (₹)</th><th className="num">Win %</th><th className="num">Profit factor</th><th className="num">Max DD (₹)</th><th className="num">Yearly on ₹1L</th></tr></thead>
+              <tbody>
+                {costRows.map(({ label, s: x }) => (
+                  <tr key={label}>
+                    <td>{label}</td><td className={`num ${toneClass(x.net)}`}>{signed(0)(x.net)}</td>
+                    <td className="num">{x.winRate == null ? '—' : x.winRate.toFixed(1)}</td><td className="num">{x.profitFactor == null ? '—' : x.profitFactor.toFixed(2)}</td>
+                    <td className="num">{n0(x.maxDrawdown)}</td><td className={`num ${toneClass(x.cagr)}`}>{x.cagr == null ? '—' : `${x.cagr.toFixed(1)}%`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="card-foot">Slippage is usually the biggest difference between these rows.</p>
           </section>
 
           <div className="split">
@@ -250,7 +284,7 @@ export default function BacktestApp() {
           </div>
 
           <section className="card">
-            <div className="card-head"><h3 className="card-title">Month by month (₹, hover for the amount)</h3></div>
+            <div className="card-head"><h3 className="card-title">Month by month (thousands of ₹)</h3></div>
             <div className="bt-months" role="table" aria-label="Monthly profit and loss">
               <div className="bt-mrow head" role="row"><span />{MONTHS.map((m) => <span key={m} role="columnheader">{m}</span>)}<span className="num">Year</span></div>
               {months.map((y) => (
@@ -258,7 +292,7 @@ export default function BacktestApp() {
                   <span role="rowheader">{y.year}</span>
                   {y.months.map((v, i) => (
                     <span key={i} role="cell" className={`heat-cell bt-cell h-${heatLevel(v, scale)}`}
-                      title={v == null ? `${MONTHS[i]} ${y.year}: no trade` : `${MONTHS[i]} ${y.year}: ₹${signed(0)(v)}`} />
+                      title={v == null ? `${MONTHS[i]} ${y.year}: no trade` : `${MONTHS[i]} ${y.year}: ₹${signed(0)(v)}`}>{v == null ? '' : (v / 1000).toFixed(1)}</span>
                   ))}
                   <span className={`num ${toneClass(y.months.reduce<number>((a, v) => a + (v ?? 0), 0))}`}>{signed(0)(y.months.reduce<number>((a, v) => a + (v ?? 0), 0))}</span>
                 </div>

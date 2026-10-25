@@ -1,7 +1,7 @@
 // Hand-checked numbers on a 5-trade fixture (logic/__fixtures__/results-small.json).
 import { describe, expect, it } from 'vitest';
 import fixture from './__fixtures__/results-small.json';
-import { byMonth, byYear, equity, heatLevel, select, stats, toCsv, type BtResults } from './backtest';
+import { byMonth, byYear, drawdown, equity, heatLevel, select, stats, toCsv, type BtResults } from './backtest';
 
 const res = fixture as unknown as BtResults;
 const DH = 'Dharani Rules';
@@ -57,5 +57,14 @@ describe('backtest page logic', () => {
     const csv = toCsv(nifty([DH]));
     expect(csv.split('\n')).toHaveLength(4);
     expect(csv.split('\n')[0]).toBe('day,strategy,index,signal,side,strike,entry,exit,reason,gross,charges,slippage,net');
+  });
+
+  it('profit factor, payoff, yearly return on 1 lakh, averages and the drawdown curve', () => {
+    const s = stats(nifty([DH]), 'all');
+    // won 1000, lost 500 + 800 = 1300 -> PF 0.77; payoff 1000 / 650 = 1.54; 3 trades -> -100 a trade
+    expect(s).toMatchObject({ profitFactor: 0.77, payoff: 1.54, avgTrade: -100 });
+    expect(s.cagr).toBeLessThan(0);
+    // per day: +500 at the end of 2 Jan 2024 (the peak), then −300 on 11 Mar 2025 -> 800 below the peak
+    expect(drawdown(nifty([DH]), 'all').map((p) => p.value)).toEqual([0, -800]);
   });
 });

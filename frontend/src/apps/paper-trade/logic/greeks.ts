@@ -7,6 +7,7 @@ import type { ChainResponse, DhanLeg } from '../../../shared/dhan/api';
 export interface LegExtra {
   oi: number;
   oiChg: number; // oi - previous day's settled OI
+  oiChgPct: number | null; // oiChg / previous OI x 100
   volume: number;
   iv: number | null; // %
   delta: number | null;
@@ -20,7 +21,8 @@ export interface LegExtra {
 const extra = (l: DhanLeg | null | undefined): LegExtra | null =>
   l
     ? {
-        oi: l.oi ?? 0, oiChg: (l.oi ?? 0) - (l.previous_oi ?? 0), volume: l.volume ?? 0,
+        oi: l.oi ?? 0, oiChg: (l.oi ?? 0) - (l.previous_oi ?? 0),
+        oiChgPct: l.previous_oi ? (((l.oi ?? 0) - l.previous_oi) / l.previous_oi) * 100 : null, volume: l.volume ?? 0,
         iv: l.implied_volatility || null, delta: l.greeks?.delta ?? null, gamma: l.greeks?.gamma ?? null,
         theta: l.greeks?.theta ?? null, vega: l.greeks?.vega ?? null,
         ltp: l.last_price || null, close: l.previous_close_price || null,
@@ -60,3 +62,21 @@ export function maxPain(resp: ChainResponse | null): number | null {
   }
   return best;
 }
+
+/** Put / call OI at one strike, as Dhan's chain shows it between the two sides (null without call OI). */
+export const strikePcr = (ce: LegExtra | null | undefined, pe: LegExtra | null | undefined) =>
+  ce?.oi ? (pe?.oi ?? 0) / ce.oi : null;
+
+/** ATM IV: the average of the call and put IV at the strike nearest spot (one side if the other is missing). */
+export function atmIv(resp: ChainResponse | null, spot: number | null): number | null {
+  const rows = resp?.rows ?? [];
+  if (!rows.length || spot == null) return null;
+  const r = rows.reduce((b, x) => (Math.abs(x.strike - spot) < Math.abs(b.strike - spot) ? x : b));
+  const iv = [r.ce?.implied_volatility, r.pe?.implied_volatility].filter((v): v is number => !!v);
+  return iv.length ? iv.reduce((a, b) => a + b, 0) / iv.length : null;
+}
+
+/** Calendar days from today (IST, 'YYYY-MM-DD') to the expiry date. */
+export const daysToExpiry = (expiry: string, today: string) =>
+  Math.max(0, Math.round((Date.UTC(+expiry.slice(0, 4), +expiry.slice(5, 7) - 1, +expiry.slice(8, 10)) -
+    Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10))) / 86400000));

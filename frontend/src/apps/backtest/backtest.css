@@ -31,3 +31,5 @@
 .bt .bt-info-h { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
 .bt .bt-info-list { margin: 0 0 var(--sp-3); padding-left: var(--sp-4); color: var(--text); font-size: var(--fs-md); line-height: 1.6; }
 .bt .bt-info-note { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.bt .bt-cell { display: flex; align-items: center; justify-content: center; height: 24px; font-size: var(--fs-xs); color: var(--text); font-variant-numeric: tabular-nums; }
+.bt .bt-chart-dd { height: 200px; }

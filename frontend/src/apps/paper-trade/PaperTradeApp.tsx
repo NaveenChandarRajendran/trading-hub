@@ -10,21 +10,19 @@ import { STALE_AFTER_MS, STORAGE_PREFIX } from './config/settings';
 import { longDate, rupees, signedRupees, toneOf } from './format';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { api, type Chain } from './logic/api';
-import { byStrike, maxPain, pcr } from './logic/greeks';
+import { atmIv, byStrike, daysToExpiry, maxPain, pcr } from './logic/greeks';
 import { keyOf } from './logic/feed';
 import { OrderTicket, type TicketTarget } from './OrderTicket';
 import { OrdersView } from './OrdersView';
 import { PnlView } from './PnlView';
-import { TradeView, liveUnrealized, type ChainCols } from './TradeView';
+import { TradeView, liveUnrealized } from './TradeView';
 import { usePaper, type Paper } from './usePaper';
 import './paper-trade.css';
 
 type View = 'trade' | 'orders' | 'pnl';
 const VIEWS = [{ value: 'trade', label: 'Chain' }, { value: 'orders', label: 'Orders' }, { value: 'pnl', label: 'P&L' }] as const;
-const COL_SETS = [{ value: 'prices', label: 'OI + volume' }, { value: 'greeks', label: 'IV + Greeks' }] as const;
 const CHAIN_REFRESH_MS = 15000;
 
-const signedPts = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${inr(0)(Math.abs(v))}`;
 
 const load = (k: string) => {
   try {
@@ -121,9 +119,7 @@ export default function PaperTradeApp() {
   const [chain, setChain] = useState<Chain | null>(null);
   const [chainError, setChainError] = useState('');
   const [ticket, setTicket] = useState<TicketTarget | null>(null);
-  const [cols, setCols] = useState<ChainCols>(() => (load('cols') === 'greeks' ? 'greeks' : 'prices'));
   const [dhan, setDhan] = useState<ChainResponse | null>(null);
-  useEffect(() => save('cols', cols), [cols]);
   const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
 
   useEffect(() => save('view', view), [view]);
@@ -178,6 +174,7 @@ export default function PaperTradeApp() {
   const positions = [...paper.positions.values()];
   const unrealized = positions.reduce((t, p) => t + liveUnrealized(paper, p), 0); // live, from the latest ticks
   const f = paper.funds;
+  const ivAtm = atmIv(dhan, spot ?? null);
   const dayPnl = f ? f.realized - f.charges + unrealized : null;
 
   return (
@@ -197,7 +194,6 @@ export default function PaperTradeApp() {
             </label>
           )}
           <div className="field">View<Segmented label="View" options={VIEWS} value={view} onChange={setView} /></div>
-          {view === 'trade' && <div className="field">Columns<Segmented label="Columns" options={COL_SETS} value={cols} onChange={setCols} /></div>}
           <div className="toolbar-end">
             <Pill tone="accent">PAPER</Pill>
             <FeedStatus paper={paper} />
@@ -215,18 +211,16 @@ export default function PaperTradeApp() {
 
       <div className="stats">
         <Stat label={`${symbol} spot`} value={spot ? inr(2)(spot) : '–'} delta={paper.meta?.marketOpen ? '' : 'Last session'} />
-        <Stat label="PCR (OI)" value={chainPcr == null ? '–' : inr(2)(chainPcr)} delta={dhan ? `As of ${dhan.meta.asOf.slice(11, 16)} IST` : ''} />
-        <Stat label="Max pain" value={pain == null ? '–' : inr(0)(pain)} delta={pain != null && spot ? `${signedPts(spot - pain)} pts from spot` : ''} />
-        <Stat label="Available" value={rupees(f?.available)} delta={f ? `of ${rupees(f.openingBalance, 0)} opening` : ''} />
-        <Stat label="Day P&L" value={<span className={toneOf(dayPnl)}>{signedRupees(dayPnl)}</span>}
-          delta={f ? `Charges ${rupees(f.charges)}` : ''} />
-        <Stat label="Open positions" value={positions.filter((p) => p.open_qty > 0).length}
-          delta={`${[...paper.orders.values()].filter((o) => o.status === 'PENDING' || o.status === 'TRIGGERED').length} pending orders`} />
+        <Stat label="ATM IV" value={ivAtm == null ? '–' : inr(2)(ivAtm)} delta={dhan ? `As of ${dhan.meta.asOf.slice(11, 16)} IST` : ''} />
+        <Stat label="Days to expiry" value={expiry || chain?.expiry ? daysToExpiry(expiry || chain!.expiry, paper.today) : '–'} delta={`Lot ${chain?.lotSize ?? '–'}`} />
+        <Stat label="PCR (OI)" value={chainPcr == null ? '–' : inr(2)(chainPcr)} delta={pain != null ? `Max pain ${inr(0)(pain)}` : ''} />
+        <Stat label="Day P&L (manual)" value={<span className={toneOf(dayPnl)}>{signedRupees(dayPnl)}</span>}
+          delta={f ? `Available ${rupees(f.available, 0)}` : ''} />
       </div>
 
       {view === 'trade' && (chainError ? (chainError !== paper.error && <Alert kind="error">{chainError}</Alert>)
         : !chain ? <p className="muted">Loading option chain…</p>
-        : <TradeView paper={paper} chain={chain} extras={extras} chainSpot={dhan?.meta.spot ?? null} cols={cols}
+        : <TradeView paper={paper} chain={chain} extras={extras} chainSpot={dhan?.meta.spot ?? null}
             onTicket={setTicket} onNotice={onNotice} />)}
       {view === 'orders' && <OrdersView paper={paper} />}
       {view === 'pnl' && <PnlView paper={paper} />}

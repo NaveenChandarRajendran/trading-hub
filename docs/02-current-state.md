@@ -160,6 +160,12 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
     Endpoints GET /api/journal/days, /api/journal/orders?date=, /api/journal/trades?from=&to=.
   - Limits: open positions show without live P&L here (live P&L stays on the Dashboard); Excel-imported trades have
     one buy and one sell order each (the stop orders of those days were not recorded).
+- Owner review 25-Oct-2026 evening: Option Chain laid out like Dhan's Advanced Option Chain (one wide table, per side
+  Vega, Theta, Gamma, Delta, IV, Volume, OI Chg (and %), OI, LTP Chg (and %), LTP; strike + strike PCR in the
+  middle; positions and open orders below; header: spot, ATM IV, days to expiry + lot, PCR + max pain, manual day P&L).
+  Backtest: profit curve green above ₹0 / red below (baseline area, thick line), drawdown chart, tiles for yearly
+  return on ₹1 lakh (1 lot, not reinvested), profit factor, payoff, average a month / a trade; "What costs do to the
+  result" table; month cells show the amount in thousands.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 

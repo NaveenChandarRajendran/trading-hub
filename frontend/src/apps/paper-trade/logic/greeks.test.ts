@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../shared/dhan/__fixtures__/banknifty-2026-10-21.json';
 import type { ChainResponse } from '../../../shared/dhan/api';
-import { byStrike, maxPain, pcr } from './greeks';
+import { atmIv, byStrike, daysToExpiry, maxPain, pcr, strikePcr } from './greeks';
 
 const chain = fixture as unknown as ChainResponse;
 
@@ -19,5 +19,15 @@ describe('option chain extras', () => {
     expect(maxPain(chain)).toBe(55500);
     expect(pcr(null)).toBeNull();
     expect(maxPain(null)).toBeNull();
+  });
+
+  it('strike PCR, ATM IV and days to expiry', () => {
+    const r = byStrike(chain).get(56300)!;
+    expect(r.ce!.oiChgPct).toBeCloseTo((8040 / 137760) * 100, 6);
+    expect(strikePcr(r.ce, r.pe)).toBeCloseTo(27900 / 145800, 6);
+    expect(strikePcr(null, r.pe)).toBeNull();
+    const atm = chain.rows.reduce((b, x) => (Math.abs(x.strike - 54976.9) < Math.abs(b.strike - 54976.9) ? x : b));
+    expect(atmIv(chain, 54976.9)).toBeCloseTo(((atm.ce!.implied_volatility) + (atm.pe!.implied_volatility)) / 2, 6);
+    expect(daysToExpiry('2026-10-27', '2026-10-24')).toBe(3);
   });
 });
