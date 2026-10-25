@@ -31,7 +31,8 @@ Buffer: NIFTY 10, BANKNIFTY 25 points.
 - **Cancel**: a close below R1 − buffer (PE: above S1 + buffer) before the pullback. **Expire**: no pullback in 6 candles.
 - **Re-arm**: after a setup ends (entered, cancelled, expired, skipped), a new break needs a close back at or below R1
   (PE: at or above S1) first.
-- **Target**: the next level's zone: spot ≥ R2 − buffer (PE: spot ≤ S2 + buffer), checked on every tick.
+- **Target**: the next level's zone: spot ≥ R2 − buffer (PE: spot ≤ S2 + buffer), or the option's LTP rises 20 %
+  above the entry price, whichever comes first; checked on every tick.
 - **Stop**: a candle closes below R1 − buffer (PE: above S1 + buffer), or the option's LTP falls 10 % below the entry
   price, whichever comes first.
 
@@ -71,7 +72,11 @@ Report: `backend/logs/replay-<date>.md` / `.json`.
 - ATM option (strike nearest spot) of the nearest expiry (the next one on expiry day), 1 lot, market order on the
   paper engine (fills against the live order book).
 - New entries 09:35–14:30 (candle close time). Square-off 15:15.
-- Per index: 1 open position, 4 trades a day. NIFTY and BANKNIFTY run independently.
+- Per index: 1 open position, at most **2 trades a day** (NIFTY 2 + BANKNIFTY 2). NIFTY and BANKNIFTY run independently.
+- **A win ends the index's day** (from 26-Oct-2026): trade 1 closed in profit → no more entries for that index; trade 1
+  in loss → trade 2 is allowed, and after trade 2 the index is done whatever its result. Profit = P&L after charges
+  above ₹0 (shadows and replays use the paper engine's charges for 1 lot). Exits: premium −10 % stop, premium +20 %
+  target or the level target zone, spot stop, 15:15 square-off.
 - No new entries once the Algo account's day P&L (realized + unrealized − charges) is ≤ −2 % of ₹1,00,000.
 
 ## Reliability

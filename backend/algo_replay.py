@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 
 import algo_config as cfg
 from algo_filters import rsi as rsi_series
-from algo_logic import fmt, lock_levels, new_state, on_candle, on_tick
+from algo_logic import fmt, lock_levels, new_state, note_result, on_candle, on_tick, round_trip_charges
 from candles import aggregate
 from store import IST
 
@@ -129,6 +129,9 @@ def replay_index(symbol, day, five, levels, variant, minutes=None, option=None, 
               "entryPrice": o.get("entryPrice"), "exitPrice": price,
               "premiumPnl": round((price - o["entryPrice"]) * o["qty"], 2) if price is not None and o.get("entryPrice")
               else None, "qty": o.get("qty")}
+        charges = (round_trip_charges(o["entryPrice"], price, o["qty"]) if tr["premiumPnl"] is not None else None)
+        # stop-after-win: by premium P&L after charges, or by index points when there is no option price
+        note_result(st, tr["premiumPnl"] if tr["premiumPnl"] is not None else pts, charges)
         trades.append(tr)
         events.append({"at": tr["exitAt"], "kind": "exit", "message": f"EXIT {o['setup']} {side} at spot {fmt(spot)}: "
                                                                        f"{reason} ({pts:+.2f} pts)"})
@@ -155,12 +158,16 @@ def replay_index(symbol, day, five, levels, variant, minutes=None, option=None, 
             o = st["open"]
             end = ist(m["time"]) + timedelta(minutes=1)
             spot = m["high"] if o["side"] == "CE" else m["low"]
-            low_prem = None
+            low_prem = high_prem = None
             if o.get("optCandles") and m["time"] in o["optCandles"]:
                 low_prem = o["optCandles"][m["time"]]["low"]
-            act = on_tick(st, spot, low_prem)
+                high_prem = o["optCandles"][m["time"]]["high"]
+            act = on_tick(st, spot, low_prem, high_prem)
             if act:
-                if act["reason"].startswith("Target"):
+                if act["reason"].startswith("Premium target"):
+                    target_px = round(o["entryPrice"] * (1 + cfg.PREMIUM_TARGET_PCT / 100), 2)
+                    close_trade(end, m["close"], act["reason"], target_px)
+                elif act["reason"].startswith("Target"):
                     close_trade(end, fill_at_target(o, m), act["reason"], premium_at(o, m["time"]))
                 else:
                     stop_px = round(o["entryPrice"] * (1 - cfg.PREMIUM_STOP_PCT / 100), 2)

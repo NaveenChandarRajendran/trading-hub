@@ -54,8 +54,10 @@ LOTS = 1
 ENTRY_FROM, ENTRY_TO = time(9, 35), time(14, 30)
 SQUARE_OFF = time(15, 15)
 PREMIUM_STOP_PCT = 10.0  # exit when the option's LTP falls this % below the entry price
+PREMIUM_TARGET_PCT = 20.0  # exit when it rises this % above (or at the level target zone, whichever comes first)
 MAX_OPEN_PER_INDEX = 1
-MAX_TRADES_PER_INDEX = 4
+MAX_TRADES_PER_INDEX = 2  # per index: NIFTY 2 + BANKNIFTY 2
+STOP_AFTER_WIN = True  # a trade closed in profit (net of charges) ends that index's day; a loss allows the next
 DAY_LOSS_STOP_PCT = 2.0  # of CAPITAL: no new entries after this day loss (realized + unrealized - charges)
 
 # reliability

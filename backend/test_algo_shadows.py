@@ -7,6 +7,8 @@ import tempfile
 
 import pytest
 
+import algo_config as cfg
+
 from algo_logic import lock_levels, new_state, on_candle
 from algo_service import AlgoService
 from paper_api import PaperService
@@ -31,7 +33,8 @@ def env():
     shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_shadows_never_place_orders_and_log_their_own_would_be_trades(env):
+def test_shadows_never_place_orders_and_log_their_own_would_be_trades(env, monkeypatch):
+    monkeypatch.setattr(cfg, "PREMIUM_TARGET_PCT", 100.0)  # the option jumps +58 %: test the level target here
     algo, paper, clock, store = env
     buys = []
     real_buy = algo.broker.buy

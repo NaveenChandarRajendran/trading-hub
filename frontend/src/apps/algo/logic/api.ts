@@ -80,7 +80,7 @@ export interface AlgoStatus {
     entryWindow: string;
     squareOff: string;
     levelsAt: string;
-    config: { buffer: Record<string, number>; premiumStopPct: number; maxTradesPerIndex: number; dayLossStopPct: number;
+    config: { buffer: Record<string, number>; premiumStopPct: number; premiumTargetPct: number; stopAfterWin: boolean; maxTradesPerIndex: number; dayLossStopPct: number;
       toiStrengthMin: number; pullbackCandles: number };
   };
   indices: IndexStatus[];

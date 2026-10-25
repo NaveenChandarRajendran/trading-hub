@@ -12,6 +12,8 @@ import tempfile
 from datetime import datetime
 
 import pytest
+
+import algo_config as cfg
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -100,7 +102,8 @@ def test_import_is_idempotent(db, tmp_path):
         assert cur.fetchone() == (15, 15)
 
 
-def test_daily_summary_matches_the_trades_of_a_sample_day(db):
+def test_daily_summary_matches_the_trades_of_a_sample_day(db, monkeypatch):
+    monkeypatch.setattr(cfg, "PREMIUM_TARGET_PCT", 100.0)  # the sample option jumps +58 %: keep the level-target exit
     pg, paper = db
     clock = Clock()
     clock.now = at("09:20")

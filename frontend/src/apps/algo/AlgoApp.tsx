@@ -150,9 +150,9 @@ function Today({ status, error, live, onNotice }: { status: AlgoStatus | null; e
         <Stat label={`Day P&L (Algo account, ${live})`} value={funds ? <span className={tone(funds.dayPnl)}>{signed(2)(funds.dayPnl)}</span> : '–'}
           delta={funds ? `Charges ₹${inr(2)(funds.charges)}` : ''} />
         <Stat label="Trades today (live)" value={trades.length + (status?.indices.filter((i) => i.open).length ?? 0)}
-          delta={status ? `max ${status.meta.config.maxTradesPerIndex} per index` : ''} />
+          delta={status ? `max ${status.meta.config.maxTradesPerIndex} per index${status.meta.config.stopAfterWin ? ' · a win ends the index day' : ''}` : ''} />
         <Stat label="Entry window" value={status?.meta.entryWindow ?? '–'} delta={status ? `square-off ${status.meta.squareOff}` : ''} />
-        <Stat label="Stops" value={status ? `Premium −${status.meta.config.premiumStopPct}%` : '–'}
+        <Stat label="Stop / target" value={status ? `−${status.meta.config.premiumStopPct}% / +${status.meta.config.premiumTargetPct}%` : '–'}
           delta={status ? `day loss −${status.meta.config.dayLossStopPct}% → no new entries` : ''} />
       </div>
 
@@ -165,7 +165,8 @@ function Today({ status, error, live, onNotice }: { status: AlgoStatus | null; e
       )}
 
       <div className="algo-indices">
-        {status ? status.indices.map((i) => <IndexCard key={i.symbol} i={i} levelsAt={status.meta.levelsAt} premiumStop={status.meta.config.premiumStopPct} />)
+        {status ? status.indices.map((i) => <IndexCard key={i.symbol} i={i} levelsAt={status.meta.levelsAt} premiumStop={status.meta.config.premiumStopPct}
+          premiumTarget={status.meta.config.premiumTargetPct} />)
           : <EmptyState>{error != null ? 'Algo status not available.' : 'Loading…'}</EmptyState>}
       </div>
 
@@ -233,7 +234,7 @@ function Today({ status, error, live, onNotice }: { status: AlgoStatus | null; e
   );
 }
 
-function IndexCard({ i, levelsAt, premiumStop }: { i: IndexStatus; levelsAt: string; premiumStop: number }) {
+function IndexCard({ i, levelsAt, premiumStop, premiumTarget }: { i: IndexStatus; levelsAt: string; premiumStop: number; premiumTarget: number }) {
   const o = i.open;
   return (
     <section className="card">
@@ -255,7 +256,7 @@ function IndexCard({ i, levelsAt, premiumStop }: { i: IndexStatus; levelsAt: str
         <div className="algo-open">
           <span><b>{o.setup}</b> · {o.option}</span>
           <span className="num">entry {o.entryAt} @ {px(o.entryPrice)} · LTP {px(o.ltp)} · <span className={tone(o.pnl)}>{o.pnl == null ? '–' : signed(2)(o.pnl)}</span></span>
-          <span className="muted num">target spot {px(o.target)} · stop spot close {o.stop?.dir} {px(o.stop?.price)} or premium −{premiumStop}%</span>
+          <span className="muted num">target spot {px(o.target)} or premium +{premiumTarget}% · stop spot close {o.stop?.dir} {px(o.stop?.price)} or premium −{premiumStop}%</span>
         </div>
       )}
       {i.blocked && <p className="algo-line algo-warn">{i.blocked}</p>}

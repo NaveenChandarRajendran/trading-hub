@@ -159,7 +159,8 @@ def test_breakout_pullback_places_a_tagged_paper_order_in_the_algo_account(env):
     assert kinds(algo)[-3:] == ["candle", "armed", "candle"] or "entry" in kinds(algo)
 
 
-def test_target_zone_exit_records_the_trade_for_review(env):
+def test_target_zone_exit_records_the_trade_for_review(env, monkeypatch):
+    monkeypatch.setattr(cfg, "PREMIUM_TARGET_PCT", 100.0)  # the option jumps +58 %: test the level target here
     algo, paper, clock, store, _ = env
     breakout_entry(algo, paper, clock)
     books(paper, clock, at("10:20"), {ce(22800): 190.0})
@@ -208,7 +209,7 @@ def test_max_trades_and_day_loss_block_new_entries(env):
     algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
     candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22790)
     msgs = [e["message"] for e in algo.store.algo_events(DAY) if e["kind"] == "skip"]
-    assert any("max 4 trades for NIFTY today" in m for m in msgs)
+    assert any("max 2 trades for NIFTY today" in m for m in msgs)
 
     algo.states["NIFTY"]["trades"] = 0
     algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
@@ -295,7 +296,8 @@ ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_serv
 ALLOWED_IMPORTS = {"json", "logging", "os", "re", "sys", "argparse", "threading", "time", "traceback", "dataclasses",
                    "datetime", "typing", "fastapi", "algo_config", "algo_filters", "algo_logic", "algo_reports",
                    "algo_service", "calc", "chain_snapshots", "envfile",
-                   "candles", "dhan_client", "dhan_feed", "holidays", "instruments", "paper_engine", "sr_levels", "store"}
+                   "candles", "dhan_client", "dhan_feed", "holidays", "instruments", "paper_charges", "paper_engine",
+                   "sr_levels", "store"}
 # from dhan_client: the index ids, and (replay only) the market-data client; dhan_client has no order endpoint at all
 DHAN_NAMES = {"algo_replay.py": {"SCRIP", "DhanClient"}}
 ORDER_WORDS = ("/orders", "/super/orders", "/forever", "placeorder", "place_order(", "modify_order", "cancel_order",
@@ -390,3 +392,18 @@ def test_past_day_log_and_trades_come_from_the_store_only(env):
     other = AlgoService(PaperJsonStore(tempfile.mkdtemp()), None, Instruments(), make_data(), clock, mode="signals",
                         log_dir=os.path.join(tmp, "logs"))
     assert other.day_log(DAY) == {"date": DAY, "variant": "", "rows": [], "trades": []}
+
+
+def test_premium_target_exit_and_a_win_ends_the_index_day(env):
+    algo, paper, clock, store, _ = env
+    breakout_entry(algo, paper, clock)  # bought at 120.05
+    books(paper, clock, at("10:20"), {ce(22800): 145.0})  # +20.8 %
+    tick(paper, clock, at("10:21"), 22900)
+    st = algo.states["NIFTY"]
+    t = st["closed"][0]
+    assert st["open"] is None and t["exitReason"].startswith("Premium target: LTP 145 >= entry 120.05 + 20%")
+    assert t["pnl"] > t["charges"] > 0 and st["won"]
+    algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
+    candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22790)
+    msgs = [e["message"] for e in algo.store.algo_events(DAY) if e["kind"] == "skip"]
+    assert any("a trade closed in profit: done for NIFTY today" in m for m in msgs) and st["open"] is None

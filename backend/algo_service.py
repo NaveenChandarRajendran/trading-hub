@@ -28,7 +28,7 @@ from typing import Callable
 
 import algo_config as cfg
 from algo_filters import components_verdict, oi_change_verdict, rsi
-from algo_logic import fmt, hm, lock_levels, new_state, on_candle, on_tick
+from algo_logic import fmt, hm, lock_levels, new_state, note_result, on_candle, on_tick, round_trip_charges
 from algo_reports import day_view, trade_points, write_day_summaries
 from candles import aggregate, bucket_start, epoch, in_session
 from dhan_client import SCRIP as INDEX_IDS
@@ -802,7 +802,7 @@ class AlgoService:
                  qty=cfg.LOTS * inst.get("lotSize", 0) or None)
         self.record(sym, "entry", f"SHADOW {v} would BUY {o.get('option') or a['side']} @ {fmt(o['entryPrice'])} · "
                                   f"spot {fmt(spot)} · target {fmt(o['target'])} · stop: spot {a['data']['spotStop']} "
-                                  f"or premium -{cfg.PREMIUM_STOP_PCT:g}%. Why: {a['reason']}", setup=a["setup"],
+                                  f"or premium -{cfg.PREMIUM_STOP_PCT:g}% · premium target +{cfg.PREMIUM_TARGET_PCT:g}%. Why: {a['reason']}", setup=a["setup"],
                     data={**a["data"], "filters": f, "option": opt}, now=now, variant=v)
         self._save_state(sym, v)
 
@@ -814,9 +814,13 @@ class AlgoService:
         price = self.broker.ltp(o["securityId"]) if self.broker and o.get("securityId") else None
         trade = {k: o.get(k) for k in ("setup", "side", "option", "strike", "entryAt", "entrySpot", "entrySpotLive",
                                        "entryPrice", "target", "stop", "reason", "qty")}
+        qty = o.get("qty") or 0
+        pnl = round((price - o["entryPrice"]) * qty, 2) if price is not None and o.get("entryPrice") and qty else None
+        charges = round_trip_charges(o["entryPrice"], price, qty) if pnl is not None else None
         trade.update(exitAt=now.strftime("%H:%M:%S"), exitSpot=self.spot[sym], exitPrice=price, exitReason=reason,
-                     pnl=None, shadow=True)
+                     pnl=None, shadow=True, estPnl=pnl, estCharges=charges)
         trade["points"] = trade_points(trade)
+        note_result(sh, pnl, charges)
         sh["closed"].append(trade)
         sh["open"] = None
         self.record(sym, "exit", f"SHADOW {v} would SELL {o.get('option') or o['side']} @ {fmt(price)} · spot "
@@ -857,7 +861,8 @@ class AlgoService:
                      qty=cfg.LOTS * inst.get("lotSize", 0) or None)  # signals: would-be quantity for the P&L
         self.record(sym, "entry", f"{'BUY' if self.mode == 'paper' else 'SIGNAL BUY'} {opt['name']} @ "
                                   f"{fmt(o['entryPrice'])} · spot {fmt(spot)} · target {fmt(o['target'])} · "
-                                  f"stop: spot {a['data']['spotStop']} or premium -{cfg.PREMIUM_STOP_PCT:g}%. "
+                                  f"stop: spot {a['data']['spotStop']} or premium -{cfg.PREMIUM_STOP_PCT:g}% · premium target "
+                                  f"+{cfg.PREMIUM_TARGET_PCT:g}%. "
                                   f"Why: {a['reason']}", setup=a["setup"], data={**a["data"], "filters": f,
                                                                                   "option": opt, "order": o.get("orderId")},
                     now=now)
@@ -891,6 +896,9 @@ class AlgoService:
         trade.update(exitAt=now.strftime("%H:%M:%S"), exitSpot=self.spot[sym], exitPrice=price, exitReason=reason,
                      pnl=pnl, charges=charges, variant=self.variant)
         trade["points"] = trade_points(trade)
+        if charges is None and pnl is not None:  # signals mode: what the paper engine would charge
+            charges = round_trip_charges(o["entryPrice"], price, qty)
+        note_result(st, pnl, charges)
         st["closed"].append(trade)
         st["open"] = None
         self.notes.pop((sym, "exitfail"), None)
@@ -964,6 +972,7 @@ class AlgoService:
                              "entryWindow": f"{cfg.ENTRY_FROM:%H:%M}-{cfg.ENTRY_TO:%H:%M}",
                              "squareOff": f"{cfg.SQUARE_OFF:%H:%M}", "levelsAt": f"{cfg.LEVELS_AT:%H:%M}",
                              "config": {"buffer": cfg.BUFFER, "premiumStopPct": cfg.PREMIUM_STOP_PCT,
+                                        "premiumTargetPct": cfg.PREMIUM_TARGET_PCT, "stopAfterWin": cfg.STOP_AFTER_WIN,
                                         "maxTradesPerIndex": cfg.MAX_TRADES_PER_INDEX,
                                         "dayLossStopPct": cfg.DAY_LOSS_STOP_PCT, "toiStrengthMin": cfg.TOI_STRENGTH_MIN,
                                         "pullbackCandles": cfg.PULLBACK_CANDLES}},

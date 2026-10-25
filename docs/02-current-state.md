@@ -74,6 +74,10 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
   tracebacks, heartbeat every 15 min, status `health` (ok / stale / error + reason) on the page, network calls outside
   the algo lock, candles only 09:15–15:30 and opening at or after 09:30. Tests: `test_algo_health.py`,
   `test_dhan_feed.py`.
+- Risk rules from 26-Oct-2026 (`algo_config.py`): premium stop −10 %, premium target +20 % (or the level target zone,
+  whichever first), max 2 trades per index (NIFTY 2 + BANKNIFTY 2), a trade closed in profit after charges ends that
+  index's day (`STOP_AFTER_WIN`); trade 1 in loss allows trade 2. Same rules for shadows and replays (charges estimated
+  with `paper_charges` for them). Optional break-even stop (+10 % → stop at entry) discussed, not built.
 - Live variant **B** (since 26-Oct), shadows A / C / D on the same candles (signals only, never an order, variant tag
   on every row); "no room" skip in every variant. `test_algo_shadows.py`, `test_algo_variants.py`.
 - **Postgres is the single source of truth (ADR 0006).** `main.py` reads `DATABASE_URL` (and the Dhan keys) from

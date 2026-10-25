@@ -6,6 +6,7 @@ I/O, no orders. The runner (algo_service.py) feeds it closed 5-minute candles an
 State is a plain dict (stored as JSON, so a restart resumes exactly where it was):
   levels      {"R1": 22800, ..., "S3": 22200} locked at 09:30, levelsAt "HH:MM"
   trades      entries taken today
+  won         a trade closed in profit today (STOP_AFTER_WIN: no more entries for this index)
   open        the open trade or None: {side, setup, entrySpot, entryAt, target, stop: {"dir", "price"}, entryPrice?}
   setup       an armed breakout waiting for its pullback, or None: {side, level, breakAt, count, filters} (variant A)
   setups      variants B-D: armed setups per level slot {"S1": {...}, "S2": {...}}, armedLv per slot
@@ -16,12 +17,13 @@ Sides: CE (bullish: breakout above R1, range bounce at S1), PE (bearish: breakdo
 from datetime import datetime
 
 import algo_config as cfg
+from paper_charges import order_charges
 
 LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
 
 
 def new_state(symbol, day):
-    return {"symbol": symbol, "day": day, "levels": None, "levelsAt": None, "trades": 0, "open": None, "setup": None,
+    return {"symbol": symbol, "day": day, "levels": None, "levelsAt": None, "trades": 0, "won": False, "open": None, "setup": None,
             "armed": {"CE": True, "PE": True}, "rangeArmed": {"R1": True, "S1": True}, "stopped": False,
             "setups": {}, "armedLv": {}}  # setups / armedLv: variants B-D (a setup per level slot)
 
@@ -98,9 +100,25 @@ def entry_block(state, now, block=""):
         return f"outside the entry window {cfg.ENTRY_FROM:%H:%M}-{cfg.ENTRY_TO:%H:%M}"
     if state["open"]:
         return f"already {cfg.MAX_OPEN_PER_INDEX} open position on {state['symbol']}"
+    if cfg.STOP_AFTER_WIN and state.get("won"):
+        return f"a trade closed in profit: done for {state['symbol']} today"
     if state["trades"] >= cfg.MAX_TRADES_PER_INDEX:
         return f"max {cfg.MAX_TRADES_PER_INDEX} trades for {state['symbol']} today"
     return ""
+
+
+def round_trip_charges(entry_price, exit_price, qty):
+    """Paper-engine charges for buying and selling qty units (used where no real fills exist: shadows, replay)."""
+    return round(order_charges("BUY", entry_price * qty).total + order_charges("SELL", exit_price * qty).total, 2)
+
+
+def note_result(state, pnl, charges):
+    """Record a closed trade's result. Profit = P&L after charges above 0; an unknown P&L counts as no profit.
+    Returns the net P&L (None when unknown)."""
+    net = None if pnl is None else round(pnl - (charges or 0), 2)
+    if net is not None and net > 0:
+        state["won"] = True
+    return net
 
 
 # ---------------------------------------------------------------- candles
@@ -418,8 +436,9 @@ def _on_candle_v(state, c, now, filters, block, v):
 
 
 # ---------------------------------------------------------------- ticks
-def on_tick(state, spot, ltp):
-    """Live spot / option price: target zone reached or premium stop. Returns an exit action or None."""
+def on_tick(state, spot, ltp, ltp_high=None):
+    """Live spot / option price: target zone reached, premium target or premium stop, whichever comes first.
+    Returns an exit action or None. ltp_high: the minute's high premium in a replay (live: the LTP itself)."""
     o = state["open"]
     if not o or o.get("exiting"):
         return None
@@ -430,6 +449,11 @@ def on_tick(state, spot, ltp):
             return {"type": "exit", "reason": f"Target zone reached: spot {fmt(spot)} {'>=' if o['side'] == 'CE' else '<='} "
                                               f"{fmt(t)}", "data": {"spot": spot}}
     entry = o.get("entryPrice")
+    high = ltp if ltp_high is None else ltp_high
+    if entry and high is not None and high >= entry * (1 + cfg.PREMIUM_TARGET_PCT / 100):
+        o["exiting"] = True
+        return {"type": "exit", "reason": f"Premium target: LTP {fmt(high)} >= entry {fmt(entry)} + "
+                                          f"{cfg.PREMIUM_TARGET_PCT:g}%", "data": {"ltp": high}}
     if entry and ltp is not None and ltp <= entry * (1 - cfg.PREMIUM_STOP_PCT / 100):
         o["exiting"] = True
         return {"type": "exit", "reason": f"Premium stop: LTP {fmt(ltp)} <= entry {fmt(entry)} - {cfg.PREMIUM_STOP_PCT:g}%",

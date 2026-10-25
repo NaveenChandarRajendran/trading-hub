@@ -2,7 +2,7 @@
 from datetime import datetime
 
 import algo_config as cfg
-from algo_logic import lock_levels, new_state, on_tick
+from algo_logic import entry_block, lock_levels, new_state, note_result, on_tick, round_trip_charges
 from algo_logic import on_candle as _on_candle
 from store import IST
 
@@ -135,10 +135,14 @@ def test_exits_target_zone_premium_stop_and_spot_stop():
     on_candle(s, cnd(22790, 22818, 22788, 22815), at("10:00"), GOOD_CE)
     on_candle(s, cnd(22815, 22830, 22805, 22820), at("10:05"), GOOD_CE)
     s["open"]["entryPrice"] = 100.0
-    assert on_tick(s, 22985, 120) is None
-    x = on_tick(s, 22990, 125)
+    assert on_tick(s, 22985, 119) is None
+    x = on_tick(s, 22990, 115)
     assert x["type"] == "exit" and x["reason"].startswith("Target zone reached: spot 22,990 >= 22,990")
-    assert on_tick(s, 22995, 126) is None  # exiting already: one exit only
+    assert on_tick(s, 22995, 116) is None  # exiting already: one exit only
+
+    s["open"].pop("exiting")
+    assert on_tick(s, 22900, 119.95) is None
+    assert on_tick(s, 22900, 120.0)["reason"] == "Premium target: LTP 120 >= entry 100 + 20%"  # before the level zone
 
     s["open"].pop("exiting")
     assert on_tick(s, 22850, 90.5) is None
@@ -153,7 +157,7 @@ def test_risk_limits_block_entries_with_a_reason():
     s = state()
     s["trades"] = cfg.MAX_TRADES_PER_INDEX
     a = on_candle(s, cnd(22780, 22805, 22775, 22790), at("10:30"), GOOD_PE)
-    assert kinds(a) == ["skip"] and "max 4 trades for NIFTY today" in a[0]["message"]
+    assert kinds(a) == ["skip"] and "max 2 trades for NIFTY today" in a[0]["message"]
     s = state()
     a = on_candle(s, cnd(22780, 22805, 22775, 22790), at("14:35"), GOOD_PE)
     assert "outside the entry window 09:35-14:30" in a[0]["message"]
@@ -163,3 +167,45 @@ def test_risk_limits_block_entries_with_a_reason():
     s = state()
     a = on_candle(s, cnd(22780, 22805, 22775, 22790), at("09:30"), GOOD_PE)
     assert "outside the entry window" in a[0]["message"]  # the 09:25-09:30 candle: before 09:35
+
+
+def test_premium_target_uses_the_minute_high_in_a_replay():
+    s = state()
+    on_candle(s, cnd(22790, 22818, 22788, 22815), at("10:00"), GOOD_CE)
+    on_candle(s, cnd(22815, 22830, 22805, 22820), at("10:05"), GOOD_CE)
+    s["open"]["entryPrice"] = 100.0
+    assert on_tick(s, 22850, 101, 119)is None
+    assert on_tick(s, 22850, 101, 121)["reason"] == "Premium target: LTP 121 >= entry 100 + 20%"
+
+
+def test_two_trades_a_day_and_a_win_ends_the_day():
+    """Rule (2026-10-25): stop 10 %, target 20 %, max 2 trades per index; trade 1 in profit -> done for the day;
+    trade 1 in loss -> trade 2, then done whatever its result. Profit = P&L after charges above 0."""
+    s = state()
+    now = at("10:30")
+    assert entry_block(s, now) == ""
+    s["trades"] = 1
+    assert note_result(s, -650.0, 60.0) == -710.0  # trade 1: loss
+    assert entry_block(s, now) == ""  # trade 2 allowed
+    s["trades"] = 2
+    assert note_result(s, 300.0, 60.0) == 240.0  # trade 2: profit, but the cap is reached anyway
+    assert entry_block(s, now) == "a trade closed in profit: done for NIFTY today"
+
+    s = state()
+    s["trades"] = 1
+    note_result(s, 1300.0, 60.0)  # trade 1: profit
+    assert entry_block(s, now) == "a trade closed in profit: done for NIFTY today"
+
+    s = state()
+    s["trades"] = 1
+    assert note_result(s, 40.0, 60.0) == -20.0  # gross +40 but -20 after charges: a loss, trade 2 allowed
+    assert entry_block(s, now) == ""
+    assert note_result(s, None, None) is None and not s["won"]  # unknown P&L: not a win
+    s["trades"] = 2
+    assert entry_block(s, now) == "max 2 trades for NIFTY today"
+
+
+def test_round_trip_charges_match_the_paper_engine():
+    # 65 units bought at 100 and sold at 120: the paper engine's BUY + SELL order charges (2 x Rs 20 brokerage + taxes)
+    from paper_charges import order_charges
+    assert round_trip_charges(100.0, 120.0, 65) == round(order_charges("BUY", 6500).total + order_charges("SELL", 7800).total, 2) == 65.03
