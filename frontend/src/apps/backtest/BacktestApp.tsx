@@ -10,6 +10,7 @@ import {
   STRATEGIES, byMonth, byYear, equity, fetchResults, fetchStatus, heatLevel, keyOf, select, startRun, stats, toCsv,
   type BtResults, type BtStatus, type CostMode, type IndexPick, type StrategyKey,
 } from './logic/backtest';
+import { STRATEGY_INFO } from './config/strategyInfo';
 import './backtest.css';
 
 const STORE = 'backtest.selected';
@@ -177,6 +178,8 @@ export default function BacktestApp() {
         {busy && status?.total ? <progress className="bt-progress" max={status.total} value={status.done} aria-label="Backtest progress" /> : null}
       </section>
 
+      {selected.length === 1 && <StrategyCard k={selected[0]} />}
+
       {runError && <Alert kind="warn">{runError}</Alert>}
       {status?.state === 'error' && <Alert kind="error">The last run stopped: {status.message}. Press Run backtest again; it continues where it stopped.</Alert>}
       {error != null && <Alert kind="error">{errorText(error)}</Alert>}
@@ -296,5 +299,33 @@ export default function BacktestApp() {
         </>
       )}
     </div>
+  );
+}
+
+/** What the one ticked strategy uses (owner 25-Oct-2026): indicators, checklist, trade rules, backtest notes. */
+function StrategyCard({ k }: { k: StrategyKey }) {
+  const i = STRATEGY_INFO[k];
+  return (
+    <section className="card">
+      <div className="card-head"><h3 className="card-title">{k} · what it uses</h3><span className="muted">{i.chart}</span></div>
+      <p className="bt-info-sum">{i.summary}</p>
+      <div className="bt-info">
+        <div>
+          <h4 className="bt-info-h">Indicators</h4>
+          <ul className="bt-info-list">{i.indicators.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
+        <div>
+          <h4 className="bt-info-h">Checklist (call side; puts mirror it)</h4>
+          <ul className="bt-info-list">{i.checklist.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
+        <div>
+          <h4 className="bt-info-h">Trade</h4>
+          <ul className="bt-info-list">{i.trade.map((x) => <li key={x}>{x}</li>)}</ul>
+          <h4 className="bt-info-h">In this backtest</h4>
+          <p className="bt-info-note">{i.backtest}</p>
+        </div>
+      </div>
+      <p className="card-foot">Full rules: {i.doc} in the app folder.</p>
+    </section>
   );
 }

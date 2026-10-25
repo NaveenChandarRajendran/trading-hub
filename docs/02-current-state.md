@@ -133,7 +133,7 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   "stop + target" button. Dashboard: three account cards with balances.
 - Backtest (owner 25-Oct-2026, `docs/backtest.md`): 5 years of Dhan data (index minutes, rolling option prices),
   `bt_data.py` + `backtest.py`, the live rule functions reused; MegaBull rules and Dharani tested, Trend not (no past
-  chain OI). Backtest page in the app (last in the sidebar, below Paper Trading): strategy chips, totals, profit curve (series tokens
+  chain OI). Backtest page in the app (last in the sidebar, below Paper Trading): strategy chips (one ticked = a card with its indicators, checklist and trade rules, `config/strategyInfo.ts`), totals, profit curve (series tokens
   --series-1..4), year / month tables, exits, trades + CSV, Run button (after market hours). Also `Run_Backtest.bat`.
 - Names and indices (owner 25-Oct-2026, ADR 0007): **4 Pillar Rules**, **SuperTrend Rules** (MegaBull account),
   **Dharani Rules**, **Trend Rules** (app accounts). All four run on NIFTY and BANKNIFTY from 26-Oct: rule ids
