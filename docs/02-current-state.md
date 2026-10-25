@@ -133,7 +133,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   "stop + target" button. Dashboard: three account cards with balances.
 - Backtest (owner 25-Oct-2026, `docs/backtest.md`): 5 years of Dhan data (index minutes, rolling option prices),
   `bt_data.py` + `backtest.py`, the live rule functions reused; MegaBull rules and Dharani tested, Trend not (no past
-  chain OI). One click: `Run_Backtest.bat`.
+  chain OI). Backtest page in the app (home group): strategy chips, totals, profit curve (series tokens
+  --series-1..4), year / month tables, exits, trades + CSV, Run button (after market hours). Also `Run_Backtest.bat`.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 

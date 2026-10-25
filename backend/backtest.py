@@ -300,8 +300,17 @@ def run(today=None, log=print, symbols=("NIFTY", "BANKNIFTY")):
         dh = dharani_trades(sym, m, Book(sym))
         log(f"  Dharani: {len(dh)} trades")
         trades += mb + dh
-    res = {"ranAt": datetime.now(IST).isoformat(timespec="seconds"), "slippagePct": SLIPPAGE * 100, "lots": LOT,
-           "summary": summary(trades), "summaryNoSlippage": summary([{**t, "net0": t["gross"] - t["charges"]} for t in trades], "net0")}
+    keep = ("strategy", "index", "day", "signal", "side", "strike", "entry", "exit", "reason", "kind", "gross", "charges",
+            "slippage", "net", "entry_ts", "exit_ts")
+    span = {}
+    for sym in symbols:
+        m = bt_data.index_minutes(sym)
+        if m["t"]:
+            span[sym] = [str(datetime.fromtimestamp(m["t"][0], IST).date()), str(datetime.fromtimestamp(m["t"][-1], IST).date())]
+    res = {"ranAt": datetime.now(IST).isoformat(timespec="seconds"), "slippagePct": SLIPPAGE * 100, "lots": LOT, "dataSpan": span,
+           "notTested": {"Trend": "Needs minute-by-minute OI of the whole option chain, which past data does not have."},
+           "summary": summary(trades), "summaryNoSlippage": summary([{**t, "net0": t["gross"] - t["charges"]} for t in trades], "net0"),
+           "trades": [{k: t[k] for k in keep} for t in sorted(trades, key=lambda t: t["entry_ts"])]}
     os.makedirs(bt_data.ROOT, exist_ok=True)
     json.dump(res, open(os.path.join(bt_data.ROOT, "results.json"), "w", encoding="utf-8"), indent=1, default=str)
     with open(os.path.join(bt_data.ROOT, "trades.csv"), "w", newline="", encoding="utf-8") as f:

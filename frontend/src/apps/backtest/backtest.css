@@ -1,0 +1,27 @@
+/* Backtest page (scoped to .bt). Tokens only. */
+.bt { display: flex; flex-direction: column; gap: var(--sp-4); }
+.bt .bt-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.bt .bt-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--control-h); padding: 0 var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2);
+  font-size: var(--fs-sm); cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.bt .bt-chip:hover:not(:disabled) { border-color: var(--border-strong); }
+.bt .bt-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 500; }
+.bt .bt-chip:disabled { color: var(--text-3); cursor: not-allowed; border-style: dashed; }
+.bt .bt-swatch { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: var(--sp-1); vertical-align: middle; }
+.bt .bt-swatch.s1 { background: var(--series-1); }
+.bt .bt-swatch.s2 { background: var(--series-2); }
+.bt .bt-swatch.s3 { background: var(--series-3); }
+.bt .bt-swatch.s4 { background: var(--series-4); }
+.bt .bt-progress { width: 100%; height: 4px; margin-top: var(--sp-3); accent-color: var(--accent); }
+.bt .bt-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-4); }
+.bt .bt-chart { height: 380px; }
+.bt .bt-exits { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin: var(--sp-3) 0 0; color: var(--text-2); }
+.bt .bt-months { display: flex; flex-direction: column; gap: var(--sp-1); overflow-x: auto; }
+.bt .bt-mrow { display: grid; grid-template-columns: 48px repeat(12, minmax(28px, 1fr)) 96px; gap: var(--sp-1); align-items: center; }
+.bt .bt-mrow.head span { font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
+.bt .bt-mrow > span:first-child { font-size: var(--fs-sm); color: var(--text-2); }
+.bt .bt-mrow > .num { text-align: right; font-size: var(--fs-sm); }
+.bt .bt-cell { width: auto; height: 22px; border-radius: var(--r-sm); }
+.bt .bt-scroll { max-height: 420px; overflow: auto; }

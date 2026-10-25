@@ -85,8 +85,9 @@ def _call(client, path, body, tries=4):
                 time.sleep(5)
 
 
-def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print):
-    """Fills the cache. Returns (calls made, windows skipped as cached)."""
+def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print, progress=None, stop=None):
+    """Fills the cache. progress(done, total) after each piece; stop() -> True ends early.
+    Returns (calls made, windows skipped as cached)."""
     calls = skipped = 0
     end = today  # up to yesterday (end exclusive)
     jobs = []
@@ -104,6 +105,10 @@ def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print):
                         jobs.append(("opt", sym, a, b, side, off))
     total = len(jobs)
     for n, (kind, sym, frm, to, side, off) in enumerate(jobs, 1):
+        if stop and stop():
+            break
+        if progress:
+            progress(n, total)
         name = f"idx_{sym}_{frm}" if kind == "idx" else f"opt_{sym}_{side}_{off}_{frm}"
         if to < today and os.path.exists(_path(name)):
             skipped += 1

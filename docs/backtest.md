@@ -1,7 +1,10 @@
 # Backtest (5 years, Dhan data)
 
 Owner's request 25-Oct-2026: test the auto rules on past data, not only on the paper trades until 15 Nov.
-Code: `backend/bt_data.py` (download + cache), `backend/backtest.py` (engine, report). One click: `Run_Backtest.bat`.
+Code: `backend/bt_data.py` (download + cache), `backend/backtest.py` (engine, report), `backend/bt_service.py`
+(GET /api/backtest/status, POST /api/backtest/run, GET /api/backtest/results). Screen: the **Backtest** page in the app
+(`frontend/src/apps/backtest`): tick strategies, see totals, profit curve, year by year, month by month, exits and
+trades; "Run backtest" works after market hours only. Command line alternative: `Run_Backtest.bat`.
 READ ONLY: market data only, no orders.
 
 ## Data (Dhan Data API, checked 25-Oct-2026)
