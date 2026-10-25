@@ -1,0 +1,59 @@
+/* PCR Trend Analysis: layout only. Colors and sizes come from tokens. */
+.pcr { display: flex; flex-direction: column; gap: var(--sp-4); }
+.pcr .muted { color: var(--text-3); font-size: var(--fs-sm); }
+.pcr .pcr-head { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-4); color: var(--text-2); }
+.pcr .pcr-head b { color: var(--text); font-weight: 600; }
+
+.pcr .pcr-settings { position: relative; }
+.pcr .pcr-pop {
+  position: absolute; right: 0; top: calc(100% + var(--sp-1)); z-index: 10; min-width: 240px;
+  display: flex; flex-direction: column; gap: var(--sp-3); box-shadow: var(--shadow-pop);
+}
+
+.pcr .pcr-pastes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); align-items: start; }
+@media (max-width: 1000px) { .pcr .pcr-pastes { grid-template-columns: 1fr; } }
+.pcr textarea { width: 100%; min-height: 110px; resize: vertical; font-family: var(--font-mono); font-size: var(--fs-sm); }
+.pcr .pcr-hint { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+.pcr .pcr-hint + .alert { margin-top: var(--sp-2); }
+.pcr .pcr-done { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+.pcr .pcr-done-text { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); }
+.pcr .pcr-done-text b { color: var(--text); font-weight: 600; font-size: var(--fs-md); }
+.pcr .pcr-done-text .up { color: var(--up); font-weight: 600; }
+.pcr .pcr-stack { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* verdict strip: three quiet tiles + the one solid element on the screen */
+.pcr .pcr-strip { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+@media (max-width: 760px) { .pcr .pcr-strip { grid-template-columns: 1fr 1fr; } }
+.pcr .pcr-verdict {
+  border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+}
+.pcr .pcr-verdict.down { background: var(--down); border-color: var(--down); color: var(--on-accent); }
+.pcr .pcr-verdict.up { background: var(--up); border-color: var(--up); color: var(--on-accent); }
+.pcr .pcr-verdict.pending { background: var(--surface); color: var(--text-3); }
+.pcr .pcr-verdict-label, .pcr .pcr-verdict-rule { font-size: var(--fs-sm); opacity: 0.85; }
+.pcr .pcr-verdict-value { font-size: var(--fs-xl); font-weight: 600; }
+
+/* source grid: strikes as columns, label column pinned */
+.pcr .card-head .card-title { margin: 0; }
+.pcr .pcr-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+.pcr .card-head ~ .alert { margin-bottom: var(--sp-3); }
+.pcr .pcr-scroll { overflow-x: auto; }
+.pcr table.pcr-grid { width: auto; min-width: 100%; }
+.pcr table.pcr-grid th, .pcr table.pcr-grid td { white-space: nowrap; }
+.pcr table.pcr-grid thead th { color: var(--text-3); font-weight: 500; font-size: var(--fs-sm); background: var(--surface-2); }
+.pcr table.pcr-grid th[scope='row'] {
+  position: sticky; left: 0; z-index: 1; text-align: left; font-weight: 500; color: var(--text-2); background: var(--surface);
+  padding-right: var(--sp-4);
+}
+.pcr table.pcr-grid thead th:first-child { position: sticky; left: 0; z-index: 2; }
+.pcr table.pcr-grid th[scope='row'].ce { background: var(--call-soft); }
+.pcr table.pcr-grid th[scope='row'].pe { background: var(--put-soft); }
+.pcr table.pcr-grid .atm { background: var(--accent-soft); }
+.pcr table.pcr-grid thead th.atm { color: var(--accent); font-weight: 600; }
+.pcr table.pcr-grid .tot { position: sticky; right: 0; z-index: 1; font-weight: 600; border-left: 1px solid var(--border-strong); background: var(--surface); }
+.pcr table.pcr-grid thead th.tot { background: var(--surface-2); }
+.pcr table.pcr-grid tr.pcr-row td, .pcr table.pcr-grid tr.pcr-row th { border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.pcr table.pcr-grid td.up { color: var(--up); }
+.pcr table.pcr-grid td.down { color: var(--down); }
+.pcr .pcr-foot { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
