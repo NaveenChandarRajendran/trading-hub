@@ -70,3 +70,16 @@ def test_traditional_pivots():
     assert math.isclose(p["P"], 54839.833333, abs_tol=1e-4)
     assert math.isclose(p["R1"], 2 * p["P"] - 54459.35)
     assert math.isclose(p["S1"], 2 * p["P"] - 55134.45)
+
+
+def test_williams_r_cci_cpr_by_hand():
+    from sig_indicators import cci, cpr, williams_r
+    # 3-candle Williams %R: highest high 12, lowest low 8, close 11 -> (12-11)/(12-8) x -100 = -25
+    assert williams_r([10, 12, 11], [9, 8, 10], [9.5, 11, 11], 3) == [None, None, -25.0]
+    # CCI(3) with typical prices 10, 11, 12: mean 11, mean deviation 2/3 -> (12-11)/(0.015 x 2/3) = 100
+    out = cci([10, 11, 12], [10, 11, 12], [10, 11, 12], 3)
+    assert out[:2] == [None, None] and round(out[2], 6) == 100.0
+    # CPR from H 110, L 90, C 100: P 100, BC 100, TC 100 -> width 0; and from H 120 L 90 C 111: P 107, BC 105, TC 109
+    assert cpr(110, 90, 100)["widthPct"] == 0
+    c = cpr(120, 90, 111)
+    assert (c["P"], c["BC"], c["TC"]) == (107.0, 105.0, 109.0) and round(c["widthPct"], 4) == round(4 / 107 * 100, 4)

@@ -41,6 +41,14 @@ D2 = "dharaniV2"
 RULE_ACCOUNT = {TH: TH, MB: MB, D2: MB}
 
 
+def _entry_rsi(state, side):
+    """RSI at entry: the 5-minute state's RSI, or Dharani v2's (index for a call, futures for a put)."""
+    if "ind" in state:
+        return state["ind"]["rsi"][state["i"]]
+    src = state.get("idx") if side == "CE" else state.get("fut")
+    return ((src or {}).get("ind") or {}).get("rsi")
+
+
 def slot_of(t):
     return t.get("slot") or t["account"]  # trades saved before slots existed: slot = account
 
@@ -437,7 +445,10 @@ class AutoTrader:
         cfg = self.cfg[account]
         try:
             exp = self._try(account, "expiry list", lambda: self._expiry(acc, symbol))
-            inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, state["spot"], side))
+            ref = state["spot"]
+            if result.get("premiumNear"):  # Dharani v2: the strike whose premium is nearest the target (teacher: 250)
+                ref = self._strike_by_premium(symbol, exp, side, result["premiumNear"]) or ref
+            inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, ref, side))
             if account == TH:
                 acc.paper.watch([i for v in self._watch.values() for i in v] + [inst["id"]] + self.shadow_ids())
                 for _ in range(30):  # up to 15 s for the first price
@@ -461,7 +472,8 @@ class AutoTrader:
             entry_id, fill, qty = acc.buy(inst, lots)  # never retried: a second BUY could double the position
             self.state["unknown"].pop(account, None)
             stop = floor_tick(fill * (1 - cfg["stopPct"] / 100))
-            target = ceil_tick(fill * (1 + cfg["targetPct"] / 100))
+            # Dharani v2 has no fixed target: it exits when price closes back through SuperTrend (dharani_v2_exit)
+            target = None if result.get("noTarget") else ceil_tick(fill * (1 + cfg["targetPct"] / 100))
             trade = {
                 "id": f"{slot}-{symbol}-{self.clock():%H%M%S}", "account": account, "slot": slot, "symbol": symbol, "rule": result["name"],
                 "setup": result.get("setup"), "grade": result.get("grade") or "n.a.", "side": side, "instrument": inst,
@@ -469,7 +481,7 @@ class AutoTrader:
                 "entryPrice": fill, "stop": stop, "target": target, "stopOrderId": None, "status": "open",
                 "high": fill, "low": fill, "signalTime": result.get("at"),
                 "spotAtEntry": state.get("spot"), "invested": round(fill * qty, 2),
-                "rsi": state["ind"]["rsi"][state["i"]], "vix": state.get("vix"), "pcr": state.get("pcr"),
+                "rsi": _entry_rsi(state, side), "vix": state.get("vix"), "pcr": state.get("pcr"),
                 "toiStrength": (state.get("toi") or [{}])[0].get("strengthPct"),
                 "deltaStatus": "not checked", "tags": result.get("tags", []),
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
@@ -689,6 +701,32 @@ class AutoTrader:
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
 
+    def _strike_by_premium(self, symbol, expiry, side, target):
+        """Strike whose last traded premium is nearest `target`, from Dhan's option chain (chain_source is set by the
+        signal service). None if the chain can't be read: the caller falls back to ATM."""
+        src = getattr(self, "chain_source", None)
+        if src is None:
+            return None
+        try:
+            rows = src.chain(symbol, expiry)["rows"]
+        except Exception as e:
+            log.warning("premium-near strike %s %s: %s", symbol, expiry, e)
+            return None
+        legs = [(r["strike"], (r.get(side.lower()) or {}).get("last_price")) for r in rows]
+        legs = [(k, p) for k, p in legs if p]
+        if not legs:
+            return None
+        return min(legs, key=lambda x: (abs(x[1] - target), x[0]))[0]
+
+    def on_candle_v2(self, symbol, state):
+        """Dharani v2 exit check on a completed 3-minute candle: price closed back through SuperTrend."""
+        from sig_dharani_v2 import dharani_v2_exit
+        for t in list(self.state["trades"]):
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == D2:
+                why = dharani_v2_exit(state, t["side"])
+                if why:
+                    threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
+
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]
         key = (slot_of(trade), trade["symbol"])
@@ -757,7 +795,7 @@ class AutoTrader:
                 ltp = None
             if ltp:
                 t["high"], t["low"] = max(t["high"], ltp), min(t["low"], ltp)
-                if ltp >= t["target"]:
+                if t["target"] is not None and ltp >= t["target"]:
                     threading.Thread(target=self._exit, args=(t, "Target"), daemon=True).start()
                     continue
             poll = 2 if t["account"] == TH else 10
@@ -849,7 +887,7 @@ class AutoTrader:
             "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]],
             "rule": f"{t['rule']} ({t['setup']})" if t.get("setup") else t["rule"],
             "grade": t["grade"], "side": t["side"], "instrument": t["instrument"]["name"], "entry_time": t["entryTime"],
-            "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"],
+            "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"] if t["target"] is not None else "SuperTrend exit",
             "exit_time": t.get("exitTime"), "exit_price": t.get("exitPrice"), "exit_reason": t.get("exitReason"),
             "gross_pnl": t.get("grossPnl"), "charges": t.get("charges"), "net_pnl": t.get("netPnl"),
             "highest_premium": t["high"], "lowest_premium": t["low"],

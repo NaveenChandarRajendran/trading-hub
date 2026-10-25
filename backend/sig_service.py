@@ -35,7 +35,8 @@ from dhan_client import INDIA_VIX
 from sig_indicators import IST
 from sig_market import build_state
 from sig_oi import trending_view, votes
-from sig_rules import PASS, dharani_v2_rule, megabull_rule, trading_hub_rule
+from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
+from sig_rules import PASS, megabull_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
 SYMBOLS = ("NIFTY", "BANKNIFTY")
@@ -97,6 +98,9 @@ class MarketSources:
     def candles(self, symbol, max_age=None):
         return self._candles.get(symbol, max_age=max_age)
 
+    def candles_v2(self, symbol, max_age=None, n=4):
+        return self._candles.get_with_futures(symbol, max_age=max_age, n=n)
+
     def expiry(self, symbol):
         return self._exp(symbol)[0]
 
@@ -120,6 +124,8 @@ class MarketSources:
 class SignalService:
     def __init__(self, cfg, sources, trader, clock=lambda: datetime.now(IST), orderflow=None, paper=None):
         self.cfg, self.src, self.trader, self.clock = cfg, sources, trader, clock
+        if trader is not None:
+            trader.chain_source = sources  # Dharani v2 picks its strike by premium from the option chain
         self.orderflow, self.paper = orderflow, paper
         self.lock = threading.RLock()
         self.last = {}  # symbol -> {"at": epoch, "state": ..., "results": {...}, "problems": [...], "source": "watcher"|"page"}
@@ -157,13 +163,83 @@ class SignalService:
         state, problems = build_state(symbol, now, self.src) if max_age is None else self._fresh_state(symbol, now, max_age)
         results = {}
         if state:
-            results = {"tradingHub": trading_hub_rule(state), "megabull": megabull_rule(state), "dharaniV2": dharani_v2_rule(state)}
-        rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results, "problems": problems, "source": source}
+            results = {"tradingHub": trading_hub_rule(state), "megabull": megabull_rule(state)}
+        v2, v2_problems = self._v2(symbol, now, max_age)
+        if state:
+            results["dharaniV2"] = dharani_v2_rule(v2) if v2 else None
+        rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
+               "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
             if source == "watcher" or symbol not in self.last or self.last[symbol]["source"] != "watcher" \
                     or (state and self.last[symbol]["state"] and state["signalTime"] != self.last[symbol]["state"]["signalTime"]):
                 self.last[symbol] = rec
         return rec
+
+    def v2_symbols(self):
+        c = self.cfg.get("dharaniV2", {})
+        return c.get("symbols", ["NIFTY"]) if c.get("enabled", True) else []
+
+    def _v2(self, symbol, now, max_age=None):
+        """Dharani v2 state on 3-minute candles, or (None, []) for an index it does not trade."""
+        if symbol not in self.v2_symbols():
+            return None, []
+        try:
+            return build_state_v2(symbol, now, self.src, max_age=max_age)
+        except Exception as e:
+            log.exception("dharani v2 state")
+            return None, [f"{symbol} Dharani v2: {e}"]
+
+    def run_v2(self):
+        """One 3-minute cycle: Dharani v2 exits and entries (NIFTY by default)."""
+        self.heartbeat = self.clock()
+        for symbol in self.v2_symbols():
+            st, problems = None, []
+            for attempt in range(3):  # Dhan's last minute can trail: retry twice, 15 s apart
+                st, problems = self._v2(symbol, self.clock(), max_age=15)
+                if st and st.get("complete"):
+                    break
+                if attempt < 2:
+                    time.sleep(15)
+            if not st:
+                continue
+            r = dharani_v2_rule(st)
+            with self.lock:
+                rec = self.last.get(symbol)
+                if rec and rec.get("results") is not None:
+                    rec["results"]["dharaniV2"], rec["v2"] = r, st
+            action = ""
+            if self.trader:
+                self.trader.on_candle_v2(symbol, st)
+                if r["go"]:
+                    why = self.trader.on_signal(r, st)
+                    action = why or "not sent"
+                    if why != "Entry sent" and not st["positions"].get("dharaniV2"):
+                        self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+                else:
+                    self.skips[("dharaniV2", self._skip_reason(r))] += 1
+                    setup = skipped_setup(r)
+                    if setup and not st["positions"].get("dharaniV2"):
+                        self.trader.add_skip(r, st, *setup)
+            self.write_v2_row(symbol, st, r, action, problems)
+
+    def write_v2_row(self, symbol, st, r, action, problems):
+        path = os.path.join(self.cfg["logDir"], f"dharani_v2_{self.clock().date().isoformat()}.csv")
+        idx, fut = st["idx"], st.get("fut") or {}
+        row = {"time": self.clock().strftime("%H:%M:%S"), "index": symbol, "candle": st["signalTime"],
+               "index_close": idx["bar"]["close"], "futures_close": (fut.get("bar") or {}).get("close"),
+               "side": r["side"], "score": f"{r['score']} of {r['total']}", "go": r["go"],
+               "checks": "; ".join(f"{c['id']}={c['state']} ({c['detail']})" for c in r["checks"]),
+               "blocked": "; ".join(r["blocked"]), "action": action, "problems": "; ".join(problems)}
+        try:
+            os.makedirs(self.cfg["logDir"], exist_ok=True)
+            new = not os.path.exists(path)
+            with open(path, "a", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(row))
+                if new:
+                    w.writeheader()
+                w.writerow(row)
+        except OSError as e:
+            log.warning("could not write %s: %s", path, e)
 
     def _fresh_state(self, symbol, now, max_age):
         class Fresh:  # same sources, but candles no older than max_age
@@ -204,7 +280,7 @@ class SignalService:
             if self.trader:
                 self.trader.update_watch(symbol, st.get("expiry"), st.get("spot"))
                 self.trader.on_candle(symbol, st)
-                for key in ("tradingHub", "megabull", "dharaniV2"):
+                for key in ("tradingHub", "megabull"):  # Dharani v2 runs on its own 3-minute cycle (run_v2)
                     r = rec["results"][key]
                     if r["go"]:
                         why = self.trader.on_signal(r, st)
@@ -428,12 +504,12 @@ class SignalService:
 
     # ---------- loop ----------
     def _next_run(self, now):
-        """The next 5-minute candle close + the delay (e.g. 10:05:35), strictly after now."""
+        """The next 5-minute or 3-minute candle close + the delay (e.g. 10:03:35, 10:05:35), strictly after now.
+        Both are 09:15-aligned: 5-minute closes at minute % 5 == 0, 3-minute closes at minute % 3 == 0."""
         delay = timedelta(seconds=self.cfg.get("evaluateAfterCloseSeconds", 35))
-        base = now.replace(second=0, microsecond=0)
-        nxt = base - timedelta(minutes=base.minute % 5) + delay
-        while nxt <= now:
-            nxt += timedelta(minutes=5)
+        nxt = now.replace(second=0, microsecond=0) + delay
+        while nxt <= now or not (nxt.minute % 5 == 0 or (self.v2_symbols() and nxt.minute % D2_INTERVAL == 0)):
+            nxt += timedelta(minutes=1)
         return nxt
 
     def _loop(self):
@@ -449,7 +525,10 @@ class SignalService:
             hm = (now.hour, now.minute)
             try:
                 if self.src.market_open() and SESSION[0] < hm <= SESSION[1]:
-                    self.run_once()
+                    if now.minute % 5 == 0:
+                        self.run_once()
+                    if self.v2_symbols() and now.minute % D2_INTERVAL == 0:
+                        self.run_v2()
                     crashes = 0
                 self._end_of_day(now)
                 if hm == (9, 0):
@@ -511,10 +590,11 @@ def skipped_setup(r):
         return None
     by = {c["id"]: c for c in r["checks"]}
     off = [c["label"] for c in r["checks"] if c["state"] != PASS and not c.get("exempt")]
-    if r["rule"] == "dharaniV2":  # SuperTrend on the side and exactly one of the other three conditions missed
-        if by.get("supertrend", {}).get("state") != PASS or r.get("score") != 3 or by.get("window", {}).get("state") != PASS:
+    if r["rule"] == "dharaniV2":  # SuperTrend on the side and exactly one other condition missed
+        if by.get("supertrend", {}).get("state") != PASS or r.get("score") != r.get("total", 0) - 1 \
+                or by.get("window", {}).get("state") != PASS:
             return None
-        return "; ".join(off) or "-", "; ".join(r["blocked"]) or ("All four needed: " + ", ".join(off) + " missed")
+        return "; ".join(off) or "-", "; ".join(r["blocked"]) or (f"All {r.get('total')} needed: " + ", ".join(off) + " missed")
     if r["rule"] == "megabull":
         if by.get("trigger", {}).get("state") != PASS:
             return None

@@ -278,3 +278,37 @@ def test_dharani_v2_has_its_own_slot_but_never_buys_the_option_v1_holds(tmp_path
     assert [tr["slot"] for tr in t.state["trades"]] == ["megabull", "dharaniV2"]
     assert t.positions("NIFTY") == {"megabull": True, "dharaniV2": True}
     assert t.on_signal({**v2, "side": "CE"}, STATE) == "Position already open on this index"
+
+
+def test_dharani_v2_entry_has_no_target_picks_strike_by_premium_and_exits_on_supertrend(tmp_path):
+    acc, alerts = FakeMegaBull(), []
+    cfg = {**CFG, "logDir": str(tmp_path), "megabull": {"lots": 1, "stopPct": 10, "targetPct": 20},
+           "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
+    t = AutoTrader(cfg, [acc], clock=Clock(), alert=lambda k, m: alerts.append((k, m)),
+                   state_path=os.path.join(str(tmp_path), "state.json"))
+
+    class Chain:
+        def chain(self, symbol, expiry):
+            return {"rows": [{"strike": 25000, "ce": {"last_price": 410}}, {"strike": 25200, "ce": {"last_price": 262}},
+                             {"strike": 25300, "ce": {"last_price": 205}}]}
+    t.chain_source = Chain()
+    t.set_auto(True)
+    v2 = {**GO, "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "symbol": "NIFTY", "side": "CE",
+          "noTarget": True, "premiumNear": 250}
+    st = {"spot": 25012.0, "idx": {"bar": {"close": 25150}, "ind": {"st_line": 25050, "rsi": 74}}, "fut": None}
+    assert t.on_signal(v2, st) == "Entry sent"
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    assert tr["instrument"]["strike"] == 25200  # premium 262 is nearest 250
+    assert tr["target"] is None and tr["stop"] == 90.0 and tr["rsi"] == 74 and tr["slot"] == "dharaniV2"
+    acc.ltp_value = 500.0
+    t._last_poll = {}
+    t.tick()
+    assert tr["status"] == "open"  # no fixed target to hit
+    st["idx"]["bar"]["close"] = 25040  # closed below the SuperTrend line
+    t.on_candle_v2("NIFTY", st)
+    for _ in range(100):
+        if tr["status"] == "closed":
+            break
+        time.sleep(0.05)
+    assert tr["status"] == "closed" and tr["exitReason"] == "Signal"

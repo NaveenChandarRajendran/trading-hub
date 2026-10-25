@@ -46,18 +46,18 @@ export function DayLevels({ rows }: { rows: (ContextRow | null)[] }) {
 }
 
 // ---------------------------------------------------------------- rule cards
-export function RuleCard({ r, fallbackName }: { r: RuleResult | undefined; fallbackName: string }) {
+export function RuleCard({ r, fallbackName, emptyNote }: { r: RuleResult | null | undefined; fallbackName: string; emptyNote?: string }) {
   if (!r) {
     return (
       <section className="card db-rule">
         <div className="card-head"><h3 className="card-title">{fallbackName}</h3><Pill tone="neutral">Waiting</Pill></div>
-        <p className="db-muted">No completed 5-minute candle yet.</p>
+        <p className="db-muted">{emptyNote ?? 'No completed 5-minute candle yet.'}</p>
       </section>
     );
   }
   const side = r.side === 'PE' ? 'put' : 'call';
   const title = r.rule === 'tradingHub' ? `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`
-    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (video rules, ${side}: ${r.score ?? 0} of 4)` : `${r.name} · ${NAMES[r.symbol]} (${r.setup})`;
+    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (3-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0})` : `${r.name} · ${NAMES[r.symbol]} (${r.setup})`;
   return (
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>
       <div className="card-head">
