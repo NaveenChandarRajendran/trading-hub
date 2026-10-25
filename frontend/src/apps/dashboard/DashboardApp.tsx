@@ -221,6 +221,8 @@ export default function DashboardApp() {
       {/* 4. rule cards */}
       <div className="db-three">
         <RuleCard r={s?.rules.megabull} fallbackName="MEGABULL RULE" />
+        <RuleCard r={s?.rules.dharaniV2} fallbackName="DHARANI RULE"
+          emptyNote="No completed 3-minute candle yet." />
         <RuleCard r={s?.rules.tradingHub} fallbackName="TRADING HUB RULE" />
         <OrderFlowCard f={s?.orderFlow} symbol={d.symbol} />
       </div>
@@ -234,20 +236,26 @@ export default function DashboardApp() {
       </div>
       <SrCard sr={s?.sr ?? null} components={compText} />
 
-      {/* 6. paper trading, both accounts (the owner never needs to open MegaBull) */}
+      {/* 6. paper trading: MegaBull (strict rules) + the app's own Rs 1 lakh accounts per strategy (Trend, Dharani) */}
       <div className="db-section-head">
         <h3 className="card-title">Paper trading · {d.symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty'}</h3>
         <AutoSwitch auto={s?.auto ?? null} busy={sig.busy} notice={sig.notice} onAuto={(on) => void sig.toggleAuto(on)} />
       </div>
-      <div className="db-two">
+      <div className="db-accts">
         <AccountCard account="megabull" auto={s?.auto ?? null} symbol={d.symbol} ltp={d.optionLtp} now={now} busy={sig.busy}
           onExit={(id) => void sig.exitTrade(id)} />
         <AccountCard account="tradingHub" auto={s?.auto ?? null} symbol={d.symbol} ltp={d.optionLtp} now={now} busy={sig.busy}
-          onExit={(id) => void sig.exitTrade(id)}>
+          onExit={(id) => void sig.exitTrade(id)} />
+        <AccountCard account="dharani" auto={s?.auto ?? null} symbol={d.symbol} ltp={d.optionLtp} now={now} busy={sig.busy}
+          onExit={(id) => void sig.exitTrade(id)} />
+      </div>
+      {(s?.paperPositions ?? []).length > 0 && (
+        <section className="card">
+          <div className="card-head"><h3 className="card-title">Your own paper trades (Paper Trading screen)</h3></div>
           <ManualPositions positions={s?.paperPositions ?? []} ltp={d.optionLtp} busy={sig.busy} onBracket={(id) => void sig.bracket(id)}
             onExitManual={(id) => void paperApi.exit(id).then(() => sig.reload())} />
-        </AccountCard>
-      </div>
+        </section>
+      )}
       <TodayTrades auto={s?.auto ?? null} shadow={s?.shadow ?? null} />
 
       {/* 7. snapshot log */}

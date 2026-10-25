@@ -16,9 +16,11 @@ export interface Check {
 }
 
 export interface RuleResult {
-  rule: 'tradingHub' | 'megabull';
-  name: string; // "TRADING HUB RULE" | "MEGABULL RULE"
-  setup?: string; // "4 Pillar" | "Dharani"
+  rule: 'tradingHub' | 'megabull' | 'dharaniV2';
+  name: string; // "TRADING HUB RULE" | "MEGABULL RULE" | "DHARANI v2 RULE"
+  setup?: string; // "4 Pillar" | "Dharani v1" | "Dharani v2"
+  score?: number; // Dharani v2: how many of its conditions are true (call 5, put 8)
+  total?: number;
   account: string;
   symbol: string;
   side: 'CE' | 'PE';
@@ -96,7 +98,9 @@ export interface Instrument {
 
 export interface AutoTrade {
   id: string;
-  account: 'tradingHub' | 'megabull';
+  account: AccountKey | 'manual';
+  slot?: 'tradingHub' | 'megabull' | 'dharaniV2'; // the rule that took the trade
+  setup?: string;
   symbol: string;
   rule: string;
   grade: string;
@@ -106,7 +110,7 @@ export interface AutoTrade {
   entryTime: string;
   entryPrice: number;
   stop: number;
-  target: number;
+  target: number | null; // null: no fixed target (Dharani exits on SuperTrend)
   status: 'open' | 'closed';
   high: number;
   low: number;
@@ -122,6 +126,19 @@ export interface AutoTrade {
   invested?: number;
 }
 
+/** Auto accounts (owner, 25-Oct-2026): MegaBull = the strict rules; the app's own paper trading = one Rs 1 lakh
+ * account per strategy (Trend, Dharani). */
+export type AccountKey = 'tradingHub' | 'megabull' | 'dharani';
+
+export interface BookFunds {
+  startingCapital: number;
+  openingBalance: number; // start of today
+  realized: number; // today
+  charges: number; // today
+  unrealized?: number;
+  available: number;
+}
+
 export interface AccountStatus {
   name: string;
   available: boolean;
@@ -131,12 +148,13 @@ export interface AccountStatus {
   netToday: number;
   maxTrades: number;
   maxLoss: number;
+  funds?: BookFunds | null; // the app's own accounts (Trend, Dharani)
 }
 
 export interface AutoStatus {
   auto: boolean;
   day: string;
-  accounts: Record<'tradingHub' | 'megabull', AccountStatus>;
+  accounts: Partial<Record<AccountKey, AccountStatus>>;
   open: AutoTrade[];
   today: AutoTrade[];
 }
@@ -153,7 +171,7 @@ export interface SignalsState {
     problems: string[]; watcher: { running: boolean; lastRun: string | null; late: boolean };
   };
   context: (ContextRow | null)[];
-  rules: { tradingHub?: RuleResult; megabull?: RuleResult };
+  rules: { tradingHub?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult | null };
   trendingOi: ToiRow[];
   oiViews: {
     dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null;
@@ -182,7 +200,7 @@ export interface FlowSummary {
   usedInRules: boolean;
 }
 
-export const fetchAccountOrders = (account: 'tradingHub' | 'megabull') =>
+export const fetchAccountOrders = (account: AccountKey) =>
   getJson<{ account: string; rows: Record<string, unknown>[] }>(API_BASE, `/api/autopaper/orders?account=${account}`);
 export const shadowCsvNote = 'shadow_skips.csv in the Auto Paper Logs folder';
 

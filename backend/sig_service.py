@@ -35,6 +35,7 @@ from dhan_client import INDIA_VIX
 from sig_indicators import IST
 from sig_market import build_state
 from sig_oi import trending_view, votes
+from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
 from sig_rules import PASS, megabull_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
@@ -53,6 +54,7 @@ SNAPSHOT_FIELDS = [
     "dhan_oi_verdict", "dhan_oi_average", "sensibull_verdict", "sensibull_average", "oi_agreement",
     "oi_r1", "oi_s1", "biggest_call_wall", "biggest_put_wall",
     "th_side", "th_go", "th_grade", "th_blocked", "th_checks", "mb_setup", "mb_side", "mb_go", "mb_blocked", "mb_checks",
+    "d2_side", "d2_go", "d2_score", "d2_blocked", "d2_checks",
     "est_delta", "est_cumulative_delta", "dext_typed", "dext_match",
     "auto", "action", "note",
 ]
@@ -96,6 +98,9 @@ class MarketSources:
     def candles(self, symbol, max_age=None):
         return self._candles.get(symbol, max_age=max_age)
 
+    def candles_v2(self, symbol, max_age=None, n=4):
+        return self._candles.get_with_futures(symbol, max_age=max_age, n=n)
+
     def expiry(self, symbol):
         return self._exp(symbol)[0]
 
@@ -119,6 +124,8 @@ class MarketSources:
 class SignalService:
     def __init__(self, cfg, sources, trader, clock=lambda: datetime.now(IST), orderflow=None, paper=None):
         self.cfg, self.src, self.trader, self.clock = cfg, sources, trader, clock
+        if trader is not None:
+            trader.chain_source = sources  # Dharani v2 picks its strike by premium from the option chain
         self.orderflow, self.paper = orderflow, paper
         self.lock = threading.RLock()
         self.last = {}  # symbol -> {"at": epoch, "state": ..., "results": {...}, "problems": [...], "source": "watcher"|"page"}
@@ -157,12 +164,85 @@ class SignalService:
         results = {}
         if state:
             results = {"tradingHub": trading_hub_rule(state), "megabull": megabull_rule(state)}
-        rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results, "problems": problems, "source": source}
+        v2, v2_problems = self._v2(symbol, now, max_age)
+        if state:
+            results["dharaniV2"] = dharani_v2_rule(v2) if v2 else None
+        rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
+               "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
             if source == "watcher" or symbol not in self.last or self.last[symbol]["source"] != "watcher" \
                     or (state and self.last[symbol]["state"] and state["signalTime"] != self.last[symbol]["state"]["signalTime"]):
                 self.last[symbol] = rec
         return rec
+
+    def v2_symbols(self):
+        c = self.cfg.get("dharaniV2", {})
+        return c.get("symbols", ["NIFTY", "BANKNIFTY"]) if c.get("enabled", True) else []
+
+    def _v2(self, symbol, now, max_age=None):
+        """Dharani v2 state on 3-minute candles, or (None, []) for an index it does not trade."""
+        if symbol not in self.v2_symbols():
+            return None, []
+        try:
+            st, problems = build_state_v2(symbol, now, self.src, max_age=max_age)
+            if st:
+                st["premiumNear"] = (self.cfg.get("dharaniV2", {}).get("premiumNear") or {}).get(symbol)
+            return st, problems
+        except Exception as e:
+            log.exception("dharani v2 state")
+            return None, [f"{symbol} Dharani v2: {e}"]
+
+    def run_v2(self):
+        """One 3-minute cycle: Dharani v2 exits and entries (NIFTY and BANKNIFTY by default)."""
+        self.heartbeat = self.clock()
+        for symbol in self.v2_symbols():
+            st, problems = None, []
+            for attempt in range(3):  # Dhan's last minute can trail: retry twice, 15 s apart
+                st, problems = self._v2(symbol, self.clock(), max_age=15)
+                if st and st.get("complete"):
+                    break
+                if attempt < 2:
+                    time.sleep(15)
+            if not st:
+                continue
+            r = dharani_v2_rule(st)
+            with self.lock:
+                rec = self.last.get(symbol)
+                if rec and rec.get("results") is not None:
+                    rec["results"]["dharaniV2"], rec["v2"] = r, st
+            action = ""
+            if self.trader:
+                self.trader.on_candle_v2(symbol, st)
+                if r["go"]:
+                    why = self.trader.on_signal(r, st)
+                    action = why or "not sent"
+                    if why != "Entry sent" and not st["positions"].get("dharaniV2"):
+                        self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+                else:
+                    self.skips[("dharaniV2", self._skip_reason(r))] += 1
+                    setup = skipped_setup(r)
+                    if setup and not st["positions"].get("dharaniV2"):
+                        self.trader.add_skip(r, st, *setup)
+            self.write_v2_row(symbol, st, r, action, problems)
+
+    def write_v2_row(self, symbol, st, r, action, problems):
+        path = os.path.join(self.cfg["logDir"], f"dharani_v2_{self.clock().date().isoformat()}.csv")
+        idx, fut = st["idx"], st.get("fut") or {}
+        row = {"time": self.clock().strftime("%H:%M:%S"), "index": symbol, "candle": st["signalTime"],
+               "index_close": idx["bar"]["close"], "futures_close": (fut.get("bar") or {}).get("close"),
+               "side": r["side"], "score": f"{r['score']} of {r['total']}", "go": r["go"],
+               "checks": "; ".join(f"{c['id']}={c['state']} ({c['detail']})" for c in r["checks"]),
+               "blocked": "; ".join(r["blocked"]), "action": action, "problems": "; ".join(problems)}
+        try:
+            os.makedirs(self.cfg["logDir"], exist_ok=True)
+            new = not os.path.exists(path)
+            with open(path, "a", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(row))
+                if new:
+                    w.writeheader()
+                w.writerow(row)
+        except OSError as e:
+            log.warning("could not write %s: %s", path, e)
 
     def _fresh_state(self, symbol, now, max_age):
         class Fresh:  # same sources, but candles no older than max_age
@@ -203,11 +283,15 @@ class SignalService:
             if self.trader:
                 self.trader.update_watch(symbol, st.get("expiry"), st.get("spot"))
                 self.trader.on_candle(symbol, st)
-                for key in ("tradingHub", "megabull"):
+                for key in ("tradingHub", "megabull"):  # Dharani v2 runs on its own 3-minute cycle (run_v2)
                     r = rec["results"][key]
                     if r["go"]:
                         why = self.trader.on_signal(r, st)
                         action += f"{key}: {why or 'not sent'}; "
+                        if why != "Entry sent" and not st["positions"].get(key):
+                            # a GO the account could not take (MegaBull still off, Auto OFF, a limit): track it in the
+                            # shadow log so the rule's results are not lost (owner: MegaBull setups go to the shadow log)
+                            self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
                     else:
                         self.skips[(key, self._skip_reason(r))] += 1
                         setup = skipped_setup(r)
@@ -246,7 +330,7 @@ class SignalService:
         toi = st.get("toi") or []
         t0 = toi[0] if toi else {}
         sr = st.get("sr") or {}
-        th, mb = res.get("tradingHub") or {}, res.get("megabull") or {}
+        th, mb, d2 = res.get("tradingHub") or {}, res.get("megabull") or {}, res.get("dharaniV2") or {}
         fmt_checks = lambda r: "; ".join(f"{c['id']}={c['state']}" for c in r.get("checks", []))  # noqa: E731
         row = {
             "time": self.clock().strftime("%H:%M:%S"), "event": event, "index": symbol, "signal_candle": st["signalTime"],
@@ -273,6 +357,8 @@ class SignalService:
             "th_side": th.get("side"), "th_go": th.get("go"), "th_grade": th.get("grade"), "th_blocked": "; ".join(th.get("blocked", [])),
             "th_checks": fmt_checks(th), "mb_setup": mb.get("setup"), "mb_side": mb.get("side"), "mb_go": mb.get("go"),
             "mb_blocked": "; ".join(mb.get("blocked", [])), "mb_checks": fmt_checks(mb),
+            "d2_side": d2.get("side"), "d2_go": d2.get("go"), "d2_score": d2.get("score"),
+            "d2_blocked": "; ".join(d2.get("blocked", [])), "d2_checks": fmt_checks(d2),
             "auto": self.trader.state["auto"] if self.trader else False, "action": action, "note": note,
         }
         row.update(self._flow_cols(symbol, st["signalTime"]))
@@ -312,12 +398,12 @@ class SignalService:
                                 f"{trade['rule']} {event}", f"{trade['instrument']['name']} entry {trade['entryPrice']} stop {trade['stop']} target {trade['target']}")
 
     def manual_positions(self, symbol):
-        """Open Trading Hub paper positions on this index that no auto trade is managing (for the paper card's
-        "Place stop + target together" button)."""
-        acc = self.trader.accounts.get("tradingHub") if self.trader else None
+        """Open positions on the owner's own Paper Trading screen (main paper account) on this index that no auto
+        trade is managing (for the paper card's "Place stop + target together" button)."""
+        acc = self.trader.accounts.get("manual") if self.trader else None
         if not acc:
             return []
-        managed = {t["instrument"]["id"] for t in self.trader.state["trades"] if t["status"] == "open" and t["account"] == "tradingHub"}
+        managed = {t["instrument"]["id"] for t in self.trader.state["trades"] if t["status"] == "open" and t["account"] == "manual"}
         try:
             rows = acc.paper.positions()
         except Exception:
@@ -378,8 +464,9 @@ class SignalService:
         st = self.trader.status() if self.trader else {"today": []}
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
-        for key, name in (("tradingHub", "Trading Hub"), ("megabull", "MegaBull")):
-            ts = [t for t in trades if t["account"] == key]
+        for key, name in (("tradingHub", "Trend (app paper, Rs 1 lakh)"), ("megabull", "MegaBull (4 Pillar / SuperTrend Nifty)"),
+                          ("dharaniV2", "Dharani (app paper, Rs 1 lakh)")):
+            ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)
             lines.append(f"{name}: {len(ts)} trades, net Rs {net:,.2f}")
             for t in ts:
@@ -420,12 +507,12 @@ class SignalService:
 
     # ---------- loop ----------
     def _next_run(self, now):
-        """The next 5-minute candle close + the delay (e.g. 10:05:35), strictly after now."""
+        """The next 5-minute or 3-minute candle close + the delay (e.g. 10:03:35, 10:05:35), strictly after now.
+        Both are 09:15-aligned: 5-minute closes at minute % 5 == 0, 3-minute closes at minute % 3 == 0."""
         delay = timedelta(seconds=self.cfg.get("evaluateAfterCloseSeconds", 35))
-        base = now.replace(second=0, microsecond=0)
-        nxt = base - timedelta(minutes=base.minute % 5) + delay
-        while nxt <= now:
-            nxt += timedelta(minutes=5)
+        nxt = now.replace(second=0, microsecond=0) + delay
+        while nxt <= now or not (nxt.minute % 5 == 0 or (self.v2_symbols() and nxt.minute % D2_INTERVAL == 0)):
+            nxt += timedelta(minutes=1)
         return nxt
 
     def _loop(self):
@@ -441,7 +528,10 @@ class SignalService:
             hm = (now.hour, now.minute)
             try:
                 if self.src.market_open() and SESSION[0] < hm <= SESSION[1]:
-                    self.run_once()
+                    if now.minute % 5 == 0:
+                        self.run_once()
+                    if self.v2_symbols() and now.minute % D2_INTERVAL == 0:
+                        self.run_v2()
                     crashes = 0
                 self._end_of_day(now)
                 if hm == (9, 0):
@@ -503,6 +593,11 @@ def skipped_setup(r):
         return None
     by = {c["id"]: c for c in r["checks"]}
     off = [c["label"] for c in r["checks"] if c["state"] != PASS and not c.get("exempt")]
+    if r["rule"] == "dharaniV2":  # SuperTrend on the side and exactly one other condition missed
+        if by.get("supertrend", {}).get("state") != PASS or r.get("score") != r.get("total", 0) - 1 \
+                or by.get("window", {}).get("state") != PASS:
+            return None
+        return "; ".join(off) or "-", "; ".join(r["blocked"]) or (f"All {r.get('total')} needed: " + ", ".join(off) + " missed")
     if r["rule"] == "megabull":
         if by.get("trigger", {}).get("state") != PASS:
             return None

@@ -398,7 +398,7 @@ def megabull_rule(state):
     blocked = gates(state, "megabull", MB_LAST_ENTRY)
     blocked = [b for b in blocked if not b.startswith("No new entries")]  # the entry window check covers it
     return {
-        "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "Dharani",
+        "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "SuperTrend Nifty",
         "account": "MegaBull paper", "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": ["delta not checked"], "at": state.get("signalTime"),
     }

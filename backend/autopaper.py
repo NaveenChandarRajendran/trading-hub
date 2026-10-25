@@ -34,7 +34,29 @@ from sig_rules import NOT_CHECKED, PASS, trading_hub_exit
 log = logging.getLogger("autopaper")
 TICK = 0.05
 TH, MB = "tradingHub", "megabull"
-ACCOUNT_NAMES = {TH: "Trading Hub", MB: "MegaBull"}
+D2 = "dharaniV2"
+DH = "dharani"  # the app's own Rs 1 lakh paper account for the Dharani rule (strategy_books.StrategyBook)
+MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): manual trades and "stop + target"
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", MANUAL: "Paper Trading (manual)"}
+# rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar, SuperTrend
+# Nifty); the app's paper trading = one Rs 1 lakh account per strategy (Trend, Dharani). A rule is also a "slot": one
+# open position per slot per index.
+RULE_ACCOUNT = {TH: TH, MB: MB, D2: DH}
+APP = {TH, DH, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
+
+
+def _entry_rsi(state, side):
+    """RSI at entry: the 5-minute state's RSI, or Dharani v2's (index for a call, futures for a put)."""
+    if "ind" in state:
+        return state["ind"]["rsi"][state["i"]]
+    src = state.get("idx") if side == "CE" else state.get("fut")
+    return ((src or {}).get("ind") or {}).get("rsi")
+
+
+def slot_of(t):
+    return t.get("slot") or t["account"]  # trades saved before slots existed: slot = account
+
+
 TRADE_LOG_FIELDS = [
     "date", "index", "account", "rule", "grade", "side", "instrument", "entry_time", "entry_price", "qty", "stop", "target",
     "exit_time", "exit_price", "exit_reason", "gross_pnl", "charges", "net_pnl", "highest_premium", "lowest_premium",
@@ -67,11 +89,16 @@ class AccountError(Exception):
 
 # ======================================================================= accounts
 class TradingHubAccount:
-    """The Trading Hub paper account (paper_api.PaperService)."""
+    """A paper account in the app: a strategy book (strategy_books.StrategyBook: Trend, Dharani) or the main paper
+    account (paper_api.PaperService, key "manual"). Both offer the same calls."""
     key, rule = TH, "tradingHub"
 
-    def __init__(self, paper):
+    def __init__(self, paper, key=TH):
         self.paper = paper
+        self.key = key
+
+    def funds(self):
+        return self.paper.funds() if hasattr(self.paper, "funds") else None
 
     def available(self):
         return True, ""
@@ -303,12 +330,15 @@ class AutoTrader:
             self._roll_day()
             out = {"auto": self.state["auto"], "day": self.state["day"], "accounts": {}}
             for key, acc in self.accounts.items():
+                if key == MANUAL:  # the owner's own screen: not an auto account
+                    continue
                 ok, why = acc.available()
                 trades = [t for t in self.state["trades"] if t["account"] == key]
                 out["accounts"][key] = {
                     "name": ACCOUNT_NAMES[key], "available": ok, "message": why, "halted": self.state["halted"].get(key, ""),
                     "tradesToday": len(trades), "netToday": round(sum(t.get("netPnl") or 0 for t in trades if t["status"] == "closed"), 2),
                     "maxTrades": self.cfg["limits"]["maxTradesPerDay"], "maxLoss": self.cfg["limits"]["maxLossPerDay"],
+                    "funds": acc.funds() if key in APP and hasattr(acc, "funds") else None,
                 }
             out["open"] = [self._public(t) for t in self.state["trades"] if t["status"] == "open"]
             out["today"] = [self._public(t) for t in self.state["trades"]]
@@ -331,11 +361,11 @@ class AutoTrader:
 
     def positions(self, symbol):
         with self.lock:
-            return {a: any(t["status"] == "open" and t["symbol"] == symbol and t["account"] == a for t in self.state["trades"])
-                    for a in self.accounts}
+            return {k: any(t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == k for t in self.state["trades"])
+                    for k, a in RULE_ACCOUNT.items() if a in self.accounts}
 
     # ---------- entries ----------
-    def block_reason(self, account, symbol, now=None, entering=False):
+    def block_reason(self, account, symbol, now=None, entering=False, slot=None):
         """Why a new entry can't be sent, or '' (brief, Step 2 safety). entering: the check right before the BUY,
         made by the entry itself (its own in-progress mark is not a reason)."""
         now = now or self.clock()
@@ -349,9 +379,10 @@ class AutoTrader:
             return self.state["halted"][account]
         if self.state["unknown"].get(account):
             return f"Previous order status unknown: {self.state['unknown'][account]}"
-        if (account, symbol) in self._busy and not entering:
+        slot = slot or account
+        if (slot, symbol) in self._busy and not entering:
             return "An order for this index is in progress"
-        if self.positions(symbol).get(account):
+        if self.positions(symbol).get(slot):
             return "Position already open on this index"
         trades = [t for t in self.state["trades"] if t["account"] == account]
         lim = self.cfg["limits"]
@@ -378,7 +409,7 @@ class AutoTrader:
             exp = self._expiry(acc, symbol)
             self._watch[symbol] = acc.neighbours(symbol, exp, spot)
             ids = [i for v in self._watch.values() for i in v]
-            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
+            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] in APP]
             acc.paper.watch(ids + open_ids + self.shadow_ids())
         except Exception as e:
             log.warning("could not subscribe ATM options for %s: %s", symbol, e)
@@ -394,14 +425,17 @@ class AutoTrader:
 
     def on_signal(self, result, state):
         """A rule result for one index (sig_rules). Starts an entry in the background when it is a GO."""
-        account = TH if result["rule"] == "tradingHub" else MB
+        slot = result["rule"]
+        account = RULE_ACCOUNT.get(slot)
         if account not in self.accounts or not result["go"]:
             return ""
-        why = self.block_reason(account, result["symbol"])
+        if slot == D2 and not self.cfg.get(D2, {}).get("enabled", True):
+            return "Dharani v2 is off (config dharaniV2.enabled)"
+        why = self.block_reason(account, result["symbol"], slot=slot)
         if why:
             return why
         with self.lock:
-            self._busy.add((account, result["symbol"]))
+            self._busy.add((slot, result["symbol"]))
         threading.Thread(target=self._enter, args=(account, result, state), name=f"entry-{account}", daemon=True).start()
         return "Entry sent"
 
@@ -419,11 +453,15 @@ class AutoTrader:
 
     def _enter(self, account, result, state):
         acc, symbol, side = self.accounts[account], result["symbol"], result["side"]
+        slot = result["rule"]
         cfg = self.cfg[account]
         try:
             exp = self._try(account, "expiry list", lambda: self._expiry(acc, symbol))
-            inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, state["spot"], side))
-            if account == TH:
+            ref = state["spot"]
+            if result.get("premiumNear"):  # Dharani v2: the strike whose premium is nearest the target (teacher: 250)
+                ref = self._strike_by_premium(symbol, exp, side, result["premiumNear"]) or ref
+            inst = self._try(account, "instrument lookup", lambda: acc.instrument(symbol, exp, ref, side))
+            if account in APP:
                 acc.paper.watch([i for v in self._watch.values() for i in v] + [inst["id"]] + self.shadow_ids())
                 for _ in range(30):  # up to 15 s for the first price
                     if acc.ready(inst):
@@ -431,7 +469,13 @@ class AutoTrader:
                     time.sleep(0.5)
                 else:
                     raise AccountError(f"No live price for {inst['name']} yet")
-            why = self.block_reason(account, symbol, entering=True)  # re-check right before sending
+            why = self.block_reason(account, symbol, entering=True, slot=slot)  # re-check right before sending
+            if not why and any(t["status"] == "open" and t["account"] == account and t["instrument"]["id"] == inst["id"]
+                               for t in self.state["trades"]):
+                # another rule already holds this very option on this account: a second BUY would merge the two
+                # positions (one stop / exit could close both), so this entry is skipped and logged
+                why = f"{inst['name']} already held by another rule on this account"
+                self.alert("info", f"{ACCOUNT_NAMES[account]} {symbol} {result.get('setup') or ''}: {why}; entry skipped.")
             if why:
                 log.info("entry %s %s dropped: %s", account, symbol, why)
                 return
@@ -440,15 +484,16 @@ class AutoTrader:
             entry_id, fill, qty = acc.buy(inst, lots)  # never retried: a second BUY could double the position
             self.state["unknown"].pop(account, None)
             stop = floor_tick(fill * (1 - cfg["stopPct"] / 100))
-            target = ceil_tick(fill * (1 + cfg["targetPct"] / 100))
+            # Dharani v2 has no fixed target: it exits when price closes back through SuperTrend (dharani_v2_exit)
+            target = None if result.get("noTarget") else ceil_tick(fill * (1 + cfg["targetPct"] / 100))
             trade = {
-                "id": f"{account}-{symbol}-{self.clock():%H%M%S}", "account": account, "symbol": symbol, "rule": result["name"],
+                "id": f"{slot}-{symbol}-{self.clock():%H%M%S}", "account": account, "slot": slot, "symbol": symbol, "rule": result["name"],
                 "setup": result.get("setup"), "grade": result.get("grade") or "n.a.", "side": side, "instrument": inst,
                 "qty": qty, "lots": lots, "entryOrderId": entry_id, "entryTime": self.clock().strftime("%H:%M:%S"),
                 "entryPrice": fill, "stop": stop, "target": target, "stopOrderId": None, "status": "open",
                 "high": fill, "low": fill, "signalTime": result.get("at"),
                 "spotAtEntry": state.get("spot"), "invested": round(fill * qty, 2),
-                "rsi": state["ind"]["rsi"][state["i"]], "vix": state.get("vix"), "pcr": state.get("pcr"),
+                "rsi": _entry_rsi(state, side), "vix": state.get("vix"), "pcr": state.get("pcr"),
                 "toiStrength": (state.get("toi") or [{}])[0].get("strengthPct"),
                 "deltaStatus": "not checked", "tags": result.get("tags", []),
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
@@ -474,7 +519,7 @@ class AutoTrader:
                 self._halt(account, f"Entry failed: {e}")
         finally:
             with self.lock:
-                self._busy.discard((account, symbol))
+                self._busy.discard((slot, symbol))
                 self._save()
 
     # ---------- exits ----------
@@ -501,7 +546,7 @@ class AutoTrader:
 
     def _start_exit_shadow(self, trade):
         inst = trade["instrument"]
-        dhan_id = inst["id"] if trade["account"] == TH else self._dhan_option(trade["symbol"], inst["expiry"], inst["strike"], inst["optionType"])
+        dhan_id = inst["id"] if trade["account"] in APP else self._dhan_option(trade["symbol"], inst["expiry"], inst["strike"], inst["optionType"])
         with self.lock:
             self.state["shadows"].append({
                 "kind": "exit", "tradeId": trade["id"], "symbol": trade["symbol"], "side": trade["side"], "dhanId": dhan_id,
@@ -531,7 +576,7 @@ class AutoTrader:
         except Exception as e:
             log.warning("shadow skip %s %s: no instrument: %s", symbol, side, e)
             inst = None
-        pct = self.cfg[MB if result["rule"] == "megabull" else TH]
+        pct = self.cfg[RULE_ACCOUNT.get(result["rule"], TH)]
         with self.lock:
             self.state["shadows"].append({
                 "kind": "skip", "createdAt": now.isoformat(), "symbol": symbol, "side": side, "rule": rule,
@@ -547,7 +592,7 @@ class AutoTrader:
         acc = self.accounts.get(TH)
         if acc:
             ids = [i for v in self._watch.values() for i in v]
-            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] == TH]
+            open_ids = [t["instrument"]["id"] for t in self.state["trades"] if t["status"] == "open" and t["account"] in APP]
             try:
                 acc.paper.watch(ids + open_ids + self.shadow_ids())
             except Exception:
@@ -663,14 +708,40 @@ class AutoTrader:
         """Signal exit check on a completed 5-minute candle (Trading Hub rule only)."""
         self._last_state[symbol] = state
         for t in list(self.state["trades"]):
-            if t["status"] == "open" and t["symbol"] == symbol and t["account"] == TH:
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == TH:
                 why = trading_hub_exit(state, t["side"])
+                if why:
+                    threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
+
+    def _strike_by_premium(self, symbol, expiry, side, target):
+        """Strike whose last traded premium is nearest `target`, from Dhan's option chain (chain_source is set by the
+        signal service). None if the chain can't be read: the caller falls back to ATM."""
+        src = getattr(self, "chain_source", None)
+        if src is None:
+            return None
+        try:
+            rows = src.chain(symbol, expiry)["rows"]
+        except Exception as e:
+            log.warning("premium-near strike %s %s: %s", symbol, expiry, e)
+            return None
+        legs = [(r["strike"], (r.get(side.lower()) or {}).get("last_price")) for r in rows]
+        legs = [(k, p) for k, p in legs if p]
+        if not legs:
+            return None
+        return min(legs, key=lambda x: (abs(x[1] - target), x[0]))[0]
+
+    def on_candle_v2(self, symbol, state):
+        """Dharani v2 exit check on a completed 3-minute candle: price closed back through SuperTrend."""
+        from sig_dharani_v2 import dharani_v2_exit
+        for t in list(self.state["trades"]):
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == D2:
+                why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
 
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]
-        key = (trade["account"], trade["symbol"])
+        key = (slot_of(trade), trade["symbol"])
         with self.lock:
             if trade["status"] != "open" or trade.get("exiting"):
                 return
@@ -736,10 +807,10 @@ class AutoTrader:
                 ltp = None
             if ltp:
                 t["high"], t["low"] = max(t["high"], ltp), min(t["low"], ltp)
-                if ltp >= t["target"]:
+                if t["target"] is not None and ltp >= t["target"]:
                     threading.Thread(target=self._exit, args=(t, "Target"), daemon=True).start()
                     continue
-            poll = 2 if t["account"] == TH else 10
+            poll = 2 if t["account"] in APP else 10
             if t.get("stopOrderId") and time.monotonic() - self._last_stop_poll.get(t["id"], 0) >= poll:
                 self._last_stop_poll[t["id"]] = time.monotonic()
                 try:
@@ -749,7 +820,7 @@ class AutoTrader:
                 if st and st["status"] == "FILLED":
                     t["exitOrderId"] = t["stopOrderId"]
                     self._close(t, "Stop", st["avgPrice"])
-                elif t["account"] == TH and acc.position_qty(t["instrument"]) == 0:
+                elif t["account"] in APP and acc.position_qty(t["instrument"]) == 0:
                     self._close(t, "Time" if now.time() >= cutoff else "Manual", acc.last_sell_price(t["instrument"]))
 
     def start(self):
@@ -769,7 +840,7 @@ class AutoTrader:
     def bracket(self, security_id, stop_pct=None, target_pct=None):
         """Attach a stop and a target to an open Trading Hub paper position the owner bought by hand. Tracked like an
         auto trade (stop pending, target watched), logged with rule "Manual"."""
-        acc = self.accounts[TH]
+        acc = self.accounts.get(MANUAL) or self.accounts[TH]
         inst_raw = acc.paper.instruments.get(security_id)
         if not inst_raw:
             raise AccountError(f"{security_id} is not a NIFTY / BANKNIFTY option")
@@ -780,13 +851,13 @@ class AutoTrader:
             raise AccountError("This position already has a stop and target")
         pos = next(p for p in acc.paper.positions() if p["security_id"] == security_id)
         fill = pos["avg_buy"]
-        cfg = self.cfg[TH]
+        cfg = self.cfg[TH]  # the manual bracket keeps the Trend percentages (-15 % / +20 %)
         sp, tp = stop_pct or cfg["stopPct"], target_pct or cfg["targetPct"]
         inst = {"id": security_id, "name": inst_raw["name"], "strike": inst_raw["strike"], "expiry": inst_raw["expiry"],
                 "optionType": inst_raw["optionType"], "lotSize": inst_raw["lotSize"]}
         lots = qty // inst["lotSize"]
         trade = {
-            "id": f"manual-{security_id}-{self.clock():%H%M%S}", "account": TH, "symbol": inst_raw["symbol"], "rule": "Manual",
+            "id": f"manual-{security_id}-{self.clock():%H%M%S}", "account": acc.key, "symbol": inst_raw["symbol"], "rule": "Manual",
             "setup": None, "grade": "n.a.", "side": inst["optionType"], "instrument": inst, "qty": qty, "lots": lots,
             "entryOrderId": None, "entryTime": self.clock().strftime("%H:%M:%S"), "entryPrice": round(fill, 2),
             "stop": floor_tick(fill * (1 - sp / 100)), "target": ceil_tick(fill * (1 + tp / 100)), "stopOrderId": None,
@@ -825,9 +896,10 @@ class AutoTrader:
         if sh.get("high") is not None and t.get("exitPrice") is not None and t["entryPrice"]:
             missed = round((sh["high"] - t["exitPrice"]) / t["entryPrice"] * 100, 2)
         return {
-            "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]], "rule": t["rule"],
+            "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]],
+            "rule": f"{t['rule']} ({t['setup']})" if t.get("setup") else t["rule"],
             "grade": t["grade"], "side": t["side"], "instrument": t["instrument"]["name"], "entry_time": t["entryTime"],
-            "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"],
+            "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"] if t["target"] is not None else "SuperTrend exit",
             "exit_time": t.get("exitTime"), "exit_price": t.get("exitPrice"), "exit_reason": t.get("exitReason"),
             "gross_pnl": t.get("grossPnl"), "charges": t.get("charges"), "net_pnl": t.get("netPnl"),
             "highest_premium": t["high"], "lowest_premium": t["low"],

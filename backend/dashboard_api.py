@@ -117,7 +117,8 @@ class CandleService:
     def __init__(self, tracker, near_future):
         self.tracker = tracker
         self.near_future = near_future
-        self._cache = {}  # (symbol, sessions) -> (fetched at, 1-minute candles with volume, future, volume error)
+        self._cache = {}  # (symbol, sessions) -> (fetched at, 1-minute candles with volume, future, volume error,
+        #                                          the future's own 1-minute candles)
         self._lock = threading.Lock()
 
     def _fetch(self, symbol, sessions):
@@ -127,7 +128,7 @@ class CandleService:
         # nothing, -> 22-Oct returned 21-Oct's 374 candles), so ask up to the day after the last session.
         frm, to = f"{sessions[0]} 09:15:00", f"{sessions[-1] + timedelta(days=1)} 09:15:00"
         one_min = parse_intraday(client.intraday(symbol, frm, to))
-        fut, volume_error = None, ""
+        fut, volume_error, fut_candles = None, "", []
         try:
             fut = self.near_future(symbol)
             if fut is None:
@@ -139,16 +140,26 @@ class CandleService:
             raise
         except Exception as e:  # DhanError or the instrument list: candles without volume
             volume_error = f"Futures volume unavailable: {e}"
-        return one_min, fut, volume_error
+        return one_min, fut, volume_error, fut_candles
 
     def get(self, symbol, max_age=None, day=None):
+        fetched, sessions, one_min, fut, volume_error, last_error, _fut_candles = self._get(symbol, max_age, day, 2)
+        return fetched, sessions, one_min, fut, volume_error, last_error
+
+    def get_with_futures(self, symbol, max_age=None, n=4):
+        """(sessions, index 1-minute candles, the near-month future's 1-minute candles, last error) for the last n
+        sessions. Dharani v2 needs the futures' own candles and a longer history (EMA 200 on 3-minute candles)."""
+        _f, sessions, one_min, _fut, _ve, last_error, fut_candles = self._get(symbol, max_age, None, n)
+        return sessions, one_min, fut_candles, last_error
+
+    def _get(self, symbol, max_age, day, n):
         """(fetched at, sessions, 1-minute candles, future, volume error, last error). Raises DhanError / TokenExpired
         only when there is nothing cached; otherwise the last candles come back with last error set.
         day: an earlier trading day (date) for the chart's date picker: that session and the one before it; an earlier
         day never changes, so it is fetched once."""
         now = self.tracker.clock()
         past = day is not None and day < now.date()
-        sessions = tuple(recent_sessions(day if past else now.date()))
+        sessions = tuple(recent_sessions(day if past else now.date(), n))
         key = (symbol, sessions)
         ttl = float("inf") if past else max_age if max_age is not None else CANDLE_TTL_OPEN if self.tracker.market_open() else CANDLE_TTL_CLOSED
         last_error = ""
@@ -161,8 +172,8 @@ class CandleService:
                     if not hit:
                         raise
                     last_error = str(e)  # keep showing the last candles
-        fetched, one_min, fut, volume_error = hit
-        return fetched, sessions, one_min, fut, volume_error, last_error
+        fetched, one_min, fut, volume_error, fut_candles = hit
+        return fetched, sessions, one_min, fut, volume_error, last_error, fut_candles
 
 
 def register(app, deps: DashboardDeps):

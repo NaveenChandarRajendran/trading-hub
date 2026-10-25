@@ -15,6 +15,9 @@ both are tested against the same hand-checked values so the chart and the progra
     vwap       session VWAP: running sum(typical price x volume) / sum(volume), reset each IST day.
                An index has no volume, so the near-month future's volume is used (as on the chart).
     pivots     Traditional floor pivots from the previous day's high / low / close (TradingView "Pivots Standard").
+    williams_r Williams %R: (highest high - close) / (highest high - lowest low) x -100 over `period` candles (0 to -100).
+    cci        Commodity Channel Index: (typical price - SMA) / (0.015 x mean absolute deviation), typical = (H+L+C)/3.
+    cpr        Central Pivot Range from the previous day: P, BC = (H+L)/2, TC = 2P - BC, width % = |TC-BC| / P x 100.
 """
 import math
 from datetime import datetime, timedelta, timezone
@@ -171,3 +174,30 @@ def pivots(high, low, close):
         "P": p, "R1": 2 * p - low, "S1": 2 * p - high, "R2": p + rng, "S2": p - rng,
         "R3": high + 2 * (p - low), "S3": low - 2 * (high - p),
     }
+
+
+def williams_r(highs, lows, closes, period=14):
+    out = [None] * len(closes)
+    for i in range(period - 1, len(closes)):
+        hh, ll = max(highs[i - period + 1:i + 1]), min(lows[i - period + 1:i + 1])
+        out[i] = (hh - closes[i]) / (hh - ll) * -100 if hh > ll else -50.0
+    return out
+
+
+def cci(highs, lows, closes, period=20):
+    tp = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    out = [None] * len(tp)
+    for i in range(period - 1, len(tp)):
+        w = tp[i - period + 1:i + 1]
+        m = sum(w) / period
+        md = sum(abs(x - m) for x in w) / period
+        out[i] = (tp[i] - m) / (0.015 * md) if md else 0.0
+    return out
+
+
+def cpr(high, low, close):
+    """Central Pivot Range from the previous session. Traditional S1 / R1 come from pivots()."""
+    p = (high + low + close) / 3
+    bc = (high + low) / 2
+    tc = 2 * p - bc
+    return {"P": p, "BC": min(bc, tc), "TC": max(bc, tc), "widthPct": abs(tc - bc) / p * 100 if p else None}

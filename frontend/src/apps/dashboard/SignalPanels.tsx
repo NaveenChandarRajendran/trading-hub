@@ -9,7 +9,7 @@ import type { ToiRow } from '../trending-oi/logic/api';
 import type { Position } from '../paper-trade/logic/api';
 import {
   banner, distance, fetchAccountOrders, minutesSince, shadowCsvNote, snapshotsCsvUrl, tick, type AutoStatus, type AutoTrade,
-  type ContextRow, type FlowSummary, type OiView, type RuleResult, type SignalsState, type SrView,
+  type AccountKey, type BookFunds, type ContextRow, type FlowSummary, type OiView, type RuleResult, type SignalsState, type SrView,
 } from './logic/signals';
 
 const n2 = (v: number | null | undefined) => (v == null ? '—' : inr(2)(v));
@@ -46,17 +46,18 @@ export function DayLevels({ rows }: { rows: (ContextRow | null)[] }) {
 }
 
 // ---------------------------------------------------------------- rule cards
-export function RuleCard({ r, fallbackName }: { r: RuleResult | undefined; fallbackName: string }) {
+export function RuleCard({ r, fallbackName, emptyNote }: { r: RuleResult | null | undefined; fallbackName: string; emptyNote?: string }) {
   if (!r) {
     return (
       <section className="card db-rule">
         <div className="card-head"><h3 className="card-title">{fallbackName}</h3><Pill tone="neutral">Waiting</Pill></div>
-        <p className="db-muted">No completed 5-minute candle yet.</p>
+        <p className="db-muted">{emptyNote ?? 'No completed 5-minute candle yet.'}</p>
       </section>
     );
   }
   const side = r.side === 'PE' ? 'put' : 'call';
-  const title = r.rule === 'megabull' ? `${r.name} · ${NAMES[r.symbol]} (${r.setup})` : `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`;
+  const title = r.rule === 'tradingHub' ? `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`
+    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (3-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0})` : `${r.name} · ${NAMES[r.symbol]} (${r.setup})`;
   return (
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>
       <div className="card-head">
@@ -228,19 +229,31 @@ export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined
 }
 
 // ---------------------------------------------------------------- paper trading: both accounts
-const ACCOUNT_TITLE: Record<'tradingHub' | 'megabull', [string, string]> = {
-  megabull: ['MEGABULL ACCOUNT', 'Paper trade from the MegaBull rule (via MegaBull API)'],
-  tradingHub: ['TRADING HUB ACCOUNT', 'Paper trade from the Trading Hub rule (Grade A / B)'],
+const ACCOUNT_TITLE: Record<AccountKey, [string, string]> = {
+  megabull: ['MEGABULL ACCOUNT', 'Strict rules: 4 Pillar (Bank Nifty) and SuperTrend Nifty (via MegaBull API)'],
+  tradingHub: ['TREND ACCOUNT', 'App paper trading · ₹1 lakh · Trend rule (Grade A / B)'],
+  dharani: ['DHARANI ACCOUNT', 'App paper trading · ₹1 lakh · Dharani rule (3-min, SuperTrend exit)'],
 };
+
+/** Balance line for the app's own accounts: today's opening balance + today's realised P&L − charges. */
+function Balance({ f }: { f: BookFunds }) {
+  const bal = f.openingBalance + f.realized - f.charges;
+  const since = bal - f.startingCapital;
+  return (
+    <p className="db-rule-note">Balance <b className="num">₹{n0(bal)}</b> · since start{' '}
+      <b className={`num ${tone(since)}`}>{signed(0)(since)}</b> on ₹{n0(f.startingCapital)}</p>
+  );
+}
 
 function OpenTrade({ t, ltp, now, busy, onExit }: { t: AutoTrade; ltp: number | undefined; now: Date; busy: boolean; onExit: () => void }) {
   const live = ltp ?? t.ltp ?? t.entryPrice;
   const pnl = (live - t.entryPrice) * t.qty;
   const pct = (live / t.entryPrice - 1) * 100;
-  const span = t.target - t.stop;
+  const top = t.target ?? Math.max(t.high, live); // no fixed target: the bar runs from the stop to the high so far
+  const span = top - t.stop;
   const at = span > 0 ? Math.min(100, Math.max(0, ((live - t.stop) / span) * 100)) : 0;
   const stopPct = (t.stop / t.entryPrice - 1) * 100;
-  const tgtPct = (t.target / t.entryPrice - 1) * 100;
+  const tgtPct = t.target != null ? (t.target / t.entryPrice - 1) * 100 : 0;
   return (
     <>
       <p className="db-trade-name">{t.instrument.name} · {t.instrument.expiry} · {t.qty} qty{t.rule === 'Manual' ? ' · manual' : ''}</p>
@@ -251,7 +264,7 @@ function OpenTrade({ t, ltp, now, busy, onExit }: { t: AutoTrade; ltp: number | 
       <div className="db-bar" role="img" aria-label={`Premium ${at.toFixed(0)}% of the way from stop to target`}>
         <span className="db-bar-fill" style={{ width: `${at}%` }} />
       </div>
-      <div className="db-bar-labels"><span className="down">Stop {n2(t.stop)} ({signed(0)(stopPct)}%)</span><span className="up">Target {n2(t.target)} ({signed(0)(tgtPct)}%)</span></div>
+      <div className="db-bar-labels"><span className="down">Stop {n2(t.stop)} ({signed(0)(stopPct)}%)</span><span className="up">{t.target != null ? `Target ${n2(t.target)} (${signed(0)(tgtPct)}%)` : 'No target: exit on SuperTrend'}</span></div>
       <dl className="db-trade-grid">
         <div><dt>ATM at entry</dt><dd className="num">{n0(t.instrument.strike)}{t.spotAtEntry ? ` (spot ${n0(t.spotAtEntry)})` : ''}</dd></div>
         <div><dt>Entry</dt><dd className="num">{n2(t.entryPrice)} at {t.entryTime}</dd></div>
@@ -266,7 +279,7 @@ function OpenTrade({ t, ltp, now, busy, onExit }: { t: AutoTrade; ltp: number | 
 }
 
 export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, children }: {
-  account: 'tradingHub' | 'megabull'; auto: AutoStatus | null; symbol: string; ltp: Record<number, number>; now: Date;
+  account: AccountKey; auto: AutoStatus | null; symbol: string; ltp: Record<number, number>; now: Date;
   busy: boolean; onExit: (id: string) => void; children?: ReactNode;
 }) {
   const [orders, setOrders] = useState<Record<string, unknown>[] | null>(null);
@@ -293,6 +306,7 @@ export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, chi
     <section className="card db-account">
       <div className="card-head"><h3 className="card-title">{title}</h3><Pill tone={statusTone}>{status}</Pill></div>
       <p className="db-rule-note">{sub}{a && !a.available && a.message ? ` · ${a.message}` : ''}{a?.halted ? ` · ${a.halted}` : ''}</p>
+      {a?.funds && <Balance f={a.funds} />}
       {open.map((t) => (
         <OpenTrade key={t.id} t={t} now={now} busy={busy} onExit={() => onExit(t.id)}
           ltp={typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined} />
@@ -325,7 +339,7 @@ export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, chi
   );
 }
 
-/** Hand-placed Trading Hub positions on this index: "Place stop + target together". */
+/** Positions bought by hand on the Paper Trading screen (main paper account): "Place stop + target together". */
 export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual }: {
   positions: Position[]; ltp: Record<number, number>; busy: boolean; onBracket: (id: number) => void; onExitManual: (id: number) => void;
 }) {
@@ -347,7 +361,7 @@ export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual 
 
 export function AutoSwitch({ auto, busy, notice, onAuto }: { auto: AutoStatus | null; busy: boolean; notice: string; onAuto: (on: boolean) => void }) {
   if (!auto) return null;
-  const lim = auto.accounts.tradingHub ?? auto.accounts.megabull;
+  const lim = auto.accounts.tradingHub ?? auto.accounts.dharani ?? auto.accounts.megabull;
   return (
     <span className="db-head-end">
       {notice && <span className="db-muted">{notice}</span>}
@@ -360,14 +374,16 @@ export function AutoSwitch({ auto, busy, notice, onAuto }: { auto: AutoStatus | 
 
 export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow: SignalsState['shadow'] }) {
   const rows = auto?.today ?? [];
-  const net = (k: 'tradingHub' | 'megabull') => rows.filter((t) => t.account === k).reduce((s, t) => s + (t.status === 'closed' ? t.netPnl ?? 0 : t.pnl ?? 0), 0);
+  const net = (k: string) => rows.filter((t) => t.account === k).reduce((s, t) => s + (t.status === 'closed' ? t.netPnl ?? 0 : t.pnl ?? 0), 0);
   const mb = net('megabull');
   const th = net('tradingHub');
+  const dh = net('dharani');
+  const name = (k: string) => (k === 'manual' ? 'Paper Trading (manual)' : auto?.accounts[k as AccountKey]?.name ?? k);
   return (
     <section className="card">
       <div className="card-head">
-        <h3 className="card-title">Today&apos;s paper trades · both accounts</h3>
-        <span className="db-muted">Day P&amp;L: <b className={tone(mb + th)}>{signed(2)(mb + th)}</b> (MegaBull {signed(2)(mb)} · Trading Hub {signed(2)(th)})</span>
+        <h3 className="card-title">Today&apos;s paper trades · all accounts</h3>
+        <span className="db-muted">Day P&amp;L: <b className={tone(mb + th + dh)}>{signed(2)(mb + th + dh)}</b> (MegaBull {signed(2)(mb)} · Trend {signed(2)(th)} · Dharani {signed(2)(dh)})</span>
       </div>
       {!rows.length ? <p className="db-muted">No paper trades today.</p> : (
         <div className="db-scroll">
@@ -380,8 +396,8 @@ export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow:
                 const pct = t.entryPrice ? (((exit ?? t.ltp ?? t.entryPrice) / t.entryPrice) - 1) * 100 : 0;
                 return (
                   <tr key={t.id}>
-                    <td>{t.account === 'megabull' ? 'MegaBull' : 'Trading Hub'}</td>
-                    <td>{t.rule}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
+                    <td>{name(t.account)}</td>
+                    <td>{t.rule}{t.setup ? ` (${t.setup})` : ''}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
                     <td>{t.instrument.name}</td><td className="num">{t.entryTime}</td><td className="num">{n2(t.entryPrice)}</td>
                     <td className="num">{exit != null ? n2(exit) : 'open'}</td><td>{t.exitReason ?? '—'}</td>
                     <td className={`num ${tone(pnl)}`}>{signed(2)(pnl)}</td><td className={`num ${tone(pct)}`}>{signed(1)(pct)}%</td>

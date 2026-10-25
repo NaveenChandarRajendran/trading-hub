@@ -1,6 +1,7 @@
 """Paper trading API end to end: routes -> PaperService -> engine -> store, with a fake feed and fake instrument
 list (never the real Dhan API). Ticks are injected with svc.on_packet; the clock is set by each test.
 Wednesday 21-Oct-2026 is a trading day."""
+import os
 import shutil
 import tempfile
 import time
@@ -334,3 +335,18 @@ def test_pnl_meta_lists_holidays(env):
     c, *_ = env
     meta = c.get("/api/paper/pnl?from=2026-10-01&to=2026-10-31").json()["meta"]
     assert meta["holidays"] == ["2026-10-02", "2026-10-20"]
+
+
+def test_strategy_books_get_the_same_ticks_and_stay_separate(env):
+    from strategy_books import StrategyBook
+    _c, svc, clock, _feed, tmp = env
+    clock.now = at("10:00")
+    book = StrategyBook("trend", svc, data_dir=os.path.join(tmp, "books"))
+    svc.books = [book]
+    svc.on_packet(full(CE, 100.0, 99.95, 100.05))
+    o = book.place_order(CE, "BUY", 1, "MARKET")
+    assert o["status"] == "FILLED"
+    assert svc.open_qty(CE) == 0 and book.open_qty(CE) > 0  # the main paper account is untouched
+    book.place_order(CE, "SELL", 1, "SL-M", trigger_price=90.0)
+    svc.on_packet(full(CE, 89.0, 88.95, 89.05))
+    assert book.open_qty(CE) == 0
