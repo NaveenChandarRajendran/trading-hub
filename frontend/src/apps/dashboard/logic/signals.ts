@@ -16,9 +16,10 @@ export interface Check {
 }
 
 export interface RuleResult {
-  rule: 'tradingHub' | 'megabull';
-  name: string; // "TRADING HUB RULE" | "MEGABULL RULE"
-  setup?: string; // "4 Pillar" | "Dharani"
+  rule: 'tradingHub' | 'megabull' | 'dharaniV2';
+  name: string; // "TRADING HUB RULE" | "MEGABULL RULE" | "DHARANI v2 RULE"
+  setup?: string; // "4 Pillar" | "Dharani v1" | "Dharani v2"
+  score?: number; // Dharani v2: how many of its four conditions are true
   account: string;
   symbol: string;
   side: 'CE' | 'PE';
@@ -97,6 +98,8 @@ export interface Instrument {
 export interface AutoTrade {
   id: string;
   account: 'tradingHub' | 'megabull';
+  slot?: 'tradingHub' | 'megabull' | 'dharaniV2'; // the rule that took the trade
+  setup?: string;
   symbol: string;
   rule: string;
   grade: string;
@@ -153,7 +156,7 @@ export interface SignalsState {
     problems: string[]; watcher: { running: boolean; lastRun: string | null; late: boolean };
   };
   context: (ContextRow | null)[];
-  rules: { tradingHub?: RuleResult; megabull?: RuleResult };
+  rules: { tradingHub?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult };
   trendingOi: ToiRow[];
   oiViews: {
     dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null;

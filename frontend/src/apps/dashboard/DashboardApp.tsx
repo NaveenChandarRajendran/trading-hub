@@ -221,6 +221,7 @@ export default function DashboardApp() {
       {/* 4. rule cards */}
       <div className="db-three">
         <RuleCard r={s?.rules.megabull} fallbackName="MEGABULL RULE" />
+        <RuleCard r={s?.rules.dharaniV2} fallbackName="DHARANI v2 RULE" />
         <RuleCard r={s?.rules.tradingHub} fallbackName="TRADING HUB RULE" />
         <OrderFlowCard f={s?.orderFlow} symbol={d.symbol} />
       </div>

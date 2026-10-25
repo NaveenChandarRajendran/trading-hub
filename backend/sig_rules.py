@@ -36,6 +36,8 @@ MB_PCR = 0.9  # owner 23-Oct evening: "near 1 or above" = call side, "well below
 MB_RSI_DHARANI = (45.0, 55.0)  # put below the first, call above the second
 MB_PIVOT_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # room to the next pivot level (Dharani is NIFTY only)
 MB_WALL_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 200.0}  # room to the nearest OI level in the trade's direction
+D2_RSI = (30.0, 70.0)  # Dharani v2 (video): call RSI above 70, put below 30
+D2_FIRST_CLOSE = (9, 35)  # first allowed signal candle 09:30-09:35 (not in the first 15 minutes, as v1)
 
 DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not checked; trade tagged."
 
@@ -398,7 +400,62 @@ def megabull_rule(state):
     blocked = gates(state, "megabull", MB_LAST_ENTRY)
     blocked = [b for b in blocked if not b.startswith("No new entries")]  # the entry window check covers it
     return {
-        "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "Dharani",
+        "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "Dharani v1",
         "account": "MegaBull paper", "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": ["delta not checked"], "at": state.get("signalTime"),
+    }
+
+
+# ------------------------------------------------------------------ Dharani v2 (video rules, owner 25-Oct-2026)
+def dharani_v2_checks(state, side):
+    """docs/strategies/dharani-v2.md. Four conditions on the completed 5-min candle; all four = entry at the next open.
+    Call: close above SuperTrend (green), RSI 14 > 70, close > R1, close > upper Bollinger (20, 2). Put mirrors it."""
+    bar = state["bars"][state["i"]]
+    close = bar["close"]
+    out = []
+    st = supertrend_check(state, side)
+    st.update(label="1 SuperTrend (10, 2)")
+    out.append(st)
+    r = rsi_value(state)
+    lo, hi = D2_RSI
+    if r is None:
+        out.append(check("rsi", "2 RSI 14", NOT_CHECKED, "Not enough candles yet", True))
+    else:
+        ok = r > hi if side == "CE" else r < lo
+        out.append(check("rsi", "2 RSI 14", PASS if ok else FAIL, f"{r:.1f} (call above {hi:.0f}, put below {lo:.0f})", True))
+    piv = state.get("piv")
+    if not piv:
+        out.append(check("pivot", "3 Pivot R1 / S1", NOT_CHECKED, "No previous session", True))
+    else:
+        lvl, name = (piv["R1"], "R1") if side == "CE" else (piv["S1"], "S1")
+        ok = close > lvl if side == "CE" else close < lvl
+        out.append(check("pivot", "3 Pivot R1 / S1", PASS if ok else FAIL,
+                         f"Close {close:,.2f} {'above' if close > lvl else 'below'} {name} {lvl:,.2f}", True))
+    up, low = _ago(state, "bb_upper"), _ago(state, "bb_lower")
+    if up is None:
+        out.append(check("bollinger", "4 Bollinger (20, 2) close", NOT_CHECKED, "Not enough candles yet", True))
+    else:
+        band, word = (up, "upper") if side == "CE" else (low, "lower")
+        ok = close > up if side == "CE" else close < low
+        out.append(check("bollinger", "4 Bollinger (20, 2) close", PASS if ok else FAIL,
+                         f"Close {'outside' if ok else 'inside'} the {word} band {band:,.2f}", True))
+    hm = tuple(state["hm"])
+    ok = D2_FIRST_CLOSE <= hm <= MB_LAST_ENTRY
+    out.append(check("window", "Entry window", PASS if ok else FAIL, "Signal candle 09:30 to 15:00 (not the first 15 min)", True))
+    out.append(check("delta", "Order flow", NOT_CHECKED, DELTA_NOTE, False, exempt=True))
+    return out
+
+
+def dharani_v2_rule(state):
+    both = {s: dharani_v2_checks(state, s) for s in ("PE", "CE")}
+    scored = {s: sum(c["state"] == PASS for c in both[s][:4]) for s in both}
+    side = max(("PE", "CE"), key=lambda s: (scored[s], s == ("CE" if _ago(state, "st_dir") == -1 else "PE")))
+    checks = both[side]
+    green = all(c["state"] == PASS or (c["state"] == NOT_CHECKED and c.get("exempt")) for c in checks)
+    blocked = [b for b in gates(state, "dharaniV2", MB_LAST_ENTRY) if not b.startswith("No new entries")]
+    return {
+        "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "account": "MegaBull paper",
+        "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
+        "checks": checks, "blocked": blocked, "tags": ["delta not checked"], "at": state.get("signalTime"),
+        "score": scored[side],
     }

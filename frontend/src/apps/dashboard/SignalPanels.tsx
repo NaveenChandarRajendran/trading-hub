@@ -56,7 +56,8 @@ export function RuleCard({ r, fallbackName }: { r: RuleResult | undefined; fallb
     );
   }
   const side = r.side === 'PE' ? 'put' : 'call';
-  const title = r.rule === 'megabull' ? `${r.name} · ${NAMES[r.symbol]} (${r.setup})` : `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`;
+  const title = r.rule === 'tradingHub' ? `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`
+    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (video rules, ${side}: ${r.score ?? 0} of 4)` : `${r.name} · ${NAMES[r.symbol]} (${r.setup})`;
   return (
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>
       <div className="card-head">
@@ -229,7 +230,7 @@ export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined
 
 // ---------------------------------------------------------------- paper trading: both accounts
 const ACCOUNT_TITLE: Record<'tradingHub' | 'megabull', [string, string]> = {
-  megabull: ['MEGABULL ACCOUNT', 'Paper trade from the MegaBull rule (via MegaBull API)'],
+  megabull: ['MEGABULL ACCOUNT', 'Paper trades from the MegaBull rules: 4 Pillar, Dharani v1 and Dharani v2 (via MegaBull API)'],
   tradingHub: ['TRADING HUB ACCOUNT', 'Paper trade from the Trading Hub rule (Grade A / B)'],
 };
 
@@ -381,7 +382,7 @@ export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow:
                 return (
                   <tr key={t.id}>
                     <td>{t.account === 'megabull' ? 'MegaBull' : 'Trading Hub'}</td>
-                    <td>{t.rule}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
+                    <td>{t.rule}{t.setup ? ` (${t.setup})` : ''}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
                     <td>{t.instrument.name}</td><td className="num">{t.entryTime}</td><td className="num">{n2(t.entryPrice)}</td>
                     <td className="num">{exit != null ? n2(exit) : 'open'}</td><td>{t.exitReason ?? '—'}</td>
                     <td className={`num ${tone(pnl)}`}>{signed(2)(pnl)}</td><td className={`num ${tone(pct)}`}>{signed(1)(pct)}%</td>

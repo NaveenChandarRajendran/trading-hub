@@ -247,3 +247,34 @@ def test_skipped_setup_would_have_worked(tmp_path):
     rows = list(csv.DictReader(open(os.path.join(str(tmp_path), "shadow_skips.csv"))))
     assert rows[0]["would_it_have_worked"] == "Y" and rows[0]["skip_verdict"] == "Wrong" and rows[0]["target_time"] == "10:40"
     assert t.shadow_summary() == {"skipped": 1, "wouldHaveWorked": 1}
+
+
+class FakeMegaBull(FakeAccount):
+    key, rule = "megabull", "megabull"
+
+    def instrument(self, symbol, expiry, spot, side):
+        inst = super().instrument(symbol, expiry, spot, side)
+        return {**inst, "id": 1 if side == "CE" else 2}
+
+
+def test_dharani_v2_has_its_own_slot_but_never_buys_the_option_v1_holds(tmp_path):
+    acc, alerts = FakeMegaBull(), []
+    cfg = {**CFG, "logDir": str(tmp_path), "megabull": {"lots": 1, "stopPct": 10, "targetPct": 20},
+           "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
+    t = AutoTrader(cfg, [acc], clock=Clock(), alert=lambda k, m: alerts.append((k, m)),
+                   state_path=os.path.join(str(tmp_path), "state.json"))
+    t.set_auto(True)
+    v1 = {**GO, "rule": "megabull", "name": "MEGABULL RULE", "setup": "Dharani v1", "symbol": "NIFTY", "side": "PE"}
+    v2 = {**GO, "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "symbol": "NIFTY", "side": "PE"}
+    assert t.on_signal(v1, STATE) == "Entry sent"
+    wait_idle(t)
+    assert t.positions("NIFTY") == {"megabull": True, "dharaniV2": False}
+    assert t.on_signal(v2, STATE) == "Entry sent"  # its own slot is free ...
+    wait_idle(t)
+    assert len(t.state["trades"]) == 1  # ... but the same PE option is already held by v1: skipped
+    assert any("already held by another rule" in m for _, m in alerts)
+    assert t.on_signal({**v2, "side": "CE"}, STATE) == "Entry sent"  # the call is a different option
+    wait_idle(t)
+    assert [tr["slot"] for tr in t.state["trades"]] == ["megabull", "dharaniV2"]
+    assert t.positions("NIFTY") == {"megabull": True, "dharaniV2": True}
+    assert t.on_signal({**v2, "side": "CE"}, STATE) == "Position already open on this index"

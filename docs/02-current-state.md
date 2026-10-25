@@ -120,6 +120,10 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   last 3 completed rows, ±50%), and a count in the header ("3 of 3 Bearish"). Record only; the rules are unchanged.
 - `keep_awake.py`: on Windows the backend stops the PC from sleeping until 16:00 IST (SetThreadExecutionState, like
   call apps); the screen may still lock. Owner 24-Oct-2026.
+- Dharani v2 (owner 25-Oct-2026, `docs/strategies/dharani-v2.md`): the teacher's video rules (SuperTrend, RSI > 70 /
+  < 30, close beyond R1 / S1, close outside the Bollinger band), NIFTY and BANKNIFTY, MegaBull account, own rule card.
+  The MegaBull Nifty setup is renamed Dharani v1. Auto trader positions are per rule ("slot"), not per account; a rule
+  never buys the option another rule holds on the same account. Snapshot CSV has d2_* columns.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

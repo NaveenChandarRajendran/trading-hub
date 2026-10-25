@@ -35,6 +35,16 @@ log = logging.getLogger("autopaper")
 TICK = 0.05
 TH, MB = "tradingHub", "megabull"
 ACCOUNT_NAMES = {TH: "Trading Hub", MB: "MegaBull"}
+D2 = "dharaniV2"
+# rule (sig_rules result "rule") -> paper account. A rule is a "slot": one open position per slot per index, so
+# MegaBull's v1 rule and Dharani v2 (owner, 25-Oct-2026) can both hold a trade on the same account.
+RULE_ACCOUNT = {TH: TH, MB: MB, D2: MB}
+
+
+def slot_of(t):
+    return t.get("slot") or t["account"]  # trades saved before slots existed: slot = account
+
+
 TRADE_LOG_FIELDS = [
     "date", "index", "account", "rule", "grade", "side", "instrument", "entry_time", "entry_price", "qty", "stop", "target",
     "exit_time", "exit_price", "exit_reason", "gross_pnl", "charges", "net_pnl", "highest_premium", "lowest_premium",
@@ -331,11 +341,11 @@ class AutoTrader:
 
     def positions(self, symbol):
         with self.lock:
-            return {a: any(t["status"] == "open" and t["symbol"] == symbol and t["account"] == a for t in self.state["trades"])
-                    for a in self.accounts}
+            return {k: any(t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == k for t in self.state["trades"])
+                    for k, a in RULE_ACCOUNT.items() if a in self.accounts}
 
     # ---------- entries ----------
-    def block_reason(self, account, symbol, now=None, entering=False):
+    def block_reason(self, account, symbol, now=None, entering=False, slot=None):
         """Why a new entry can't be sent, or '' (brief, Step 2 safety). entering: the check right before the BUY,
         made by the entry itself (its own in-progress mark is not a reason)."""
         now = now or self.clock()
@@ -349,9 +359,10 @@ class AutoTrader:
             return self.state["halted"][account]
         if self.state["unknown"].get(account):
             return f"Previous order status unknown: {self.state['unknown'][account]}"
-        if (account, symbol) in self._busy and not entering:
+        slot = slot or account
+        if (slot, symbol) in self._busy and not entering:
             return "An order for this index is in progress"
-        if self.positions(symbol).get(account):
+        if self.positions(symbol).get(slot):
             return "Position already open on this index"
         trades = [t for t in self.state["trades"] if t["account"] == account]
         lim = self.cfg["limits"]
@@ -394,14 +405,17 @@ class AutoTrader:
 
     def on_signal(self, result, state):
         """A rule result for one index (sig_rules). Starts an entry in the background when it is a GO."""
-        account = TH if result["rule"] == "tradingHub" else MB
+        slot = result["rule"]
+        account = RULE_ACCOUNT.get(slot)
         if account not in self.accounts or not result["go"]:
             return ""
-        why = self.block_reason(account, result["symbol"])
+        if slot == D2 and not self.cfg.get(D2, {}).get("enabled", True):
+            return "Dharani v2 is off (config dharaniV2.enabled)"
+        why = self.block_reason(account, result["symbol"], slot=slot)
         if why:
             return why
         with self.lock:
-            self._busy.add((account, result["symbol"]))
+            self._busy.add((slot, result["symbol"]))
         threading.Thread(target=self._enter, args=(account, result, state), name=f"entry-{account}", daemon=True).start()
         return "Entry sent"
 
@@ -419,6 +433,7 @@ class AutoTrader:
 
     def _enter(self, account, result, state):
         acc, symbol, side = self.accounts[account], result["symbol"], result["side"]
+        slot = result["rule"]
         cfg = self.cfg[account]
         try:
             exp = self._try(account, "expiry list", lambda: self._expiry(acc, symbol))
@@ -431,7 +446,13 @@ class AutoTrader:
                     time.sleep(0.5)
                 else:
                     raise AccountError(f"No live price for {inst['name']} yet")
-            why = self.block_reason(account, symbol, entering=True)  # re-check right before sending
+            why = self.block_reason(account, symbol, entering=True, slot=slot)  # re-check right before sending
+            if not why and any(t["status"] == "open" and t["account"] == account and t["instrument"]["id"] == inst["id"]
+                               for t in self.state["trades"]):
+                # another rule already holds this very option on this account: a second BUY would merge the two
+                # positions (one stop / exit could close both), so this entry is skipped and logged
+                why = f"{inst['name']} already held by another rule on this account"
+                self.alert("info", f"{ACCOUNT_NAMES[account]} {symbol} {result.get('setup') or ''}: {why}; entry skipped.")
             if why:
                 log.info("entry %s %s dropped: %s", account, symbol, why)
                 return
@@ -442,7 +463,7 @@ class AutoTrader:
             stop = floor_tick(fill * (1 - cfg["stopPct"] / 100))
             target = ceil_tick(fill * (1 + cfg["targetPct"] / 100))
             trade = {
-                "id": f"{account}-{symbol}-{self.clock():%H%M%S}", "account": account, "symbol": symbol, "rule": result["name"],
+                "id": f"{slot}-{symbol}-{self.clock():%H%M%S}", "account": account, "slot": slot, "symbol": symbol, "rule": result["name"],
                 "setup": result.get("setup"), "grade": result.get("grade") or "n.a.", "side": side, "instrument": inst,
                 "qty": qty, "lots": lots, "entryOrderId": entry_id, "entryTime": self.clock().strftime("%H:%M:%S"),
                 "entryPrice": fill, "stop": stop, "target": target, "stopOrderId": None, "status": "open",
@@ -474,7 +495,7 @@ class AutoTrader:
                 self._halt(account, f"Entry failed: {e}")
         finally:
             with self.lock:
-                self._busy.discard((account, symbol))
+                self._busy.discard((slot, symbol))
                 self._save()
 
     # ---------- exits ----------
@@ -531,7 +552,7 @@ class AutoTrader:
         except Exception as e:
             log.warning("shadow skip %s %s: no instrument: %s", symbol, side, e)
             inst = None
-        pct = self.cfg[MB if result["rule"] == "megabull" else TH]
+        pct = self.cfg[RULE_ACCOUNT.get(result["rule"], TH)]
         with self.lock:
             self.state["shadows"].append({
                 "kind": "skip", "createdAt": now.isoformat(), "symbol": symbol, "side": side, "rule": rule,
@@ -670,7 +691,7 @@ class AutoTrader:
 
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]
-        key = (trade["account"], trade["symbol"])
+        key = (slot_of(trade), trade["symbol"])
         with self.lock:
             if trade["status"] != "open" or trade.get("exiting"):
                 return
@@ -825,7 +846,8 @@ class AutoTrader:
         if sh.get("high") is not None and t.get("exitPrice") is not None and t["entryPrice"]:
             missed = round((sh["high"] - t["exitPrice"]) / t["entryPrice"] * 100, 2)
         return {
-            "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]], "rule": t["rule"],
+            "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]],
+            "rule": f"{t['rule']} ({t['setup']})" if t.get("setup") else t["rule"],
             "grade": t["grade"], "side": t["side"], "instrument": t["instrument"]["name"], "entry_time": t["entryTime"],
             "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"],
             "exit_time": t.get("exitTime"), "exit_price": t.get("exitPrice"), "exit_reason": t.get("exitReason"),
