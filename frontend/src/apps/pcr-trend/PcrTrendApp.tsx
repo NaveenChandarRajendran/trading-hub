@@ -4,7 +4,7 @@ import { Alert, EmptyState, Stat } from '../../shared/ui';
 import { downloadCsv } from '../paper-trade/format';
 import { DEFAULTS, loadSettings, MAX_GAP_MIN, saveSettings, type PcrSettings } from './config/settings';
 import {
-  analyzeSource, atmNote, checkSources, finalPcr, GRID_ROWS, round2, sourceCsv, totalOf, verdict, VERDICT_LABEL,
+  analyzeSource, atmNote, checkSources, finalPcr, GRID_ROWS, round2, sinceWarning, sourceCsv, totalOf, verdict, VERDICT_LABEL,
   type GridKey, type SourceResult,
 } from './logic/pcr';
 import { istLabel, istTime, readNse, readSensibull, type PcrSource, type SourceId } from './logic/sources';
@@ -22,6 +22,10 @@ const PASTE: Record<SourceId, { title: string; hint: string }> = {
   },
 };
 
+// OI in lakhs like the Excel sheet: 5.80 for 5,80,050; small values keep 4 decimals (0.0249)
+const lakhDigits = (v: number) => (Math.abs(v) < 10_000 ? 4 : 2);
+const lakh = (v: number) => inr(lakhDigits(v))(v / 1e5);
+const lakhSigned = (v: number) => signed(lakhDigits(v))(v / 1e5);
 const pcrText = (v: number | null | undefined) => (v == null ? '—' : inr(2)(round2(v)));
 const tone = (v: number | null) => (v == null ? '' : round2(v) > 1 ? 'up' : round2(v) < 1 ? 'down' : '');
 
@@ -156,8 +160,8 @@ export default function PcrTrendApp() {
           {shown.map((id) => <SourceCard key={id} r={res[id]!} n={settings.strikes} />)}
 
           <p className="pcr-foot">
-            PCR = Σ(PE OI + PE OI chg) ÷ Σ(CE OI + CE OI chg) over ATM ±{settings.strikes} strikes. Final = average of Sensibull and NSE PCR.
-            Each source stays in its own units (Sensibull: units, NSE: contracts), so only the ratios are combined.
+            Today OI = yesterday OI + today's OI change. PCR = Σ PE today OI ÷ Σ CE today OI over ATM ±{settings.strikes} strikes.
+            Final = average of Sensibull and NSE PCR. OI in lakhs of units; NSE contracts × lot size (BANKNIFTY 30).
           </p>
         </>
       )}
@@ -195,8 +199,10 @@ function SourceCard({ r, n }: { r: SourceResult; n: number }) {
   const s = r.src;
   const edge = r.below < n || r.above < n ? ` · only ${r.below} below / ${r.above} above (edge of the chain)` : '';
   const since = s.since != null ? `change since ${istTime(s.since)}` : 'change vs previous close';
+  const unit = s.lot > 1 ? `OI in lakhs (contracts × ${s.lot})` : 'OI in lakhs';
+  const warn = sinceWarning(s);
   const fmt = (key: GridKey, v: number | null) =>
-    v == null ? '—' : key === 'pcr' ? inr(2)(round2(v)) : key === 'ceChg' || key === 'peChg' ? signed(0)(v) : inr(0)(v);
+    v == null ? '—' : key === 'pcr' ? inr(2)(round2(v)) : key === 'ceChg' || key === 'peChg' ? lakhSigned(v) : lakh(v);
   const cls = (key: GridKey, v: number | null) =>
     key === 'pcr' ? tone(v) : key === 'ceChg' || key === 'peChg' ? (v == null || v === 0 ? '' : v > 0 ? 'up' : 'down') : '';
 
@@ -206,11 +212,12 @@ function SourceCard({ r, n }: { r: SourceResult; n: number }) {
         <div>
           <h3 className="card-title">{NAME[s.source]}</h3>
           <span className="pcr-sub">
-            {istLabel(s.at)} IST · ATM {inr(0)(r.atm)} · ±{n} strikes{edge} · OI in {s.unit} · {since}
+            {istLabel(s.at)} IST · ATM {inr(0)(r.atm)} · ±{n} strikes{edge} · {unit} · {since}
           </span>
         </div>
         <button className="btn ghost" onClick={() => downloadCsv(`pcr-${s.source}-${s.symbol}-${s.expiry}.csv`, sourceCsv(r))}>CSV</button>
       </div>
+      {warn && <Alert kind="warn">{warn}</Alert>}
       {r.missing.length > 0 && <Alert kind="warn">No data in this paste for {r.missing.map((m) => inr(0)(m)).join(', ')}; left out of the totals.</Alert>}
       <div className="pcr-scroll">
         <table className="t pcr-grid">

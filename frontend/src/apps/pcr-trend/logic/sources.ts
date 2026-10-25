@@ -1,11 +1,13 @@
 // Turns the two pasted responses (Sensibull OI, NSE option chain) into one flat model for the PCR formulas.
-// The parsers are the ones the Sensibull OI and OI & OI Change apps use, unchanged. Each source keeps its own
-// units: Sensibull OI is in units (contracts × lot size), NSE OI is in contracts. They are never mixed.
+// The parsers are the ones the Sensibull OI and OI & OI Change apps use, unchanged. Both sources end up in
+// units: Sensibull already is; NSE contracts are multiplied by the lot size (BANKNIFTY 30).
 import { parseSensibull, type SbSnapshot } from '../../sensibull-oi/logic/sensibull';
 import { parseOptionChain, type OptionChain } from '../../option-strategy/logic/optionChain';
+import { LOT_SIZE } from '../config/settings';
 
 export type SourceId = 'sensibull' | 'nse';
 
+/** Today's OI and today's change, in units. Yesterday's OI = today's OI − today's change. */
 export interface PcrStrike {
   strike: number;
   ceOi: number;
@@ -17,16 +19,19 @@ export interface PcrStrike {
 export interface PcrSource {
   source: SourceId;
   symbol: string; // "BANKNIFTY"
-  expiry: string; // "23-Nov-2026"
+  expiry: string; // "27-Oct-2026"
   at: number; // snapshot time, epoch ms
   since: number | null; // Sensibull: start of the change window (epoch ms); NSE: change is vs previous close
   spot: number;
-  unit: 'units' | 'contracts';
+  lot: number; // NSE contracts were multiplied by this (1 for Sensibull)
   strikes: PcrStrike[]; // ascending
 }
 
+export class LotSizeError extends Error {}
+
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const IST_MS = 5.5 * 3600_000;
+const OPEN_MIN = 9 * 60 + 15;
 const CLOSE_STAMP_MIN = 15 * 60 + 40; // after the close both sites stamp their last data 15:40 IST
 
 /** Epoch ms of an IST wall-clock time on the same IST day as `ms`. */
@@ -34,6 +39,9 @@ const istAt = (ms: number, minutes: number) => {
   const day = Math.floor((ms + IST_MS) / 86400_000) * 86400_000;
   return day - IST_MS + minutes * 60_000;
 };
+
+/** True when `ms` is 09:15 IST: Sensibull's change then equals the change since yesterday's close. */
+export const isMarketOpen = (ms: number) => ms === istAt(ms, OPEN_MIN);
 
 /**
  * Sensibull's `to_time` is the end of the chosen window, which after the close is later than the data
@@ -75,8 +83,8 @@ export function fromSensibull(s: SbSnapshot): PcrSource {
     at: sensibullTime(s.toTime),
     since: Number.isFinite(since) ? since : null,
     spot: s.spot,
-    unit: 'units',
-    // OI = to_*_oi (the latest minute); change = to − from over the Sensibull window
+    lot: 1,
+    // today's OI = to_*_oi (the latest minute); change = to − from (from = 09:15 = yesterday's closing OI)
     strikes: s.strikes.map((k) => ({
       strike: k.strike,
       ceOi: k.toCallOi,
@@ -87,7 +95,7 @@ export function fromSensibull(s: SbSnapshot): PcrSource {
   };
 }
 
-export function fromNse(c: OptionChain): PcrSource {
+export function fromNse(c: OptionChain, lot: number): PcrSource {
   return {
     source: 'nse',
     symbol: c.symbol,
@@ -95,18 +103,24 @@ export function fromNse(c: OptionChain): PcrSource {
     at: nseTime(c.timestamp),
     since: null,
     spot: c.underlying,
-    unit: 'contracts',
-    // openInterest / changeinOpenInterest (vs previous day's settled OI), in contracts
+    lot,
+    // openInterest (today) / changeinOpenInterest (vs yesterday's settled OI), contracts × lot = units
     strikes: c.strikes.map((k) => ({
       strike: k.strike,
-      ceOi: k.ce?.openInterest ?? 0,
-      ceChg: k.ce?.changeInOpenInterest ?? 0,
-      peOi: k.pe?.openInterest ?? 0,
-      peChg: k.pe?.changeInOpenInterest ?? 0,
+      ceOi: (k.ce?.openInterest ?? 0) * lot,
+      ceChg: (k.ce?.changeInOpenInterest ?? 0) * lot,
+      peOi: (k.pe?.openInterest ?? 0) * lot,
+      peChg: (k.pe?.changeInOpenInterest ?? 0) * lot,
     })),
   };
 }
 
 /** Parse a paste; parser errors (SbParseError / ChainParseError) carry a readable message and are rethrown as is. */
 export const readSensibull = (text: string) => fromSensibull(parseSensibull(text));
-export const readNse = (text: string) => fromNse(parseOptionChain(text));
+
+export function readNse(text: string, lots: Record<string, number> = LOT_SIZE): PcrSource {
+  const chain = parseOptionChain(text);
+  const lot = lots[chain.symbol];
+  if (!lot) throw new LotSizeError(`No lot size known for ${chain.symbol || 'this index'}; only ${Object.keys(lots).join(' and ')} are supported.`);
+  return fromNse(chain, lot);
+}

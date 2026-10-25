@@ -8,6 +8,9 @@ export interface PcrSettings {
 
 export const DEFAULTS: PcrSettings = { strikes: 10, down: 0.9, up: 1.1 };
 
+/** NSE OI is in contracts; × lot size gives units, the same as Sensibull. */
+export const LOT_SIZE: Record<string, number> = { BANKNIFTY: 30, NIFTY: 65 };
+
 /** Warn when the two pastes are further apart than this. */
 export const MAX_GAP_MIN = 5;
 

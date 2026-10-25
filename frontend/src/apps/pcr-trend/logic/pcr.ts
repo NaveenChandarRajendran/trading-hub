@@ -1,22 +1,22 @@
-// PCR Trend Analysis formulas. Pure: they take the flat PcrSource model and return plain data.
-//   per strike: ceSum = CE OI + CE OI chg, peSum = PE OI + PE OI chg, strike PCR = peSum ÷ ceSum
-//   per source: PCR = Σ peSum ÷ Σ ceSum over ATM ± N strikes (each source in its own units)
+// PCR Trend Analysis formulas. Pure: they take the flat PcrSource model (units) and return plain data.
+//   per strike: today's OI = yesterday's OI + today's change; strike PCR = PE today's OI ÷ CE today's OI
+//   per source: PCR = Σ PE today's OI ÷ Σ CE today's OI over ATM ± N strikes
 //   final:      average of the Sensibull and NSE PCRs → Down side / Sideways / Up side
-import type { PcrSource, PcrStrike } from './sources';
+import { isMarketOpen, istTime, type PcrSource, type PcrStrike } from './sources';
 
 export interface StrikeRow extends PcrStrike {
-  ceSum: number;
-  peSum: number;
-  pcr: number | null; // null when ceSum is 0
+  ceYest: number; // yesterday's OI = today's OI − today's change
+  peYest: number;
+  pcr: number | null; // null when CE today's OI is 0
 }
 
 export interface Totals {
-  ceOi: number;
+  ceYest: number;
   ceChg: number;
-  ceSum: number;
-  peOi: number;
+  ceOi: number;
+  peYest: number;
   peChg: number;
-  peSum: number;
+  peOi: number;
 }
 
 export interface SourceResult {
@@ -56,20 +56,18 @@ export function nearestStrike(spot: number, strikes: number[]): number {
 }
 
 export function strikeRow(s: PcrStrike): StrikeRow {
-  const ceSum = s.ceOi + s.ceChg;
-  const peSum = s.peOi + s.peChg;
-  return { ...s, ceSum, peSum, pcr: ceSum === 0 ? null : peSum / ceSum };
+  return { ...s, ceYest: s.ceOi - s.ceChg, peYest: s.peOi - s.peChg, pcr: s.ceOi === 0 ? null : s.peOi / s.ceOi };
 }
 
 export function totals(rows: StrikeRow[]): Totals {
-  const t: Totals = { ceOi: 0, ceChg: 0, ceSum: 0, peOi: 0, peChg: 0, peSum: 0 };
+  const t: Totals = { ceYest: 0, ceChg: 0, ceOi: 0, peYest: 0, peChg: 0, peOi: 0 };
   for (const r of rows) {
-    t.ceOi += r.ceOi;
+    t.ceYest += r.ceYest;
     t.ceChg += r.ceChg;
-    t.ceSum += r.ceSum;
-    t.peOi += r.peOi;
+    t.ceOi += r.ceOi;
+    t.peYest += r.peYest;
     t.peChg += r.peChg;
-    t.peSum += r.peSum;
+    t.peOi += r.peOi;
   }
   return t;
 }
@@ -99,7 +97,7 @@ export function analyzeSource(src: PcrSource, n: number): SourceResult {
     if (k > 0) above++;
   }
   const t = totals(rows);
-  return { src, step, atm, rows, missing, below, above, totals: t, pcr: t.ceSum === 0 ? null : t.peSum / t.ceSum };
+  return { src, step, atm, rows, missing, below, above, totals: t, pcr: t.ceOi === 0 ? null : t.peOi / t.ceOi };
 }
 
 /** Average of the two source PCRs; null until both are there. */
@@ -119,14 +117,13 @@ export function verdict(pcr: number, th: { down: number; up: number }): Verdict 
 export interface Check {
   errors: string[]; // nothing is calculated
   warnings: string[]; // calculated anyway
-  notes: string[];
 }
 
 const fmtGap = (min: number) => (min < 60 ? `${Math.round(min)} min` : `${Math.floor(min / 60)} h ${Math.round(min % 60)} min`);
 
 /** Both pastes must be the same index and expiry; far-apart times only warn. */
 export function checkSources(sb: PcrSource, nse: PcrSource, maxGapMin: number): Check {
-  const out: Check = { errors: [], warnings: [], notes: [] };
+  const out: Check = { errors: [], warnings: [] };
   if (sb.symbol !== nse.symbol) out.errors.push(`Different index: Sensibull is ${sb.symbol || '?'}, NSE is ${nse.symbol || '?'}. Paste the same index in both.`);
   if (sb.expiry !== nse.expiry) out.errors.push(`Different expiry: Sensibull is ${sb.expiry || '?'}, NSE is ${nse.expiry || '?'}. Pick the same expiry on both sites.`);
   if (Number.isFinite(sb.at) && Number.isFinite(nse.at)) {
@@ -136,19 +133,25 @@ export function checkSources(sb: PcrSource, nse: PcrSource, maxGapMin: number): 
   return out;
 }
 
+/** Sensibull's change is "since the chart's start time"; only a 09:15 start makes it the change since yesterday. */
+export function sinceWarning(src: PcrSource): string {
+  if (src.source !== 'sensibull' || src.since == null || isMarketOpen(src.since)) return '';
+  return `Sensibull's chart starts at ${istTime(src.since)}, so its change is since ${istTime(src.since)}, not since yesterday. Set the Sensibull chart to the full day (from 09:15).`;
+}
+
 export function atmNote(sb: SourceResult, nse: SourceResult): string {
   return sb.atm !== nse.atm ? `ATM differs: Sensibull ${sb.atm} (spot ${sb.src.spot}), NSE ${nse.atm} (spot ${nse.src.spot}). Each uses its own.` : '';
 }
 
-/** The grid's rows, top to bottom: label, the value per strike, the total. */
+/** The grid's rows, top to bottom (the layout of the Excel sheet). */
 export const GRID_ROWS = [
-  { key: 'ceOi', label: 'CE OI', side: 'ce' },
+  { key: 'ceYest', label: 'CE yesterday OI', side: 'ce' },
   { key: 'ceChg', label: 'CE OI chg', side: 'ce' },
-  { key: 'ceSum', label: 'CE OI + chg', side: 'ce' },
+  { key: 'ceOi', label: 'CE today OI', side: 'ce' },
   { key: 'pcr', label: 'Strike PCR', side: '' },
-  { key: 'peOi', label: 'PE OI', side: 'pe' },
+  { key: 'peYest', label: 'PE yesterday OI', side: 'pe' },
   { key: 'peChg', label: 'PE OI chg', side: 'pe' },
-  { key: 'peSum', label: 'PE OI + chg', side: 'pe' },
+  { key: 'peOi', label: 'PE today OI', side: 'pe' },
 ] as const;
 
 export type GridKey = (typeof GRID_ROWS)[number]['key'];
@@ -158,9 +161,9 @@ export const totalOf = (r: SourceResult, key: GridKey): number | null => (key ==
 
 const cell = (v: number | null) => (v == null ? '' : String(Number.isInteger(v) ? v : round2(v)));
 
-/** The card as CSV, same layout as on screen (strikes as columns, Total last). Raw numbers, no grouping. */
+/** The card as CSV, same layout as on screen (strikes as columns, Total last). Raw units, no grouping. */
 export function sourceCsv(r: SourceResult): string {
-  const head = [`Row (${r.src.unit})`, ...r.rows.map((s) => String(s.strike)), 'Total'];
+  const head = ['Row (units)', ...r.rows.map((s) => String(s.strike)), 'Total'];
   const lines = GRID_ROWS.map((g) => [g.label, ...r.rows.map((s) => cell(s[g.key])), cell(totalOf(r, g.key))]);
   return [head, ...lines].map((l) => l.join(',')).join('\n') + '\n';
 }

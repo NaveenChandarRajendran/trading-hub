@@ -37,7 +37,7 @@
 /* source grid: strikes as columns, label column pinned */
 .pcr .card-head .card-title { margin: 0; }
 .pcr .pcr-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
-.pcr .card-head + .alert { margin-bottom: var(--sp-3); }
+.pcr .card-head ~ .alert { margin-bottom: var(--sp-3); }
 .pcr .pcr-scroll { overflow-x: auto; }
 .pcr table.pcr-grid { width: auto; min-width: 100%; }
 .pcr table.pcr-grid th, .pcr table.pcr-grid td { white-space: nowrap; }

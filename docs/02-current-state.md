@@ -102,18 +102,22 @@ Replaces the father's Excel "Trend Analysis" sheet. Manual (Paste) app only, no 
 - Two paste areas (Sensibull OI response, NSE option-chain response), **Calculate**; each read paste collapses to
   "source · time · spot ✓ · Edit". Parsers are the existing ones (`sensibull-oi/logic/sensibull.ts`,
   `option-strategy/logic/optionChain.ts`), imported as other apps already do; their results are unchanged.
-- Model (`logic/sources.ts`): Sensibull CE OI = `to_call_oi`, chg = `to_call_oi − from_call_oi` (same for puts),
-  in **units**; NSE `openInterest` / `changeinOpenInterest` in **contracts**. Units are never mixed: each source
-  gets its own PCR, only the ratios are averaged. Sensibull's `to_time` after the close is capped at 15:40 IST.
-- Formulas (`logic/pcr.ts`): window = ATM (strike nearest spot, lower on a tie) ± N strike steps (step = most
-  common strike gap; N = 10, Settings); per strike ceSum / peSum / strike PCR (— when ceSum is 0); totals;
-  source PCR = ΣpeSum ÷ ΣceSum; Final = average; verdict < 0.9 Down side, > 1.1 Up side, else Sideways
-  (on the 2-decimal value shown; thresholds in Settings, saved in localStorage `pcr-trend.settings`).
+- Rule (agreed with the sheet's author, 2026-10-25): **today's OI = yesterday's OI + today's change**. Rows per strike:
+  CE yesterday OI, CE OI chg, CE today OI, Strike PCR, PE yesterday OI, PE OI chg, PE today OI.
+  Strike PCR = PE today OI ÷ CE today OI; source PCR = Σ PE today OI ÷ Σ CE today OI; Final = average.
+- Model (`logic/sources.ts`), all in units: Sensibull today OI = `to_*_oi`, change = `to − from` (from = 09:15 =
+  yesterday's close; a chart starting later is flagged); NSE `openInterest` / `changeinOpenInterest` × lot size
+  (`config/settings.ts` LOT_SIZE: BANKNIFTY 30, NIFTY 65). Shown in lakhs like the sheet. Sensibull's `to_time`
+  after the close is capped at 15:40 IST.
+- Window (`logic/pcr.ts`): ATM (strike nearest spot, lower on a tie) ± N strike steps (step = most common strike gap;
+  N = 10, Settings). Verdict < 0.9 Down side, > 1.1 Up side, else Sideways (on the 2-decimal value shown; thresholds
+  in Settings, saved in localStorage `pcr-trend.settings`).
 - Checks: different index or expiry → error, nothing calculated; > 5 min apart → warning; ATM differs → note.
-- Verified on the real 23-Oct-2026 BANKNIFTY pastes (expiry 23-Nov-2026, 15:40): Sensibull = NSE × 30 strike by
-  strike, both PCR 1.07, Final 1.07 → Sideways. The two sources agree whenever Sensibull's window starts at 09:15
-  (its change then equals NSE's change vs previous close); they differ only for a later Sensibull start time.
-- Open: compare with the Excel's final numbers; the Excel's "Direction" box is not built.
+- Verified on the real 23-Oct-2026 BANKNIFTY pastes (expiry 27-Oct-2026, 15:40, the Excel's day): NSE × 30 equals
+  Sensibull at every strike; both PCR 0.97, Final 0.97 → Sideways. The Excel showed 1.01 / 0.50 / 0.75 Down side
+  because its NSE block added the change on top of today's OI (counted twice) and had typing slips (53,600 CE,
+  54,600 / 54,700 PE, NSE 54,300 CE chg); a test pins the sheet's Sensibull cells against the paste.
+- Open: thresholds and the Excel's "Direction" box (Long Build Up, Strong Up Trend, …) still to confirm; not built.
 
 ## Premium Analysis (branch `feature/premium-analysis`)
 Replaces Naveen's Excel: which strikes' premiums moved most for the spot move between two NSE snapshots.

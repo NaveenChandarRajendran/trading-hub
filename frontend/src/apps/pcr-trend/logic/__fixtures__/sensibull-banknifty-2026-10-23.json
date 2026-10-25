@@ -7,11 +7,11 @@
             "expiries": {
                 "2026-11-23": {
                     "is_weekly": false,
-                    "is_enabled": true
+                    "is_enabled": false
                 },
                 "2026-10-27": {
                     "is_weekly": false,
-                    "is_enabled": false
+                    "is_enabled": true
                 }
             },
             "atm_strike_selection": "twenty",
@@ -586,258 +586,258 @@
             65000.0,
             65500.0
         ],
-        "total_call_oi": 2160780,
-        "total_put_oi": 2459220,
-        "pcr": 1.14,
+        "total_call_oi": 10399530,
+        "total_put_oi": 9521040,
+        "pcr": 0.92,
         "underlying_token": 260105,
-        "total_call_oi_change": 797910,
-        "total_put_oi_change": 494670,
+        "total_call_oi_change": 2394960,
+        "total_put_oi_change": 92250,
         "per_strike_data": {
-            "52600": {
-                "from_call_oi": 0,
-                "from_put_oi": 2520,
-                "to_call_oi": 120,
-                "to_put_oi": 4830
-            },
-            "55600": {
-                "from_call_oi": 14820,
-                "from_put_oi": 8490,
-                "to_call_oi": 17640,
-                "to_put_oi": 8670
-            },
-            "52400": {
-                "from_call_oi": 90,
-                "from_put_oi": 1530,
-                "to_call_oi": 90,
-                "to_put_oi": 5400
-            },
-            "55100": {
-                "from_call_oi": 12420,
-                "from_put_oi": 8460,
-                "to_call_oi": 70650,
-                "to_put_oi": 62220
-            },
-            "54300": {
-                "from_call_oi": 4230,
-                "from_put_oi": 4680,
-                "to_call_oi": 26700,
-                "to_put_oi": 14220
-            },
-            "54500": {
-                "from_call_oi": 44850,
-                "from_put_oi": 148650,
-                "to_call_oi": 191520,
-                "to_put_oi": 244740
-            },
-            "53500": {
-                "from_call_oi": 5190,
-                "from_put_oi": 187170,
-                "to_call_oi": 12540,
-                "to_put_oi": 211800
-            },
-            "54200": {
-                "from_call_oi": 1230,
-                "from_put_oi": 5790,
-                "to_call_oi": 23520,
-                "to_put_oi": 14430
-            },
-            "53300": {
-                "from_call_oi": 150,
-                "from_put_oi": 4920,
-                "to_call_oi": 540,
-                "to_put_oi": 6210
-            },
-            "52900": {
-                "from_call_oi": 120,
-                "from_put_oi": 4140,
-                "to_call_oi": 180,
-                "to_put_oi": 6810
-            },
-            "53700": {
-                "from_call_oi": 990,
-                "from_put_oi": 3780,
-                "to_call_oi": 2160,
-                "to_put_oi": 4890
-            },
-            "55900": {
-                "from_call_oi": 11490,
-                "from_put_oi": 11520,
-                "to_call_oi": 13530,
-                "to_put_oi": 11340
-            },
-            "55200": {
-                "from_call_oi": 17190,
-                "from_put_oi": 21420,
-                "to_call_oi": 26010,
-                "to_put_oi": 22440
-            },
-            "54000": {
-                "from_call_oi": 72120,
-                "from_put_oi": 183300,
-                "to_call_oi": 115680,
-                "to_put_oi": 228720
-            },
-            "53200": {
-                "from_call_oi": 210,
-                "from_put_oi": 3180,
-                "to_call_oi": 540,
-                "to_put_oi": 5370
-            },
-            "52300": {
-                "from_call_oi": 60,
-                "from_put_oi": 3900,
-                "to_call_oi": 60,
-                "to_put_oi": 6270
-            },
-            "52500": {
-                "from_call_oi": 2880,
-                "from_put_oi": 130710,
-                "to_call_oi": 4080,
-                "to_put_oi": 170880
-            },
-            "52700": {
-                "from_call_oi": 150,
-                "from_put_oi": 2580,
-                "to_call_oi": 150,
-                "to_put_oi": 7800
-            },
-            "53000": {
-                "from_call_oi": 38760,
-                "from_put_oi": 194040,
-                "to_call_oi": 50280,
-                "to_put_oi": 229890
-            },
-            "56000": {
-                "from_call_oi": 380430,
-                "from_put_oi": 223560,
-                "to_call_oi": 459570,
-                "to_put_oi": 216660
-            },
-            "56300": {
-                "from_call_oi": 14490,
-                "from_put_oi": 15000,
-                "to_call_oi": 17280,
-                "to_put_oi": 14730
-            },
-            "53400": {
-                "from_call_oi": 240,
-                "from_put_oi": 2970,
-                "to_call_oi": 540,
-                "to_put_oi": 4320
-            },
-            "55800": {
-                "from_call_oi": 16440,
-                "from_put_oi": 18390,
-                "to_call_oi": 21360,
-                "to_put_oi": 16170
-            },
-            "54700": {
-                "from_call_oi": 10920,
-                "from_put_oi": 14220,
-                "to_call_oi": 40320,
-                "to_put_oi": 31800
-            },
-            "55000": {
-                "from_call_oi": 345810,
-                "from_put_oi": 411660,
-                "to_call_oi": 527010,
-                "to_put_oi": 514560
-            },
-            "53600": {
-                "from_call_oi": 540,
-                "from_put_oi": 5340,
-                "to_call_oi": 2130,
-                "to_put_oi": 6600
-            },
-            "52800": {
-                "from_call_oi": 120,
-                "from_put_oi": 3360,
-                "to_call_oi": 150,
-                "to_put_oi": 6030
-            },
-            "53100": {
-                "from_call_oi": 210,
-                "from_put_oi": 2610,
-                "to_call_oi": 480,
-                "to_put_oi": 5250
-            },
-            "54800": {
-                "from_call_oi": 14250,
-                "from_put_oi": 17310,
-                "to_call_oi": 28560,
-                "to_put_oi": 29400
-            },
-            "56200": {
-                "from_call_oi": 17040,
-                "from_put_oi": 11550,
-                "to_call_oi": 20850,
-                "to_put_oi": 11340
-            },
-            "55300": {
-                "from_call_oi": 25320,
-                "from_put_oi": 31350,
-                "to_call_oi": 27870,
-                "to_put_oi": 32310
-            },
-            "55700": {
-                "from_call_oi": 20790,
-                "from_put_oi": 9030,
-                "to_call_oi": 22380,
-                "to_put_oi": 9000
-            },
-            "55400": {
-                "from_call_oi": 15090,
-                "from_put_oi": 14940,
-                "to_call_oi": 18450,
-                "to_put_oi": 13290
-            },
-            "54600": {
-                "from_call_oi": 29160,
-                "from_put_oi": 32970,
-                "to_call_oi": 35850,
-                "to_put_oi": 32490
-            },
             "54100": {
-                "from_call_oi": 2010,
-                "from_put_oi": 4770,
-                "to_call_oi": 16230,
-                "to_put_oi": 10200
-            },
-            "56100": {
-                "from_call_oi": 12660,
-                "from_put_oi": 9930,
-                "to_call_oi": 14490,
-                "to_put_oi": 9780
-            },
-            "54900": {
-                "from_call_oi": 10920,
-                "from_put_oi": 9990,
-                "to_call_oi": 23520,
-                "to_put_oi": 23910
-            },
-            "54400": {
-                "from_call_oi": 4530,
-                "from_put_oi": 23340,
-                "to_call_oi": 21630,
-                "to_put_oi": 25080
-            },
-            "53800": {
-                "from_call_oi": 750,
-                "from_put_oi": 7800,
-                "to_call_oi": 4290,
-                "to_put_oi": 8970
+                "from_call_oi": 15360,
+                "from_put_oi": 123210,
+                "to_call_oi": 124680,
+                "to_put_oi": 130170
             },
             "53900": {
-                "from_call_oi": 990,
-                "from_put_oi": 7770,
-                "to_call_oi": 9930,
-                "to_put_oi": 11220
+                "from_call_oi": 10320,
+                "from_put_oi": 119940,
+                "to_call_oi": 44100,
+                "to_put_oi": 111780
+            },
+            "56000": {
+                "from_call_oi": 1564710,
+                "from_put_oi": 651300,
+                "to_call_oi": 1690530,
+                "to_put_oi": 609750
+            },
+            "55600": {
+                "from_call_oi": 342030,
+                "from_put_oi": 75870,
+                "to_call_oi": 364980,
+                "to_put_oi": 55860
+            },
+            "54800": {
+                "from_call_oi": 264960,
+                "from_put_oi": 283140,
+                "to_call_oi": 412920,
+                "to_put_oi": 230400
+            },
+            "54500": {
+                "from_call_oi": 224490,
+                "from_put_oi": 687360,
+                "to_call_oi": 580050,
+                "to_put_oi": 492480
+            },
+            "52500": {
+                "from_call_oi": 2100,
+                "from_put_oi": 330990,
+                "to_call_oi": 6930,
+                "to_put_oi": 604350
+            },
+            "52800": {
+                "from_call_oi": 240,
+                "from_put_oi": 77400,
+                "to_call_oi": 240,
+                "to_put_oi": 118200
+            },
+            "53300": {
+                "from_call_oi": 1860,
+                "from_put_oi": 167910,
+                "to_call_oi": 2490,
+                "to_put_oi": 233790
+            },
+            "55200": {
+                "from_call_oi": 245130,
+                "from_put_oi": 133470,
+                "to_call_oi": 275340,
+                "to_put_oi": 114600
+            },
+            "54600": {
+                "from_call_oi": 81420,
+                "from_put_oi": 172920,
+                "to_call_oi": 170730,
+                "to_put_oi": 125580
+            },
+            "55300": {
+                "from_call_oi": 272250,
+                "from_put_oi": 186540,
+                "to_call_oi": 351450,
+                "to_put_oi": 167610
+            },
+            "56200": {
+                "from_call_oi": 205050,
+                "from_put_oi": 31680,
+                "to_call_oi": 193830,
+                "to_put_oi": 30150
+            },
+            "56300": {
+                "from_call_oi": 138300,
+                "from_put_oi": 26910,
+                "to_call_oi": 156570,
+                "to_put_oi": 20640
+            },
+            "53400": {
+                "from_call_oi": 1320,
+                "from_put_oi": 113610,
+                "to_call_oi": 3480,
+                "to_put_oi": 170880
+            },
+            "54700": {
+                "from_call_oi": 160080,
+                "from_put_oi": 210090,
+                "to_call_oi": 234240,
+                "to_put_oi": 112050
+            },
+            "54000": {
+                "from_call_oi": 148500,
+                "from_put_oi": 768030,
+                "to_call_oi": 351240,
+                "to_put_oi": 727560
+            },
+            "53000": {
+                "from_call_oi": 95550,
+                "from_put_oi": 690180,
+                "to_call_oi": 88590,
+                "to_put_oi": 971490
+            },
+            "53700": {
+                "from_call_oi": 7200,
+                "from_put_oi": 113100,
+                "to_call_oi": 21210,
+                "to_put_oi": 129150
+            },
+            "55100": {
+                "from_call_oi": 156540,
+                "from_put_oi": 104490,
+                "to_call_oi": 226410,
+                "to_put_oi": 82620
+            },
+            "53500": {
+                "from_call_oi": 18600,
+                "from_put_oi": 451320,
+                "to_call_oi": 33060,
+                "to_put_oi": 435690
+            },
+            "55900": {
+                "from_call_oi": 257820,
+                "from_put_oi": 66780,
+                "to_call_oi": 266130,
+                "to_put_oi": 63840
+            },
+            "53100": {
+                "from_call_oi": 540,
+                "from_put_oi": 136740,
+                "to_call_oi": 870,
+                "to_put_oi": 175530
+            },
+            "55000": {
+                "from_call_oi": 1186530,
+                "from_put_oi": 1111890,
+                "to_call_oi": 1381260,
+                "to_put_oi": 840390
+            },
+            "52700": {
+                "from_call_oi": 960,
+                "from_put_oi": 53040,
+                "to_call_oi": 960,
+                "to_put_oi": 58860
+            },
+            "52600": {
+                "from_call_oi": 0,
+                "from_put_oi": 90780,
+                "to_call_oi": 0,
+                "to_put_oi": 158400
+            },
+            "54200": {
+                "from_call_oi": 40290,
+                "from_put_oi": 195120,
+                "to_call_oi": 243210,
+                "to_put_oi": 235800
+            },
+            "55400": {
+                "from_call_oi": 254460,
+                "from_put_oi": 140370,
+                "to_call_oi": 287160,
+                "to_put_oi": 130290
+            },
+            "55800": {
+                "from_call_oi": 344850,
+                "from_put_oi": 124290,
+                "to_call_oi": 379650,
+                "to_put_oi": 98250
+            },
+            "52400": {
+                "from_call_oi": 0,
+                "from_put_oi": 38460,
+                "to_call_oi": 60,
+                "to_put_oi": 78480
+            },
+            "52900": {
+                "from_call_oi": 240,
+                "from_put_oi": 84150,
+                "to_call_oi": 1590,
+                "to_put_oi": 91830
             },
             "55500": {
-                "from_call_oi": 213210,
-                "from_put_oi": 155910,
-                "to_call_oi": 291900,
-                "to_put_oi": 159180
+                "from_call_oi": 1070730,
+                "from_put_oi": 711180,
+                "to_call_oi": 1174680,
+                "to_put_oi": 638670
+            },
+            "54900": {
+                "from_call_oi": 243600,
+                "from_put_oi": 227130,
+                "to_call_oi": 326640,
+                "to_put_oi": 206250
+            },
+            "55700": {
+                "from_call_oi": 398880,
+                "from_put_oi": 73140,
+                "to_call_oi": 337920,
+                "to_put_oi": 64980
+            },
+            "52300": {
+                "from_call_oi": 450,
+                "from_put_oi": 39390,
+                "to_call_oi": 600,
+                "to_put_oi": 109050
+            },
+            "53200": {
+                "from_call_oi": 1260,
+                "from_put_oi": 96780,
+                "to_call_oi": 1800,
+                "to_put_oi": 272010
+            },
+            "53600": {
+                "from_call_oi": 6810,
+                "from_put_oi": 136590,
+                "to_call_oi": 9450,
+                "to_put_oi": 100110
+            },
+            "54400": {
+                "from_call_oi": 44940,
+                "from_put_oi": 160170,
+                "to_call_oi": 205950,
+                "to_put_oi": 134550
+            },
+            "54300": {
+                "from_call_oi": 46230,
+                "from_put_oi": 146550,
+                "to_call_oi": 231750,
+                "to_put_oi": 202020
+            },
+            "56100": {
+                "from_call_oi": 143970,
+                "from_put_oi": 81690,
+                "to_call_oi": 180780,
+                "to_put_oi": 57240
+            },
+            "53800": {
+                "from_call_oi": 6000,
+                "from_put_oi": 195090,
+                "to_call_oi": 36000,
+                "to_put_oi": 129690
             }
         }
     }
