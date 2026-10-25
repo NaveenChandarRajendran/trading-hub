@@ -1,5 +1,5 @@
 # start_trading_day.ps1 - the owner's morning routine in one go (run by Start_Trading_Day.bat). PAPER ONLY.
-# Asks for the Dhan client ID once and the Dhan access token only when the saved one is missing, older than 23 hours or
+# Asks for the Dhan client ID once and the Dhan access token only when the saved one is missing, too old to last until today's 15:45 close or
 # rejected by Dhan (owner, 23-Oct-2026: the token is valid 24 hours). Both are kept in %USERPROFILE%\TradingHubKeys
 # (outside the Trading Journey folder and outside git); the token is encrypted with Windows (DPAPI, this user only) and
 # never shown or printed. Asks for the MegaBull key only when it is missing or older than 25 days (same folder), starts the backend (data, 5-minute signal watcher, auto paper trader) and the frontend,
@@ -45,10 +45,17 @@ $reused = $false
 if ($saved -and $saved.token -and $saved.savedAt) {
     try {
         $hours = ((Get-Date) - [DateTime]::Parse($saved.savedAt)).TotalHours
-        if ($hours -lt 23) {
+        # owner 25-Oct-2026: the token must last the whole session, so it is reused only if it is still good at 15:45
+        # today (23 h counted, 1 h margin on Dhan's 24 h); a token from yesterday afternoon is asked for again
+        $expires = [DateTime]::Parse($saved.savedAt).AddHours(23)
+        $close = (Get-Date).Date.AddHours(15).AddMinutes(45)
+        $needUntil = if ((Get-Date) -lt $close) { $close } else { (Get-Date).AddHours(1) }
+        if ($expires -gt $needUntil) {
             $tok = Plain ($saved.token | ConvertTo-SecureString)
             $reused = $true
-            Say ("Using the Dhan token you gave {0:N0} hours ago (valid 24 hours)." -f $hours) 'Green'
+            Say ("Using the Dhan token you gave {0:N0} hours ago (good until {1:dd MMM HH:mm})." -f $hours, $expires) 'Green'
+        } else {
+            Say ("The saved Dhan token would expire at {0:dd MMM HH:mm}, before today's market close, so a fresh one is needed." -f $expires) 'Yellow'
         }
     } catch { $tok = $null }
 }
