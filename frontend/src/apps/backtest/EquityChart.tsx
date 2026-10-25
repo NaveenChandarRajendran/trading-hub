@@ -23,6 +23,19 @@ export interface Line {
 
 type Pt = { time: number; value: number };
 
+/** Removes series that belong to `c`; a series made on an earlier chart (React re-mounts the chart in development)
+ * is skipped, because removing it from the new chart throws and blanks the whole app. */
+function drop(c: IChartApi, owner: IChartApi | null, list: ISeriesApi<SeriesType>[]) {
+  if (owner !== c) return;
+  for (const s of list) {
+    try {
+      c.removeSeries(s);
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 function useChart(box: React.RefObject<HTMLDivElement | null>) {
   const chart = useRef<IChartApi | null>(null);
   useEffect(() => {
@@ -59,12 +72,14 @@ export function EquityChart({ lines }: { lines: Line[] }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useChart(box);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
+  const owner = useRef<IChartApi | null>(null);
 
   useEffect(() => {
     const c = chart.current;
     if (!c) return;
     theme(c);
-    for (const s of series.current) c.removeSeries(s);
+    drop(c, owner.current, series.current);
+    owner.current = c;
     const up = token('--up');
     const down = token('--down');
     const area = lines.length === 1 ? lines[0] : lines.find((l) => l.bold);
@@ -90,12 +105,14 @@ export function DrawdownChart({ points }: { points: Pt[] }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useChart(box);
   const series = useRef<ISeriesApi<'Area'> | null>(null);
+  const owner = useRef<IChartApi | null>(null);
 
   useEffect(() => {
     const c = chart.current;
     if (!c) return;
     theme(c);
-    if (series.current) c.removeSeries(series.current);
+    drop(c, owner.current, series.current ? [series.current as ISeriesApi<SeriesType>] : []);
+    owner.current = c;
     const down = token('--down');
     const s = c.addSeries(AreaSeries, {
       lineColor: down, lineWidth: 2, topColor: withAlpha(down, 0.08), bottomColor: withAlpha(down, 0.32),
