@@ -54,7 +54,8 @@ if ($saved -and $saved.token -and $saved.savedAt) {
 }
 if (-not $tok) {
     $sec = $null
-    do { $sec = Read-Host "Paste today's Dhan access token (hidden), then press Enter" -AsSecureString; $tok = Plain $sec } until ($tok.Length -ge 20)
+    do { $sec = Read-Host "Paste today's Dhan access token (hidden), then press Enter" -AsSecureString; $tok = (Plain $sec).Trim() } until ($tok.Length -ge 20)
+    $sec = ConvertTo-SecureString $tok -AsPlainText -Force  # saved without stray spaces
     Save-Dhan $cid ($sec | ConvertFrom-SecureString) (Get-Date -Format 's')
 } else {
     Save-Dhan $cid $saved.token $saved.savedAt

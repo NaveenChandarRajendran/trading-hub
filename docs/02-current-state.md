@@ -131,6 +131,17 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   **Trend** (Trading Hub rule) and **Dharani** (the teacher's setup). Books reuse the paper engine and get the same
   ticks from PaperService. The owner's own Paper Trading screen stays the main account ("manual"): hand trades and the
   "stop + target" button. Dashboard: three account cards with balances.
+- Backtest (owner 25-Oct-2026, `docs/backtest.md`): 5 years of Dhan data (index minutes, rolling option prices),
+  `bt_data.py` + `backtest.py`, the live rule functions reused; MegaBull rules and Dharani tested, Trend not (no past
+  chain OI). Backtest page in the app (home group): strategy chips, totals, profit curve (series tokens
+  --series-1..4), year / month tables, exits, trades + CSV, Run button (after market hours). Also `Run_Backtest.bat`.
+- Names and indices (owner 25-Oct-2026, ADR 0007): **4 Pillar Rules**, **SuperTrend Rules** (MegaBull account),
+  **Dharani Rules**, **Trend Rules** (app accounts). All four run on NIFTY and BANKNIFTY from 26-Oct: rule ids
+  `fourPillar` and `superTrend` (each its own slot per index) replace the single `megabull` rule (kept as a slot for
+  old trades). Dashboard: four rule cards (+ order flow). Snapshot CSV: new `st_*` columns for SuperTrend Rules
+  (`mb_*` = 4 Pillar Rules). Backtest: every strategy on both indices, Trend Rules added as approximate (Trending OI
+  from past option OI of ATM±10, counted from 09:15); the download is now ATM±10 with OI (~10,000 pieces, 2–3 hours
+  the first time). Backtest page: one chip per strategy + Index filter.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 

@@ -303,6 +303,10 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         near_future=lambda symbol: instruments.near_future(symbol) if instruments else None))
     if paper:
         paper_api.register(app, paper)
+    import bt_service
+    bts = bt_service.BacktestService(tracker.client, tracker.market_open)
+    bt_service.register(app, bts)
+    app.state.backtest = bts
     if signal_config is not None:
         signals = build_signals(signal_config, tracker, app.state.candles, get_expiries, lot_size, trending_oi_body, paper)
         sig_service.register(app, signals)

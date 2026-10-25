@@ -3,7 +3,7 @@ sig_rules.py - the two written rules, evaluated on the last completed 5-minute c
 
 Specs (the code must match them exactly; change the doc first):
     Trading Hub rule  docs/strategies/trading-hub-trend.md
-    MegaBull rule     docs/strategies/megabull.md (4 Pillar = BANKNIFTY, Dharani = NIFTY)
+    MegaBull rules    docs/strategies/megabull.md (4 Pillar Rules, SuperTrend Rules; any index)
 
 Input is a `state` dict built by sig_market.build_state():
     symbol        "NIFTY" | "BANKNIFTY"
@@ -34,7 +34,7 @@ MB_RSI_4P = 45.0
 MB_VIX_MAX = 14.0
 MB_PCR = 0.9  # owner 23-Oct evening: "near 1 or above" = call side, "well below 1" = put side; 0.9 for now
 MB_RSI_DHARANI = (45.0, 55.0)  # put below the first, call above the second
-MB_PIVOT_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # room to the next pivot level (Dharani is NIFTY only)
+MB_PIVOT_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # room to the next pivot level (both rules, any index)
 MB_WALL_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 200.0}  # room to the nearest OI level in the trade's direction
 
 DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not checked; trade tagged."
@@ -205,7 +205,7 @@ def trading_hub_rule(state):
     blocked = gates(state, "tradingHub", TH_LAST_ENTRY)
     go = g is not None and not blocked
     return {
-        "rule": "tradingHub", "name": "TRADING HUB RULE", "account": "Trading Hub paper", "symbol": state["symbol"],
+        "rule": "tradingHub", "name": "TREND RULES", "account": "Trading Hub paper", "symbol": state["symbol"],
         "side": side, "go": go, "grade": g, "checks": checks, "blocked": blocked,
         "tags": ["delta not checked"], "at": state.get("signalTime"),
     }
@@ -386,8 +386,9 @@ def dharani_checks(state, side):
     return out
 
 
-def megabull_rule(state):
-    evaluate = four_pillar_checks if state["symbol"] == "BANKNIFTY" else dharani_checks
+def _megabull_rule(state, evaluate, rule, name, setup):
+    """4 Pillar Rules / SuperTrend Rules on the MegaBull account, any index (owner, 25-Oct-2026: both on NIFTY and
+    BANKNIFTY). Grade A only; each rule has its own position slot per index."""
     both = {s: evaluate(state, s) for s in ("PE", "CE")}
     # the side with a trigger is the one to show; otherwise SuperTrend's direction
     side = next((s for s in ("PE", "CE") if both[s][0]["detail"].startswith("Closed")), None)
@@ -395,10 +396,23 @@ def megabull_rule(state):
         side = "CE" if _ago(state, "st_dir") == -1 else "PE"
     checks = both[side]
     green = all(c["state"] == PASS or (c["state"] == NOT_CHECKED and c.get("exempt")) for c in checks)
-    blocked = gates(state, "megabull", MB_LAST_ENTRY)
+    blocked = gates(state, rule, MB_LAST_ENTRY)
     blocked = [b for b in blocked if not b.startswith("No new entries")]  # the entry window check covers it
     return {
-        "rule": "megabull", "name": "MEGABULL RULE", "setup": "4 Pillar" if evaluate is four_pillar_checks else "SuperTrend Nifty",
+        "rule": rule, "name": name, "setup": setup,
         "account": "MegaBull paper", "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": ["delta not checked"], "at": state.get("signalTime"),
     }
+
+
+def four_pillar_rule(state):
+    return _megabull_rule(state, four_pillar_checks, "fourPillar", "4 PILLAR RULES", "4 Pillar Rules")
+
+
+def supertrend_rule(state):
+    return _megabull_rule(state, dharani_checks, "superTrend", "SUPERTREND RULES", "SuperTrend Rules")
+
+
+def megabull_rule(state):
+    """Before 25-Oct-2026 MegaBull ran 4 Pillar on BANKNIFTY and SuperTrend on NIFTY only (kept for the tests)."""
+    return four_pillar_rule(state) if state["symbol"] == "BANKNIFTY" else supertrend_rule(state)

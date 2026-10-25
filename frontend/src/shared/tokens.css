@@ -32,6 +32,8 @@
   --itm-soft: #f6f0e4; /* in-the-money cells: neutral warm tint, not a signal color */
   --series-bb: #5b8fd6; /* chart overlays (Dashboard): Bollinger bands */
   --series-vwap: #8a63d2; /* chart overlays: VWAP */
+  /* strategy lines (Backtest): one per strategy; the combined line uses --text */
+  --series-1: #387ed1; --series-2: #8a63d2; --series-3: #c77a1e; --series-4: #1f9483;
   /* P&L heatmap (calendar): 1 = small, 4 = large win / loss */
   --heat-empty: #eceff2;
   --heat-up-1: #c7ecd5; --heat-up-2: #8fd4a9; --heat-up-3: #3fae6f; --heat-up-4: #137a43;
@@ -78,6 +80,7 @@
   --itm-soft: #29241b;
   --series-bb: #6f9fe0;
   --series-vwap: #a688e6;
+  --series-1: #5b9bf0; --series-2: #a688e6; --series-3: #e3a25a; --series-4: #3cc2aa;
   --heat-empty: #23272d;
   --heat-up-1: #173a26; --heat-up-2: #1f6a3e; --heat-up-3: #2e9a5b; --heat-up-4: #4fd08a;
   --heat-down-1: #45201f; --heat-down-2: #7a2f2c; --heat-down-3: #b8433e; --heat-down-4: #f0706b;

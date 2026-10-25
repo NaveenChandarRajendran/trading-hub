@@ -35,13 +35,14 @@ log = logging.getLogger("autopaper")
 TICK = 0.05
 TH, MB = "tradingHub", "megabull"
 D2 = "dharaniV2"
+FP, STR = "fourPillar", "superTrend"  # MegaBull rules, each on any index (owner, 25-Oct-2026)
 DH = "dharani"  # the app's own Rs 1 lakh paper account for the Dharani rule (strategy_books.StrategyBook)
 MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): manual trades and "stop + target"
 ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", MANUAL: "Paper Trading (manual)"}
-# rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar, SuperTrend
-# Nifty); the app's paper trading = one Rs 1 lakh account per strategy (Trend, Dharani). A rule is also a "slot": one
-# open position per slot per index.
-RULE_ACCOUNT = {TH: TH, MB: MB, D2: DH}
+# rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
+# SuperTrend Rules); the app's paper trading = one Rs 1 lakh account per strategy (Trend Rules, Dharani Rules). A rule is
+# also a "slot": one open position per slot per index. MB as a slot = trades saved before the 4 Pillar / SuperTrend split.
+RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB}
 APP = {TH, DH, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
@@ -558,7 +559,7 @@ class AutoTrader:
 
     def add_skip(self, result, state, missed, why):
         """A setup the rule skipped (docs: owner's brief 7b). Tracks the ATM option that WOULD have been bought."""
-        symbol, side, rule = result["symbol"], result["side"], result.get("setup") or "Trend"
+        symbol, side, rule = result["symbol"], result["side"], result.get("setup") or "Trend Rules"
         now = self.clock()
         self._roll_day()
         if now.strftime("%H:%M") >= SHADOW_SKIP_UNTIL:
@@ -897,7 +898,7 @@ class AutoTrader:
             missed = round((sh["high"] - t["exitPrice"]) / t["entryPrice"] * 100, 2)
         return {
             "date": self.state["day"], "index": t["symbol"], "account": ACCOUNT_NAMES[t["account"]],
-            "rule": f"{t['rule']} ({t['setup']})" if t.get("setup") else t["rule"],
+            "rule": f"{t['rule']} ({t['setup']})" if t.get("setup") and t["setup"].upper() != t["rule"] else t["rule"],
             "grade": t["grade"], "side": t["side"], "instrument": t["instrument"]["name"], "entry_time": t["entryTime"],
             "entry_price": t["entryPrice"], "qty": t["qty"], "stop": t["stop"], "target": t["target"] if t["target"] is not None else "SuperTrend exit",
             "exit_time": t.get("exitTime"), "exit_price": t.get("exitPrice"), "exit_reason": t.get("exitReason"),

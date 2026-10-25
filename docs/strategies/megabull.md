@@ -1,13 +1,20 @@
-# MegaBull rule (4 Pillar = BANKNIFTY, SuperTrend Nifty = NIFTY)
+# MegaBull rules: 4 Pillar Rules and SuperTrend Rules (any index)
 
 Owner: R. Diwakaran. Sources: tracker sheets 'Option Buy-4 Pillar Startegy' and 'Option Buy - Dharani Setup' (header
 notes), 'Rules and Data Log', the brief (23-Oct-2026) and owner answers (23-Oct-2026). Code: `backend/sig_rules.py`
-`megabull_rule`. PAPER ONLY (MegaBull paper account). Strict rules, unchanged; GO = Grade A only.
+`four_pillar_rule`, `supertrend_rule`. PAPER ONLY (MegaBull paper account). Strict rules, unchanged; GO = Grade A only.
 
 **Names (owner, 25-Oct-2026):** the NIFTY setup here is **SuperTrend Nifty**, our own rule built from the live-webinar
 notes (called "Dharani" / "Dharani v1" before). The teacher's exact tuned setup is the separate **Dharani** rule
 (`dharani-v2.md`), traded on the app's own Rs 1 lakh Dharani paper account, not on MegaBull. MegaBull keeps the strict
 rules only: 4 Pillar and SuperTrend Nifty.
+
+**Any index (owner, 25-Oct-2026, from 26-Oct):** renamed **4 Pillar Rules** and **SuperTrend Rules**, and BOTH run on
+NIFTY and BANKNIFTY ("so that way we can test it further"; before: 4 Pillar on BANKNIFTY, SuperTrend Nifty on NIFTY).
+4 Pillar on NIFTY and SuperTrend on BANKNIFTY are untested extensions; they use the per-index settings already in
+`autopaper.json` "rules" (pivotRoom, wallRoom: NIFTY 50 / 50, BANKNIFTY 100 / 200). Each rule is its own position slot
+per index on the MegaBull account (ADR 0007): one rule's open trade never blocks the other. Section headings below keep
+the original index for where each was first written.
 
 **Status (owner, 23-Oct evening):** thresholds confirmed; the room values are guesses kept as settings
 (`autopaper.json` "rules": pivotRoom, wallRoom). MegaBull takes **Grade A only** (every pillar and filter passes); a setup

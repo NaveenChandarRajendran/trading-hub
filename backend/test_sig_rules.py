@@ -3,7 +3,7 @@ the written rules (docs/strategies/*.md) alone."""
 from datetime import datetime
 
 from sig_indicators import IST, pivots
-from sig_rules import BORDER, FAIL, NOT_CHECKED, PASS, megabull_rule, trading_hub_exit, trading_hub_rule
+from sig_rules import BORDER, FAIL, NOT_CHECKED, PASS, four_pillar_rule, megabull_rule, supertrend_rule, trading_hub_exit, trading_hub_rule
 
 
 def ts(hm):
@@ -111,7 +111,7 @@ def four_pillar_call(**over):
 
 def test_four_pillar_call_go():
     r = megabull_rule(four_pillar_call())
-    assert r["setup"] == "4 Pillar" and r["side"] == "CE"
+    assert r["setup"] == "4 Pillar Rules" and r["rule"] == "fourPillar" and r["side"] == "CE"
     assert states(r)["trigger"] == PASS and states(r)["confirmation"] == PASS and states(r)["room"] == PASS  # 400 pts to 55,300
     assert r["go"]
 
@@ -146,7 +146,7 @@ def test_dharani_put_go():
     s["bars"][-1]["low"] = 22630  # pressed the lower band
     s.update(prev=prev, piv=pivots(**prev), sr={"levels": {"R": [], "S": [{"strike": 22500, "oi": 1}]}})
     r = megabull_rule(s)
-    assert r["setup"] == "SuperTrend Nifty" and r["side"] == "PE"
+    assert r["setup"] == "SuperTrend Rules" and r["rule"] == "superTrend" and r["side"] == "PE"
     assert all(states(r)[k] == PASS for k in ("trigger", "confirmation", "pillar1", "pillar2", "pillar3", "pillar4", "room"))
     assert r["go"]
     s["ind"]["rsi"][-1] = 50  # 45-55 = no trade
@@ -175,3 +175,12 @@ def test_settings_are_easy_to_change():
         assert not megabull_rule(four_pillar_call())["go"]  # 400 pts to 55,300 < 450
     finally:
         sig_rules.MB_WALL_ROOM = old
+
+
+def test_both_megabull_rules_run_on_any_index():
+    """Owner, 25-Oct-2026: 4 Pillar Rules and SuperTrend Rules on NIFTY and BANKNIFTY."""
+    s = four_pillar_call()
+    assert four_pillar_rule(s)["go"] and supertrend_rule(s)["rule"] == "superTrend"
+    n = {**s, "symbol": "NIFTY"}
+    r = four_pillar_rule(n)
+    assert r["symbol"] == "NIFTY" and r["name"] == "4 PILLAR RULES" and r["checks"]  # NIFTY thresholds exist

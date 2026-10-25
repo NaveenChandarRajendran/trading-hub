@@ -1,0 +1,109 @@
+{
+ "ranAt": "2026-10-25T19:00:00+05:30",
+ "slippagePct": 0.5,
+ "lots": {
+  "NIFTY": 65,
+  "BANKNIFTY": 30
+ },
+ "dataSpan": {
+  "NIFTY": [
+   "2021-11-01",
+   "2026-10-23"
+  ]
+ },
+ "notTested": {
+  "Trend": "x"
+ },
+ "trades": [
+  {
+   "strategy": "Dharani",
+   "index": "NIFTY",
+   "day": "2024-01-02",
+   "signal": "10:05",
+   "side": "CE",
+   "strike": 25000,
+   "entry": 100,
+   "exit": 110,
+   "reason": "Signal",
+   "kind": "Signal",
+   "gross": 1100,
+   "charges": 60,
+   "slippage": 40,
+   "net": 1000,
+   "entry_ts": 1704180000,
+   "exit_ts": 1704180600
+  },
+  {
+   "strategy": "Dharani",
+   "index": "NIFTY",
+   "day": "2024-01-02",
+   "signal": "10:05",
+   "side": "CE",
+   "strike": 25000,
+   "entry": 100,
+   "exit": 110,
+   "reason": "Stop",
+   "kind": "Stop",
+   "gross": -420,
+   "charges": 50,
+   "slippage": 30,
+   "net": -500,
+   "entry_ts": 1704190000,
+   "exit_ts": 1704190600
+  },
+  {
+   "strategy": "SuperTrend Rules",
+   "index": "NIFTY",
+   "day": "2024-02-05",
+   "signal": "10:05",
+   "side": "CE",
+   "strike": 25000,
+   "entry": 100,
+   "exit": 110,
+   "reason": "Stop",
+   "kind": "Stop",
+   "gross": -240,
+   "charges": 40,
+   "slippage": 20,
+   "net": -300,
+   "entry_ts": 1707120000,
+   "exit_ts": 1707120600
+  },
+  {
+   "strategy": "Dharani",
+   "index": "BANKNIFTY",
+   "day": "2025-03-10",
+   "signal": "10:05",
+   "side": "CE",
+   "strike": 25000,
+   "entry": 100,
+   "exit": 110,
+   "reason": "Target",
+   "kind": "Target",
+   "gross": 2100,
+   "charges": 60,
+   "slippage": 40,
+   "net": 2000,
+   "entry_ts": 1741600000,
+   "exit_ts": 1741600600
+  },
+  {
+   "strategy": "Dharani",
+   "index": "NIFTY",
+   "day": "2025-03-11",
+   "signal": "10:05",
+   "side": "CE",
+   "strike": 25000,
+   "entry": 100,
+   "exit": 110,
+   "reason": "Time",
+   "kind": "Time",
+   "gross": -700,
+   "charges": 60,
+   "slippage": 40,
+   "net": -800,
+   "entry_ts": 1741690000,
+   "exit_ts": 1741690600
+  }
+ ]
+}
