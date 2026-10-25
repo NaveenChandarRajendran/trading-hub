@@ -119,6 +119,16 @@ class Tracker:
                 "last_ok": d.last_ok, "last_error": d.last_error, "tracking": len(self._days),
             }
 
+    def last_session(self, symbol, expiry):
+        """The latest recorded day before today: (date, strikes, snaps), or None. For the screens while the market is
+        closed (weekend, holiday, before 09:15), so they show the last session instead of an empty table."""
+        today = self.clock().strftime("%Y-%m-%d")
+        day = self.store.last_day(symbol, expiry, today)
+        if not day:
+            return None
+        strikes, snaps = self.store.load(symbol, expiry, day)
+        return (day, strikes, snaps) if snaps else None
+
     # ------------------------------------------------------------- polling
     def poll_key(self, key, now=None):
         """Fetch one snapshot for key and store it. Raises DhanError on failure."""

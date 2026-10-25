@@ -9,11 +9,35 @@ const PREFIX = 'prevClose.';
 /** 'YYYY-MM-DD' of an epoch-seconds instant, in IST. */
 export const istDate = (epochSeconds: number): string => new Date((epochSeconds + IST_OFFSET) * 1000).toISOString().slice(0, 10);
 
-/** Close of the LAST candle dated strictly before today (IST). During market hours the last candle may be today's partial one. */
+/** True on Saturday / Sunday in IST (no session today: the page then shows the last session's move). */
+export const isWeekendIst = (now = new Date()): boolean => {
+  const d = new Date(now.getTime() + IST_OFFSET * 1000).getUTCDay();
+  return d === 0 || d === 6;
+};
+
+/** Cache key for the day's previous closes: on weekends a separate key, so a value cached by the older rule is not reused. */
+export const prevCloseDay = (now = new Date()): string => istDate(now.getTime() / 1000) + (isWeekendIst(now) ? '-wkd' : '');
+
+/** Close of the LAST candle dated strictly before today (IST). During market hours the last candle may be today's partial one.
+ * On a weekend the last price IS the last session's close, so the reference is the session before that one (otherwise
+ * every change would show 0.00 %). */
 export function selectPrevClose(timestamps: number[], closes: number[], now = new Date()): number | null {
-  const today = istDate(now.getTime() / 1000);
-  for (let i = Math.min(timestamps.length, closes.length) - 1; i >= 0; i--) {
-    if (istDate(timestamps[i]) < today) return Number.isFinite(closes[i]) && closes[i] > 0 ? closes[i] : null;
+  let before = istDate(now.getTime() / 1000);
+  const n = Math.min(timestamps.length, closes.length);
+  if (isWeekendIst(now)) {
+    let last: string | null = null;
+    for (let i = n - 1; i >= 0; i--) {
+      const d = istDate(timestamps[i]);
+      if (d < before) {
+        last = d;
+        break;
+      }
+    }
+    if (!last) return null;
+    before = last;
+  }
+  for (let i = n - 1; i >= 0; i--) {
+    if (istDate(timestamps[i]) < before) return Number.isFinite(closes[i]) && closes[i] > 0 ? closes[i] : null;
   }
   return null;
 }

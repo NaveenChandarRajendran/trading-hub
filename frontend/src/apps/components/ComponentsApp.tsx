@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import data from './config/constituents.json';
 import { buildRows, demoIds, demoQuotes, summarize, type CompRow, type Constituent, type Quote } from './logic/components';
-import { createPrevCloseCache, fetchPrevClose, fillPrevCloses, istDate, type History, type PrevCloseCache } from './logic/prevClose';
+import { createPrevCloseCache, fetchPrevClose, fillPrevCloses, prevCloseDay, type History, type PrevCloseCache } from './logic/prevClose';
 import './components.css';
 
 const INDEXES = [
@@ -114,7 +114,7 @@ export default function ComponentsApp() {
 
   /** One cache object per IST day; a new day starts a fresh cache and deletes older prevClose.* keys. */
   const getCache = useCallback(() => {
-    const day = istDate(Date.now() / 1000);
+    const day = prevCloseDay();
     if (!cacheRef.current || cacheRef.current.day !== day) cacheRef.current = { day, cache: createPrevCloseCache(day) };
     return cacheRef.current.cache;
   }, []);

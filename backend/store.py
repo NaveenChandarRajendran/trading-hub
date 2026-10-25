@@ -4,8 +4,9 @@ store.py - where the per-minute snapshots live.
 PgStore   : Postgres (use this). Survives backend restarts, PC shutdowns and page refreshes.
 JsonStore : one JSON file per day in ./data (fallback when DATABASE_URL is not set, and for tests).
 
-Both expose the same four methods used by tracker.py:
+Both expose the same methods used by tracker.py:
     load(symbol, expiry, date)  -> (strikes, snaps)      date = 'YYYY-MM-DD' (IST trading day)
+    last_day(symbol, expiry, before) -> latest recorded date before `before`, or None
     save(symbol, expiry, date, strikes, new_snaps, all_snaps)
     active_keys(date)           -> [(symbol, expiry), ...] tracked on that day
 A snapshot is a dict: ts ('YYYY-MM-DD HH:MM' IST), spot, strikes_used, call_chg, put_chg,
@@ -44,6 +45,11 @@ class JsonStore:
             except (OSError, ValueError):
                 log.warning("could not read %s, starting fresh", path)
         return [], []
+
+    def last_day(self, symbol, expiry, before):
+        days = [os.path.basename(p)[:-5].rsplit("_", 1)[1] for p in glob.glob(os.path.join(self.data_dir, f"{symbol}_{expiry}_*.json"))]
+        days = [d for d in days if len(d) == 10 and d < before]
+        return max(days) if days else None
 
     def save(self, symbol, expiry, date, strikes, new_snaps, all_snaps):
         path = self._path(symbol, expiry, date)
@@ -116,6 +122,13 @@ class PgStore:
                 snap.update(dict(zip(SNAP_FIELDS, r[1:])))
                 snaps.append(snap)
         return strikes, snaps
+
+    def last_day(self, symbol, expiry, before):
+        with self._cursor() as cur:
+            cur.execute("SELECT max(trade_date) FROM toi_session WHERE symbol=%s AND expiry=%s AND trade_date < %s",
+                        (symbol, expiry, before))
+            row = cur.fetchone()
+        return str(row[0]) if row and row[0] else None
 
     # ----------------------------------------------------------------- write
     def save(self, symbol, expiry, date, strikes, new_snaps, all_snaps):

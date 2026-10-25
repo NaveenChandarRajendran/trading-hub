@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createPrevCloseCache, fetchPrevClose, fillPrevCloses, istDate, selectPrevClose, type KV } from './prevClose';
+import { createPrevCloseCache, fetchPrevClose, fillPrevCloses, istDate, prevCloseDay, selectPrevClose, type KV } from './prevClose';
 
 // Real Dhan /charts/historical data, 12 to 16 Oct 2026 (timestamps = epoch seconds at 00:00 IST).
 const DAY = 86400;
@@ -22,6 +22,13 @@ describe('selectPrevClose', () => {
   it('uses the IST date, not the UTC date (00:30 IST on 19 Oct is still 18 Oct in UTC)', () => {
     expect(istDate(at('2026-10-18T19:00:00Z').getTime() / 1000)).toBe('2026-10-19');
     expect(selectPrevClose([...stamps, MON_19_OCT], [...HDFC, 712], at('2026-10-18T19:00:00Z'))).toBe(728.85);
+  });
+  it('on a weekend compares the last session with the one before it (not 0.00 %)', () => {
+    // Sat 17 Oct / Sun 18 Oct: last candle Fri 16 Oct (728.85), the reference is Thu 15 Oct (726.85)
+    expect(selectPrevClose(stamps, HDFC, at('2026-10-17T12:00:00+05:30'))).toBe(726.85);
+    expect(selectPrevClose(stamps, RELIANCE, at('2026-10-18T16:00:00+05:30'))).toBe(1215.0);
+    expect(prevCloseDay(at('2026-10-18T16:00:00+05:30'))).toBe('2026-10-18-wkd');
+    expect(prevCloseDay(at('2026-10-19T16:00:00+05:30'))).toBe('2026-10-19');
   });
   it('returns null when nothing qualifies', () => {
     expect(selectPrevClose([], [], at('2026-10-19T12:00:00+05:30'))).toBeNull();

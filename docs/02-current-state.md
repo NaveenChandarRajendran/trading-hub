@@ -142,6 +142,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   (`mb_*` = 4 Pillar Rules). Backtest: every strategy on both indices, Trend Rules added as approximate (Trending OI
   from past option OI of ATM±10, counted from 09:15); the download is now ATM±10 with OI (~10,000 pieces, 2–3 hours
   the first time). Backtest page: one chip per strategy + Index filter.
+- Market closed (owner 25-Oct-2026): Trending OI shows the last recorded session (`store.last_day`,
+  `Tracker.last_session`, meta.sessionDay) instead of an empty table; Index Components on Saturday / Sunday compares the
+  last session with the one before it (was 0.00 %; weekend cache key `<date>-wkd`). Holidays on weekdays still show 0.00 %.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 

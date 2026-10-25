@@ -190,6 +190,12 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         key = tracker.register(symbol, expiry)
         v = tracker.view(key)
         snaps = v["snaps"]
+        shown_day = None
+        if not snaps and not tracker.market_open() and not tracker.force:
+            last = tracker.last_session(symbol, expiry)  # weekend / holiday / before 09:15: the last recorded session
+            if last:
+                shown_day, strikes, snaps = last
+                v = {**v, "strikes": strikes}
         chosen, live = select_for_interval(snaps, interval)
         rows = build_rows(chosen)
         if live and rows and tracker.market_open():  # no LIVE tag once the market has closed
@@ -204,6 +210,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
 
         if tracker.client.token_expired:
             message = "Dhan token expired. POST a new one to /api/token."
+        elif shown_day:
+            message = f"Market is closed: showing the last recorded session, {shown_day[8:10]}-{shown_day[5:7]}-{shown_day[0:4]}."
         elif not snaps and not tracker.market_open() and not tracker.force:
             message = "Market is closed and nothing was recorded today."
         elif not snaps:
@@ -215,7 +223,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
                 "symbol": symbol, "expiry": expiry, "interval": interval,
                 "strikes": [int(k) for k in v["strikes"]], "strikeCount": len(v["strikes"]),
                 "spot": snaps[-1]["spot"] if snaps else None,
-                "asOf": snaps[-1]["ts"] if snaps else None,
+                "asOf": snaps[-1]["ts"] if snaps else None, "sessionDay": shown_day,
                 "marketOpen": tracker.market_open(),
                 "tokenExpired": tracker.client.token_expired,
                 "lastError": v["last_error"], "message": message,
