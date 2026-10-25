@@ -1,18 +1,22 @@
 """
 backtest.py - 5-year backtest of the auto rules on Dhan's past data (owner, 25-Oct-2026). PAPER ANALYSIS ONLY: no
-orders. Uses the SAME rule functions the live watcher uses (sig_rules.megabull_rule, sig_dharani_v2.dharani_v2_rule),
-fed with past candles, so the backtest and the live auto trader read the rules identically.
+orders. Uses the SAME rule functions the live watcher uses (sig_rules.four_pillar_rule / supertrend_rule /
+trading_hub_rule, sig_dharani_v2.dharani_v2_rule), fed with past candles, so the backtest and the live auto trader read
+the rules identically. Every strategy runs on NIFTY and BANKNIFTY (owner, 25-Oct-2026).
 
 Strategies
-  MegaBull  4 Pillar (BANKNIFTY) and SuperTrend Nifty (NIFTY), 5-minute candles, ATM option, -10 % stop, +20 % target,
-            time exit 15:14. Not in past data, so left out of the check: PCR (4 Pillar pillar 4), the OI-wall room
+  4 Pillar Rules, SuperTrend Rules (MegaBull account): 5-minute candles, ATM option, -10 % stop, +20 % target, time
+            exit 15:14. Not in past data, so left out of the check: PCR (4 Pillar pillar 4), the OI-wall room
             filter and OI R1/S1 as trigger levels; cumulative delta is "not checked" live as well. VWAP uses the index's
             typical price per minute (equal weights) because past futures volume per minute is not available.
-  Dharani   NIFTY and BANKNIFTY, 3-minute candles, all conditions; the put side reads the INDEX (live: futures; past
-            futures minute data does not exist). Option premium nearest Rs 250 (NIFTY) / 500 (BANKNIFTY); -10 % safety
-            stop; exit when a 3-minute candle closes back through SuperTrend; time exit 15:14.
-  Trend     not backtested: its must-have (Trending OI 3 rows + Dhan OI view) needs the whole option chain's OI every
-            minute, which past data does not give.
+  Dharani Rules: 3-minute candles, all conditions; the put side reads the INDEX (live: futures; past futures minute
+            data does not exist). Option premium nearest Rs 250 (NIFTY) / 500 (BANKNIFTY); -10 % safety stop; exit
+            when a 3-minute candle closes back through SuperTrend; time exit 15:14.
+  Trend Rules (APPROXIMATE): 5-minute candles, ATM option, -15 % stop, +20 % target, exit on Trending OI / SuperTrend
+            as live. Trending OI is rebuilt from Dhan's past option OI of ATM +/- 10 (rolling, nearest expiry): the
+            strikes are fixed at 09:15 (ATM +/- 7, as live) and the change in OI is counted FROM 09:15, not from the
+            previous day's settled OI (past data has no settled OI and the nearest expiry changes overnight). The Dhan
+            OI view uses only the strikes within ATM +/- 10 (live: up to +/- 25). VWAP as above.
 Fills: buy at the option's open in the minute the signal candle closes (live: ~35 s later); stop / target when a
 minute's low / high crosses them (a gap fills at that minute's open); both in one minute = stop first. Costs: Dhan's
 charges (paper_charges.py, today's rates) on both orders, plus slippage (default 0.5 % of premium per order). One lot
@@ -32,9 +36,14 @@ from paper_charges import order_charges
 from sig_dharani_v2 import PREMIUM_NEAR, call_indicators, dharani_v2_exit, dharani_v2_rule, put_indicators
 from sig_indicators import IST, cpr, pivots
 from sig_market import indicators as indicators_5m
-from sig_rules import NOT_CHECKED, PASS, megabull_rule
+from calc import build_rows, pick_strikes
+from sig_oi import oi_change_view
+from sig_rules import NOT_CHECKED, PASS, four_pillar_rule, supertrend_rule, trading_hub_exit, trading_hub_rule
 
 LOT = {"NIFTY": 65, "BANKNIFTY": 30}
+STEP = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # strike step for the Trending OI strike set
+TOI_EACH_SIDE = 7  # as main.py --strikes 7
+TREND_STOP, TREND_TARGET = 0.15, 0.20  # autopaper.json tradingHub
 SLIPPAGE = 0.005
 MAX_TRADES_DAY = 6
 TIME_EXIT = (15, 14)
@@ -150,7 +159,15 @@ def run_trade(book, day, side, strike, entry_ts, entry_px, qty, stop_pct, target
 
 
 # ------------------------------------------------------------------ strategies
-def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None):
+RULES_5M = {"4 Pillar Rules": four_pillar_rule, "SuperTrend Rules": supertrend_rule}
+
+
+def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None, rules=RULES_5M):
+    """4 Pillar Rules and SuperTrend Rules, each with its own position (one slot per rule and index, as live)."""
+    return [t for name, fn in rules.items() for t in _megabull_one(sym, m, vix, book, slip, fn, name)]
+
+
+def _megabull_one(sym, m, vix, book, slip, rule_fn, name):
     bars = bars_from_minutes(m, 5)
     ind = indicators_5m(bars)
     days = daily_hlc(bars)
@@ -173,8 +190,8 @@ def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None):
         state = {"symbol": sym, "bars": bars, "i": i, "ind": ind, "prev": p, "piv": pivots(p["high"], p["low"], p["close"]),
                  "sr": None, "vix": vix.get(close_ts - 60), "pcr": None, "hm": (ct.hour, ct.minute), "marketOpen": True,
                  "positions": {}, "signalTime": datetime.fromtimestamp(bar["time"], IST).strftime("%H:%M")}
-        r = megabull_rule(state)
-        ignore = {"room", "pillar4"} if r["setup"] == "4 Pillar" else {"room"}  # pillar4 = PCR only in 4 Pillar
+        r = rule_fn(state)
+        ignore = {"room", "pillar4"} if r["rule"] == "fourPillar" else {"room"}  # pillar4 = PCR only in 4 Pillar
         if not all(c["state"] == PASS or (c["state"] == NOT_CHECKED and c.get("exempt")) or c["id"] in ignore for c in r["checks"]):
             continue
         if r["blocked"] or per_day.get(day, 0) >= MAX_TRADES_DAY:
@@ -183,7 +200,7 @@ def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None):
         if not px:
             continue
         res = run_trade(book, day, r["side"], strike, close_ts, px, LOT[sym], 0.10, 0.20, None, slip, last_ts_of_day.get(day, close_ts))
-        trades.append({"strategy": "MegaBull " + r["setup"], "index": sym, "day": str(day), "signal": state["signalTime"],
+        trades.append({"strategy": name, "index": sym, "day": str(day), "signal": state["signalTime"],
                        "side": r["side"], "strike": strike, "entry": round(px, 2), "entry_ts": close_ts, **res})
         per_day[day] = per_day.get(day, 0) + 1
         busy_until = res["exit_ts"]
@@ -235,8 +252,117 @@ def dharani_trades(sym, m, book, slip=SLIPPAGE):
                 return None
             return dharani_v2_exit(state_at(j), side)
         res = run_trade(book, day, side, strike, close_ts, px, LOT[sym], 0.10, None, signal_exit, slip, last_ts_of_day.get(day, close_ts))
-        trades.append({"strategy": "Dharani", "index": sym, "day": str(day), "signal": st["signalTime"], "side": side,
+        trades.append({"strategy": "Dharani Rules", "index": sym, "day": str(day), "signal": st["signalTime"], "side": side,
                        "strike": strike, "entry": round(px, 2), "entry_ts": close_ts, **res})
+        per_day[day] = per_day.get(day, 0) + 1
+        busy_until = res["exit_ts"]
+    return trades
+
+
+class TrendOi:
+    """Trending OI rows and the Dhan OI view of one day, rebuilt from the past option OI (approximate, see the top).
+    rows_at(close_ts) -> 5-minute rows newest first (as the live tracker shows them); view_at(close_ts) -> Dhan OI view."""
+
+    def __init__(self, sym, prices, day, minutes, spots):
+        self.sym, self.rows, self.views = sym, {}, {}
+        last = {"CE": {}, "PE": {}}  # strike -> latest OI (carried while the strike is outside the rolling window)
+        base = {"CE": {}, "PE": {}}  # strike -> OI at its first minute of the day
+        strikes, snaps = None, []
+        for t in minutes:
+            for side in ("CE", "PE"):
+                for k, v in prices.at(day, side, t).items():
+                    oi = v[5] if len(v) > 5 else None
+                    if oi is None:
+                        continue
+                    last[side][k] = oi
+                    base[side].setdefault(k, oi)
+            if strikes is None:
+                avail = set(last["CE"]) & set(last["PE"])
+                if not avail:
+                    continue
+                strikes = pick_strikes(avail, spots[t], STEP[sym], TOI_EACH_SIDE)
+            close = t + 60  # the snapshot at hh:mm reads the OI as the minute before it closed (live: hh:mm:03)
+            dt = datetime.fromtimestamp(close, IST)
+            mins = dt.hour * 60 + dt.minute - 555
+            if mins < 5 or mins % 5:
+                continue
+            cc = sum(last["CE"][k] - base["CE"][k] for k in strikes if k in last["CE"])
+            pc = sum(last["PE"][k] - base["PE"][k] for k in strikes if k in last["PE"])
+            snaps.append({"ts": dt.strftime("%Y-%m-%d %H:%M"), "spot": spots[t], "call_chg": cc, "put_chg": pc, "call_ltp": 0.0,
+                          "put_ltp": 0.0, "call_ltp_chg": 0.0, "put_ltp_chg": 0.0, "strikes_used": len(strikes)})
+            built = build_rows(snaps)
+            self.rows[close] = list(reversed(built))
+            near = sorted(k for k in set(last["CE"]) | set(last["PE"]) if abs(k - spots[t]) <= 10.5 * STEP[sym])
+            body = {"meta": {"symbol": sym, "spot": spots[t], "lotSize": LOT[sym]},
+                    "rows": [{"strike": k,
+                              "ce": {"oi": last["CE"][k], "previous_oi": base["CE"][k]} if k in last["CE"] else None,
+                              "pe": {"oi": last["PE"][k], "previous_oi": base["PE"][k]} if k in last["PE"] else None} for k in near]}
+            self.views[close] = oi_change_view(body)
+
+    def rows_at(self, close_ts):
+        return self.rows.get(close_ts, [])
+
+    def view_at(self, close_ts):
+        return self.views.get(close_ts)
+
+
+def trend_trades(sym, m, book, slip=SLIPPAGE):
+    """Trend Rules (approximate): the live trading_hub_rule with Trending OI rebuilt from past option OI."""
+    bars = bars_from_minutes(m, 5)
+    ind = indicators_5m(bars)
+    days = daily_hlc(bars)
+    order = sorted(days)
+    prev = {order[k]: days[order[k - 1]] for k in range(1, len(order))}
+    by_day, spots = {}, {}
+    for t, c in zip(m["t"], m["c"]):
+        dt = datetime.fromtimestamp(t, IST)
+        if 555 <= dt.hour * 60 + dt.minute < 930:
+            by_day.setdefault(dt.date(), []).append(t)
+            spots[t] = c
+    by_close = {b["time"] + 300: i for i, b in enumerate(bars)}
+    toi = {"day": None, "oi": None}
+
+    def oi_of(day):
+        if toi["day"] != day:
+            toi["day"], toi["oi"] = day, TrendOi(sym, book.prices, day, by_day.get(day, []), spots)
+        return toi["oi"]
+
+    def state_at(i):
+        bar = bars[i]
+        close_ts = bar["time"] + 300
+        ct = datetime.fromtimestamp(close_ts, IST)
+        p = prev[bar["day"]]
+        o = oi_of(bar["day"])
+        return {"symbol": sym, "bars": bars, "i": i, "ind": ind, "prev": p, "piv": pivots(p["high"], p["low"], p["close"]),
+                "toi": o.rows_at(close_ts), "oi": o.view_at(close_ts), "hm": (ct.hour, ct.minute), "marketOpen": True,
+                "positions": {}, "signalTime": datetime.fromtimestamp(bar["time"], IST).strftime("%H:%M")}
+
+    trades, busy_until, per_day = [], 0, {}
+    for i, bar in enumerate(bars):
+        day = bar["day"]
+        if day not in prev:
+            continue
+        close_ts = bar["time"] + 300
+        if close_ts <= busy_until or per_day.get(day, 0) >= MAX_TRADES_DAY:
+            continue
+        st = state_at(i)
+        r = trading_hub_rule(st)
+        if not r["go"]:
+            continue
+        strike, px = book.pick(day, r["side"], close_ts)
+        if not px:
+            continue
+        side = r["side"]
+
+        def signal_exit(ts, side=side, day=day):
+            j = by_close.get(ts)
+            if j is None or bars[j]["day"] != day:
+                return None
+            return trading_hub_exit(state_at(j), side)
+        last_ts = by_day[day][-1] if by_day.get(day) else close_ts
+        res = run_trade(book, day, side, strike, close_ts, px, LOT[sym], TREND_STOP, TREND_TARGET, signal_exit, slip, last_ts)
+        trades.append({"strategy": "Trend Rules", "index": sym, "day": str(day), "signal": st["signalTime"], "side": side,
+                       "strike": strike, "entry": round(px, 2), "entry_ts": close_ts, "grade": r["grade"], **res})
         per_day[day] = per_day.get(day, 0) + 1
         busy_until = res["exit_ts"]
     return trades
@@ -296,10 +422,12 @@ def run(today=None, log=print, symbols=("NIFTY", "BANKNIFTY")):
         log(f"{sym}: {len(m['t']):,} minutes from {datetime.fromtimestamp(m['t'][0], IST):%d %b %Y} to {datetime.fromtimestamp(m['t'][-1], IST):%d %b %Y}")
         book = Book(sym)
         mb = megabull_trades(sym, m, vix, book)
-        log(f"  MegaBull rule: {len(mb)} trades")
+        log(f"  4 Pillar Rules + SuperTrend Rules: {len(mb)} trades")
         dh = dharani_trades(sym, m, Book(sym))
-        log(f"  Dharani: {len(dh)} trades")
-        trades += mb + dh
+        log(f"  Dharani Rules: {len(dh)} trades")
+        tr = trend_trades(sym, m, Book(sym))
+        log(f"  Trend Rules (approximate): {len(tr)} trades")
+        trades += mb + dh + tr
     keep = ("strategy", "index", "day", "signal", "side", "strike", "entry", "exit", "reason", "kind", "gross", "charges",
             "slippage", "net", "entry_ts", "exit_ts")
     span = {}
@@ -308,7 +436,9 @@ def run(today=None, log=print, symbols=("NIFTY", "BANKNIFTY")):
         if m["t"]:
             span[sym] = [str(datetime.fromtimestamp(m["t"][0], IST).date()), str(datetime.fromtimestamp(m["t"][-1], IST).date())]
     res = {"ranAt": datetime.now(IST).isoformat(timespec="seconds"), "slippagePct": SLIPPAGE * 100, "lots": LOT, "dataSpan": span,
-           "notTested": {"Trend": "Needs minute-by-minute OI of the whole option chain, which past data does not have."},
+           "notTested": {},
+           "approximate": {"Trend Rules": "Trending OI rebuilt from past option OI of ATM +/- 10, counted from 09:15 "
+                                          "(live: from the previous day's settled OI); Dhan OI view on ATM +/- 10 only."},
            "summary": summary(trades), "summaryNoSlippage": summary([{**t, "net0": t["gross"] - t["charges"]} for t in trades], "net0"),
            "trades": [{k: t[k] for k in keep} for t in sorted(trades, key=lambda t: t["entry_ts"])]}
     os.makedirs(bt_data.ROOT, exist_ok=True)

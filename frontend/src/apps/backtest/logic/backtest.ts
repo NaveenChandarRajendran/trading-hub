@@ -4,7 +4,7 @@ import { API_BASE, getJson, requestJson } from '../../../shared/api';
 import type { HeatLevel } from '../../../shared/ui';
 
 export interface BtTrade {
-  strategy: string; // "MegaBull 4 Pillar" | "MegaBull SuperTrend Nifty" | "Dharani"
+  strategy: string; // "4 Pillar Rules" | "SuperTrend Rules" | "Dharani Rules" | "Trend Rules" (older runs: LEGACY)
   index: 'NIFTY' | 'BANKNIFTY';
   day: string; // YYYY-MM-DD
   signal: string; // "10:05"
@@ -28,6 +28,7 @@ export interface BtResults {
   lots: Record<string, number>;
   dataSpan: Record<string, [string, string]>;
   notTested: Record<string, string>;
+  approximate?: Record<string, string>; // strategy -> how its past data differs from live (Trend Rules)
   trades: BtTrade[];
 }
 
@@ -45,17 +46,24 @@ export const fetchResults = (signal?: AbortSignal) => getJson<BtResults>(API_BAS
 export const fetchStatus = (signal?: AbortSignal) => getJson<BtStatus>(API_BASE, '/api/backtest/status', signal);
 export const startRun = () => requestJson<BtStatus>(API_BASE, '/api/backtest/run', { method: 'POST' });
 
-/** The strategies on the page, in chip order. `key` = "<strategy> · <index>" as the backend names them. */
+/** The strategies on the page, in chip order; each covers Nifty and Bank Nifty (owner, 25-Oct-2026). `key` = the
+ * backend's strategy name. */
 export const STRATEGIES = [
-  { key: 'MegaBull 4 Pillar · BANKNIFTY', label: '4 Pillar · Bank Nifty', account: 'MegaBull' },
-  { key: 'MegaBull SuperTrend Nifty · NIFTY', label: 'SuperTrend Nifty', account: 'MegaBull' },
-  { key: 'Dharani · NIFTY', label: 'Dharani · Nifty', account: 'App · Dharani' },
-  { key: 'Dharani · BANKNIFTY', label: 'Dharani · Bank Nifty', account: 'App · Dharani' },
+  { key: '4 Pillar Rules', label: '4 Pillar Rules', account: 'MegaBull', approx: false },
+  { key: 'SuperTrend Rules', label: 'SuperTrend Rules', account: 'MegaBull', approx: false },
+  { key: 'Dharani Rules', label: 'Dharani Rules', account: 'App · Dharani', approx: false },
+  { key: 'Trend Rules', label: 'Trend Rules', account: 'App · Trend', approx: true },
 ] as const;
 export type StrategyKey = (typeof STRATEGIES)[number]['key'];
 
+/** Names used by the first backtest version (before the rename). */
+const LEGACY: Record<string, StrategyKey> = {
+  'MegaBull 4 Pillar': '4 Pillar Rules', 'MegaBull SuperTrend Nifty': 'SuperTrend Rules', Dharani: 'Dharani Rules',
+};
+
 export type CostMode = 'all' | 'charges';
-export const keyOf = (t: BtTrade) => `${t.strategy} · ${t.index}`;
+export type IndexPick = 'both' | 'NIFTY' | 'BANKNIFTY';
+export const keyOf = (t: BtTrade): string => LEGACY[t.strategy] ?? t.strategy;
 /** Net of Dhan charges and slippage ('all'), or of charges only. */
 export const pnlOf = (t: BtTrade, mode: CostMode) => (mode === 'all' ? t.net : t.gross - t.charges);
 
@@ -76,9 +84,9 @@ export interface BtStats {
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-export function select(trades: BtTrade[], keys: readonly string[]): BtTrade[] {
+export function select(trades: BtTrade[], keys: readonly string[], index: IndexPick = 'both'): BtTrade[] {
   const want = new Set(keys);
-  return trades.filter((t) => want.has(keyOf(t))).sort((a, b) => a.entry_ts - b.entry_ts);
+  return trades.filter((t) => want.has(keyOf(t)) && (index === 'both' || t.index === index)).sort((a, b) => a.entry_ts - b.entry_ts);
 }
 
 export function stats(trades: BtTrade[], mode: CostMode): BtStats {

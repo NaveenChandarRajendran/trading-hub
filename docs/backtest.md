@@ -10,19 +10,21 @@ READ ONLY: market data only, no orders.
 ## Data (Dhan Data API, checked 25-Oct-2026)
 - Index 1-minute candles NIFTY / BANKNIFTY / INDIA VIX, last 5 years (from Nov 2021), 90 days per call.
 - Option prices per minute, "rolling" by moneyness (ATM, ATM±N; each row carries its strike), last 5 years, 30 days
-  per call. Downloaded: calls ATM−6…ATM+4, puts ATM−4…ATM+6 (the ITM side is deeper for Dharani's ₹250 / ₹500 premium).
+  per call, with OI. Downloaded: calls and puts ATM−10…ATM+10 (Dharani's ₹250 / ₹500 premium pick, and the OI for
+  Trend Rules). Far from expiry Dhan may not give the outer strikes; such a piece is saved empty (an error on the inner
+  strikes still stops the download). Files `opt2_*` (the first version's `opt_*` files had no OI and are not read).
   A fixed strike's price path is rebuilt from these series; a minute with no row keeps the last price.
 - Nearest expiry: NIFTY weekly; BANKNIFTY weekly until 20-Nov-2024, monthly after (SEBI change).
-- No intraday data for expired futures and no past option chain OI per minute.
+- No intraday data for expired futures; past option OI only for the rolling strikes (ATM±10), no settled previous-day OI.
 - Cache: `backend/data/backtest/` (not in git). Re-running downloads only what is missing.
 
 ## What is tested, and what is left out
 | strategy | tested as | left out (no past data) |
 |---|---|---|
-| MegaBull 4 Pillar (BANKNIFTY) | rules as live, 5-min | PCR pillar, OI-wall room, OI R1/S1 as triggers; VWAP = day's average price (no futures volume) |
-| MegaBull SuperTrend Nifty | rules as live, 5-min | OI-wall room, OI R1/S1 as triggers |
-| Dharani (both indices) | rules as live, 3-min, SuperTrend exit | put side reads the index instead of futures |
-| Trend | not tested | its must-haves need minute-by-minute OI of the whole chain |
+| 4 Pillar Rules (both indices) | rules as live, 5-min | PCR pillar, OI-wall room, OI R1/S1 as triggers; VWAP = day's average price (no futures volume) |
+| SuperTrend Rules (both indices) | rules as live, 5-min | OI-wall room, OI R1/S1 as triggers |
+| Dharani Rules (both indices) | rules as live, 3-min, SuperTrend exit | put side reads the index instead of futures |
+| Trend Rules (both indices) | APPROXIMATE (≈ on the page): the live rule, with Trending OI rebuilt from past option OI | Trending OI counted from 09:15 (live: from the previous day's settled OI); Dhan OI view on ATM±10 only (live: up to ±25); VWAP as above |
 Cumulative delta is "not checked" live as well.
 
 ## Fills and costs
@@ -33,5 +35,10 @@ One lot at today's lot size (NIFTY 65, BANKNIFTY 30) in every year. Max 6 trades
 The live rule rolls to the next expiry on expiry day; the backtest stays on the nearest (as Quantman's "current week").
 
 ## Output
-`backend/data/backtest/results.json` (per strategy and index: trades, net, win %, average win / loss, max drawdown,
+`backend/data/backtest/results.json` (per strategy and index, and per strategy on both indices: trades, net, win %, average win / loss, max drawdown,
 worst losing streak, exits by kind, year by year) and `trades.csv` (every trade).
+
+## Page
+Chips: 4 Pillar Rules, SuperTrend Rules, Dharani Rules, Trend Rules ≈ (each covers both indices); Index: Both / Nifty /
+Bank Nifty. Results from the first version (names "MegaBull 4 Pillar", "MegaBull SuperTrend Nifty", "Dharani") still
+show under the new names.

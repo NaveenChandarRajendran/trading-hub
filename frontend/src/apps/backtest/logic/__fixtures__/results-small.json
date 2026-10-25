@@ -52,7 +52,7 @@
    "exit_ts": 1704190600
   },
   {
-   "strategy": "MegaBull SuperTrend Nifty",
+   "strategy": "SuperTrend Rules",
    "index": "NIFTY",
    "day": "2024-02-05",
    "signal": "10:05",

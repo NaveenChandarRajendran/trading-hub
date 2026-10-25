@@ -40,7 +40,7 @@ Set-Location (Join-Path $repo 'backend')
 $log = Join-Path $repo 'backend\data\backtest\run.log'
 New-Item -ItemType Directory -Force -Path (Split-Path $log) | Out-Null
 Write-Host ''
-Write-Host 'Step 1 of 2: downloading 5 years of past data (first time 1-2 hours; you can leave it running).' -ForegroundColor Cyan
+Write-Host 'Step 1 of 2: downloading 5 years of past data (first time 2-3 hours; you can leave it running).' -ForegroundColor Cyan
 Write-Host 'Keep this window open. If it stops, just run it again: it continues where it left off.' -ForegroundColor Cyan
 python backtest.py download 2>&1 | Tee-Object -FilePath $log
 Write-Host ''

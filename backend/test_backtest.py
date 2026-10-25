@@ -98,17 +98,79 @@ def test_download_caches_and_option_prices_rebuild_a_fixed_strike(tmp_path, monk
                 off = 0 if body["strike"] == "ATM" else int(body["strike"][3:])
                 return {"data": {"ce" if body["drvOptionType"] == "CALL" else "pe": {
                     "timestamp": [ts("09:15"), ts("09:16")], "open": [100 - off, 99 - off], "high": [101, 100], "low": [99, 98],
-                    "close": [100, 99], "strike": [25000 + 50 * off, 25050 + 50 * off]}}}
+                    "close": [100, 99], "strike": [25000 + 50 * off, 25050 + 50 * off], "oi": [1000, 1100]}}}
         c = Client()
         old_start = bt_data.START
         bt_data.START = date(2026, 9, 1)
         n, skipped = bt_data.download(c, date(2026, 10, 10), symbols=("NIFTY",))
-        assert n == 2 + 3 * 22 and skipped == 0  # NIFTY + VIX index windows; 3 half-months x (11 call + 11 put offsets)
+        assert n == 2 + 3 * 42 and skipped == 0  # NIFTY + VIX index windows; 3 half-months x (21 call + 21 put offsets)
+        assert c.calls[-1][1]["requiredData"][-1] == "oi"
         n2, skipped2 = bt_data.download(c, date(2026, 10, 10), symbols=("NIFTY",))
-        assert n2 == 2 + 22 and skipped2 == 2 * 22  # only the windows reaching today are fetched again
+        assert n2 == 2 + 42 and skipped2 == 2 * 42  # only the windows reaching today are fetched again
         p = bt_data.OptionPrices("NIFTY")
         rows = p.at(date(2026, 10, 1), "CE", ts("09:16"))  # the fake series carry DAY's timestamps
         assert rows[25050.0][4] == 0 and rows[25100.0][4] == 1  # the ATM series moved to 25,050; ATM+1 sits at 25,100
+        assert rows[25050.0][5] == 1100
         bt_data.START = old_start
     finally:
         bt_data.ROOT = old
+
+
+def test_outer_strike_errors_are_saved_empty_but_core_errors_stop(tmp_path):
+    import bt_data
+    from dhan_client import DhanError
+    old, old_start = bt_data.ROOT, bt_data.START
+    bt_data.ROOT, bt_data.START = str(tmp_path), date(2026, 10, 1)
+    try:
+        class Client:
+            def __init__(self, bad):
+                self.bad = bad
+
+            def _post(self, path, body, gap=0):
+                if path == "/charts/intraday":
+                    return {"timestamp": [], "open": [], "high": [], "low": [], "close": [], "volume": []}
+                if body["strike"] == self.bad:
+                    raise DhanError("DH-905 strike not available")
+                return {"data": {}}
+        bt_data._call.__defaults__ = (1,)
+        n, _ = bt_data.download(Client("ATM+10"), date(2026, 10, 10), symbols=("NIFTY",), log=lambda *_: None)
+        assert n == 2 + 42 and bt_data.load("opt2_NIFTY_CALL_10_2026-10-01")["timestamp"] == []
+        try:
+            bt_data.download(Client("ATM"), date(2026, 10, 10), symbols=("NIFTY",), log=lambda *_: None)
+            raise AssertionError("an ATM error must stop the download")
+        except DhanError:
+            pass
+    finally:
+        bt_data._call.__defaults__ = (4,)
+        bt_data.ROOT, bt_data.START = old, old_start
+
+
+def test_trending_oi_rebuilt_from_past_option_oi():
+    """Puts add OI, calls lose it: bullish rows (strength +), counted from 09:15, on the strikes fixed at 09:15."""
+    class OiPrices:
+        def at(self, day, side, minute_ts):
+            k = (minute_ts - ts("09:15")) // 60
+            return {25000.0 + 50 * j: (100, 100, 100, 100, j, 10000 + (40 * k if side == "PE" else -10 * k)) for j in range(-10, 11)}
+    minutes = [ts("09:15") + 60 * k for k in range(30)]
+    o = bt.TrendOi("NIFTY", OiPrices(), DAY, minutes, {t: 25000.0 for t in minutes})
+    rows = o.rows_at(ts("09:30"))
+    assert [r["ts"][-5:] for r in rows] == ["09:30", "09:25", "09:20"]  # newest first, like the live tracker
+    assert rows[0]["putChg"] == 15 * 14 * 40 and rows[0]["callChg"] == -15 * 14 * 10  # 15 strikes (ATM +/- 7), minute 9:29
+    assert rows[0]["strengthPct"] > 50 and rows[0]["sentiment"] == "Bullish"
+    assert o.view_at(ts("09:30"))["verdict"] in ("Bullish", "Bearish", "Neutral")
+
+
+def test_every_strategy_runs_on_both_indices_with_the_new_names():
+    t, o, h, l, c = [], [], [], [], []
+    for d in (date(2026, 10, 23), DAY):
+        for k in range(375):
+            p = 25000 + 300 * math.sin(k / 30)
+            t.append(ts("09:15", d) + 60 * k); o.append(p); h.append(p + 3); l.append(p - 3); c.append(p + 1)
+    m = {"t": t, "o": o, "h": h, "l": l, "c": c, "v": [0] * len(t)}
+
+    class Any:
+        def at(self, day, side, minute_ts):
+            return {25000.0: (250.0, 255.0, 245.0, 250.0, 0, 1000)}
+    for sym in ("NIFTY", "BANKNIFTY"):
+        trades = bt.megabull_trades(sym, m, {x: 13.0 for x in t}, bt.Book(sym, Any())) + bt.trend_trades(sym, m, bt.Book(sym, Any()))
+        assert {x["strategy"] for x in trades} <= {"4 Pillar Rules", "SuperTrend Rules", "Trend Rules"}

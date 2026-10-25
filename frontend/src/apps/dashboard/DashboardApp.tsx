@@ -220,10 +220,11 @@ export default function DashboardApp() {
 
       {/* 4. rule cards */}
       <div className="db-three">
-        <RuleCard r={s?.rules.megabull} fallbackName="MEGABULL RULE" />
-        <RuleCard r={s?.rules.dharaniV2} fallbackName="DHARANI RULE"
+        <RuleCard r={s?.rules.fourPillar ?? s?.rules.megabull} fallbackName="4 PILLAR RULES" />
+        <RuleCard r={s?.rules.superTrend} fallbackName="SUPERTREND RULES" />
+        <RuleCard r={s?.rules.dharaniV2} fallbackName="DHARANI RULES"
           emptyNote="No completed 3-minute candle yet." />
-        <RuleCard r={s?.rules.tradingHub} fallbackName="TRADING HUB RULE" />
+        <RuleCard r={s?.rules.tradingHub} fallbackName="TREND RULES" />
         <OrderFlowCard f={s?.orderFlow} symbol={d.symbol} />
       </div>
       {s && <p className="db-eval">Evaluated {s.meta.evaluatedAt} IST on the {s.meta.signalCandle ?? '—'} candle ({s.meta.source === 'watcher' ? 'signal watcher' : 'page check, no trading'}).
@@ -236,7 +237,7 @@ export default function DashboardApp() {
       </div>
       <SrCard sr={s?.sr ?? null} components={compText} />
 
-      {/* 6. paper trading: MegaBull (strict rules) + the app's own Rs 1 lakh accounts per strategy (Trend, Dharani) */}
+      {/* 6. paper trading: MegaBull (strict rules) + the app's own Rs 1 lakh accounts per strategy (Trend Rules, Dharani Rules) */}
       <div className="db-section-head">
         <h3 className="card-title">Paper trading · {d.symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty'}</h3>
         <AutoSwitch auto={s?.auto ?? null} busy={sig.busy} notice={sig.notice} onAuto={(on) => void sig.toggleAuto(on)} />

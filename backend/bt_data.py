@@ -7,7 +7,8 @@ What Dhan gives (checked 25-Oct-2026 with the owner's token, docs dhanhq.co/docs
 - expired / live option prices per minute "rolling" by moneyness (ATM, ATM+1 ...: the strike changes as spot moves;
   each row carries the strike), up to ATM +/- 10 near expiry, 30 days per call, last 5 years, with OI, IV and spot;
 - NO intraday data for expired futures (daily only), so the backtest uses the index where the live rule reads futures.
-Files: data/backtest/idx_<SYM>_<from>.json.gz and opt_<SYM>_<CALL|PUT>_<offset>_<from>.json.gz (arrays per field).
+Files: data/backtest/idx_<SYM>_<from>.json.gz and opt2_<SYM>_<CALL|PUT>_<offset>_<from>.json.gz (arrays per field,
+with OI for the Trend Rules backtest; "opt_" files from the first version, without OI, are no longer read).
 A window is downloaded again only if its file is missing or it ends today or later.
 """
 import gzip
@@ -22,7 +23,11 @@ ROOT = os.path.join("data", "backtest")
 START = date(2021, 11, 1)  # Dhan keeps 5 years
 IDX = {"NIFTY": 13, "BANKNIFTY": 25, "VIX": 21}
 BN_MONTHLY_FROM = date(2024, 11, 20)  # BANKNIFTY weekly options ended (SEBI, Nov 2024): monthly only after
-OFFSETS = {"CALL": range(-6, 5), "PUT": range(-4, 7)}  # ITM side deeper (Dharani buys a ~Rs 250 / 500 premium)
+# ATM +/- 10 on both sides (owner, 25-Oct-2026): the premium picks (Dharani ~Rs 250 / 500) and the option chain OI for
+# Trending OI (ATM +/- 7) and the Dhan OI view. Far from expiry Dhan may not give the outer strikes: saved empty.
+OFFSETS = {"CALL": range(-10, 11), "PUT": range(-10, 11)}
+CORE = {"CALL": range(-6, 5), "PUT": range(-4, 7)}  # the first version's strikes: an error there still stops the download
+FIELDS = ("timestamp", "open", "high", "low", "close", "strike", "oi")
 
 
 def strike_code(off):
@@ -109,7 +114,7 @@ def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print, progress=
             break
         if progress:
             progress(n, total)
-        name = f"idx_{sym}_{frm}" if kind == "idx" else f"opt_{sym}_{side}_{off}_{frm}"
+        name = f"idx_{sym}_{frm}" if kind == "idx" else f"opt2_{sym}_{side}_{off}_{frm}"
         if to < today and os.path.exists(_path(name)):
             skipped += 1
             continue
@@ -119,13 +124,18 @@ def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print, progress=
             data = {k: (p or {}).get(k) or [] for k in ("timestamp", "open", "high", "low", "close", "volume")}
         else:
             flag = "MONTH" if sym == "BANKNIFTY" and frm >= BN_MONTHLY_FROM else "WEEK"
-            p = _call(client, "/charts/rollingoption", {
-                "exchangeSegment": "NSE_FNO", "interval": "1", "securityId": IDX[sym], "instrument": "OPTIDX",
-                "expiryFlag": flag, "expiryCode": 1, "strike": strike_code(off), "drvOptionType": side,
-                "requiredData": ["open", "high", "low", "close", "strike"],
-                "fromDate": str(frm), "toDate": str(to)})
+            body = {"exchangeSegment": "NSE_FNO", "interval": "1", "securityId": IDX[sym], "instrument": "OPTIDX",
+                    "expiryFlag": flag, "expiryCode": 1, "strike": strike_code(off), "drvOptionType": side,
+                    "requiredData": ["open", "high", "low", "close", "strike", "oi"], "fromDate": str(frm), "toDate": str(to)}
+            try:
+                p = _call(client, "/charts/rollingoption", body)
+            except DhanError as e:
+                if off in CORE[side]:
+                    raise
+                log(f"  {sym} {side} {strike_code(off)} {frm}: not available ({e}); saved empty")
+                p = None
             d = ((p or {}).get("data") or {}).get("ce" if side == "CALL" else "pe") or {}
-            data = {k: d.get(k) or [] for k in ("timestamp", "open", "high", "low", "close", "strike")}
+            data = {k: d.get(k) or [] for k in FIELDS}
             data["expiryFlag"] = flag
         save(name, data)
         calls += 1
@@ -149,7 +159,7 @@ def index_minutes(sym):
 
 class OptionPrices:
     """Fixed-strike option prices rebuilt from the ATM-relative series of one half-month window:
-    minute -> {strike: (open, high, low, close)} per side. Loaded lazily, one window at a time."""
+    minute -> {strike: (open, high, low, close, offset, oi)} per side. Loaded lazily, one window at a time."""
 
     def __init__(self, sym):
         self.sym = sym
@@ -164,16 +174,18 @@ class OptionPrices:
         self._win, self._data = frm, {"CALL": {}, "PUT": {}}
         for side, offs in OFFSETS.items():
             for off in offs:
-                d = load(f"opt_{self.sym}_{side}_{off}_{frm}")
+                d = load(f"opt2_{self.sym}_{side}_{off}_{frm}")
                 if not d:
                     continue
                 m = self._data[side]
+                oi = d.get("oi") or []
                 for i, t in enumerate(d["timestamp"]):
                     k = d["strike"][i]
                     if k:
-                        m.setdefault(int(t), {})[float(k)] = (d["open"][i], d["high"][i], d["low"][i], d["close"][i], off)
+                        m.setdefault(int(t), {})[float(k)] = (d["open"][i], d["high"][i], d["low"][i], d["close"][i], off,
+                                                               oi[i] if i < len(oi) else None)
 
     def at(self, day, side, minute_ts):
-        """{strike: (o, h, l, c, offset)} for that minute (empty if Dhan has no row)."""
+        """{strike: (o, h, l, c, offset, oi)} for that minute (empty if Dhan has no row)."""
         self._ensure(day)
         return self._data["CALL" if side == "CE" else "PUT"].get(int(minute_ts), {})

@@ -1,10 +1,10 @@
-# Dharani rule (teacher's tuned Quantman setups, copied as taught)
+# Dharani Rules (teacher's tuned Quantman setups, copied as taught)
 
 Owner: R. Diwakaran. Source: Dharmidharan's paid webinar video (owner's screenshots, 25-Oct-2026): Quantman setups
 "L1 08 FINAL CE" and "L1 10 PE ALT", and owner answers 25-Oct-2026 ("replicate the same setup, the one with more
 tuning"; SuperTrend trail exit; 3-minute candles). Code: `backend/sig_dharani_v2.py` (internal id dharaniV2).
 PAPER ONLY, on the app's own **Dharani** paper account (Rs 1,00,000, `strategy_books.py`), not MegaBull (owner,
-25-Oct-2026). Runs alongside SuperTrend Nifty (`megabull.md`, our own version) until the 15 Nov review; tracked
+25-Oct-2026). Runs alongside SuperTrend Rules (`megabull.md`, our own version) until the 15 Nov review; tracked
 separately in the Excel ("Option Buy - Dharani" tab).
 The teacher's five further portfolio strategies are in his paid course and are not included.
 

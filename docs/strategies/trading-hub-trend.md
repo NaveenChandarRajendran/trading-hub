@@ -1,4 +1,4 @@
-# Trading Hub rule (Method S "Trend")
+# Trend Rules (Method S "Trend", formerly "Trading Hub rule")
 
 Owner: R. Diwakaran. Source: BRIEF_Dashboard_and_AutoPaper.md (23-Oct-2026) + owner answers 23-Oct-2026.
 Code: `backend/sig_rules.py` `trading_hub_rule`. PAPER ONLY, on the app's own **Trend** paper account (Rs 1,00,000,

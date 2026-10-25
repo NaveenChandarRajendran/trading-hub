@@ -4,16 +4,19 @@ import fixture from './__fixtures__/results-small.json';
 import { byMonth, byYear, equity, heatLevel, select, stats, toCsv, type BtResults } from './backtest';
 
 const res = fixture as unknown as BtResults;
-const DH_NIFTY = 'Dharani · NIFTY';
+const DH = 'Dharani Rules';
+const nifty = (keys: string[]) => select(res.trades, keys, 'NIFTY');
 
 describe('backtest page logic', () => {
   it('selects by strategy and index, oldest first', () => {
-    expect(select(res.trades, [DH_NIFTY]).map((t) => t.net)).toEqual([1000, -500, -800]);
-    expect(select(res.trades, [DH_NIFTY, 'Dharani · BANKNIFTY'])).toHaveLength(4);
+    expect(nifty([DH]).map((t) => t.net)).toEqual([1000, -500, -800]);
+    expect(select(res.trades, [DH])).toHaveLength(4); // both indices; the fixture's old name "Dharani" maps to Dharani Rules
+    expect(select(res.trades, [DH], 'BANKNIFTY')).toHaveLength(1);
+    expect(select(res.trades, ['SuperTrend Rules'])).toHaveLength(1);
   });
 
   it('totals, win rate, drawdown and losing streak', () => {
-    const s = stats(select(res.trades, [DH_NIFTY]), 'all');
+    const s = stats(nifty([DH]), 'all');
     // 1000 - 500 - 800 = -300; peak 1000, trough -300 -> drawdown 1300; two losses in a row
     expect(s).toMatchObject({ trades: 3, net: -300, wins: 1, winRate: 33.33, avgWin: 1000, avgLoss: -650, maxDrawdown: 1300, worstStreak: 2 });
     expect(s.exits).toEqual({ Target: 0, Stop: 1, Signal: 1, Time: 1 });
@@ -21,12 +24,12 @@ describe('backtest page logic', () => {
   });
 
   it('charges-only mode leaves slippage out', () => {
-    const s = stats(select(res.trades, [DH_NIFTY]), 'charges');
+    const s = stats(nifty([DH]), 'charges');
     expect(s.net).toBe((1100 - 60) + (-420 - 50) + (-700 - 60)); // -190
   });
 
   it('equity is one point per day, running total', () => {
-    const e = equity(select(res.trades, [DH_NIFTY]), 'all');
+    const e = equity(nifty([DH]), 'all');
     expect(e).toEqual([
       { time: Date.UTC(2024, 0, 2) / 1000, value: 500 },
       { time: Date.UTC(2025, 2, 11) / 1000, value: -300 },
@@ -34,7 +37,7 @@ describe('backtest page logic', () => {
   });
 
   it('year and month tables', () => {
-    const all = select(res.trades, [DH_NIFTY, 'Dharani · BANKNIFTY', 'MegaBull SuperTrend Nifty · NIFTY']);
+    const all = select(res.trades, [DH, 'SuperTrend Rules']);
     expect(byYear(all, 'all').map((y) => [y.year, y.trades, y.net])).toEqual([['2024', 3, 200], ['2025', 2, 1200]]);
     const m = byMonth(all, 'all');
     expect(m[0].months[0]).toBe(500);
@@ -51,7 +54,7 @@ describe('backtest page logic', () => {
   });
 
   it('CSV has a header and one row per trade', () => {
-    const csv = toCsv(select(res.trades, [DH_NIFTY]));
+    const csv = toCsv(nifty([DH]));
     expect(csv.split('\n')).toHaveLength(4);
     expect(csv.split('\n')[0]).toBe('day,strategy,index,signal,side,strike,entry,exit,reason,gross,charges,slippage,net');
   });

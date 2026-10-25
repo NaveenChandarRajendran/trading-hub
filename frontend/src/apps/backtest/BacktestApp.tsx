@@ -1,5 +1,5 @@
 // Backtest page: 5 years of Dhan data run through the auto rules (backend/backtest.py, docs/backtest.md). Tick the
-// strategies at the top; everything below combines them: totals, profit curve, year by year, month by month, exits
+// strategies (each on Nifty and Bank Nifty; the Index filter narrows to one) at the top; everything below combines them: totals, profit curve, year by year, month by month, exits
 // and the trade list. "Run backtest" downloads what is missing and runs it again (after market hours). PAPER ANALYSIS.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorText } from '../../shared/live/liveStatus';
@@ -8,11 +8,13 @@ import { Alert, EmptyState, Pill, Segmented, Stat, Status, type Tone } from '../
 import { EquityChart, type Line } from './EquityChart';
 import {
   STRATEGIES, byMonth, byYear, equity, fetchResults, fetchStatus, heatLevel, keyOf, select, startRun, stats, toCsv,
-  type BtResults, type BtStatus, type CostMode, type StrategyKey,
+  type BtResults, type BtStatus, type CostMode, type IndexPick, type StrategyKey,
 } from './logic/backtest';
 import './backtest.css';
 
 const STORE = 'backtest.selected';
+const STORE_INDEX = 'backtest.index';
+const INDEXES = [{ value: 'both', label: 'Both' }, { value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const COSTS = [{ value: 'all', label: 'Costs + slippage' }, { value: 'charges', label: 'Costs only' }] as const;
 const n0 = (x: number | null | undefined) => (x == null ? '—' : inr(0)(x));
@@ -25,11 +27,22 @@ const labelOf = (key: string) => STRATEGIES.find((s) => s.key === key)?.label ??
 function readSelected(): StrategyKey[] {
   try {
     const v = JSON.parse(localStorage.getItem(STORE) ?? 'null');
-    if (Array.isArray(v)) return STRATEGIES.map((s) => s.key).filter((k) => v.includes(k));
+    const keys = Array.isArray(v) ? STRATEGIES.map((s) => s.key).filter((k) => v.includes(k)) : [];
+    if (keys.length) return keys; // names saved before the rename match nothing: show all
   } catch {
     /* default below */
   }
   return STRATEGIES.map((s) => s.key);
+}
+
+function readIndex(): IndexPick {
+  try {
+    const v = localStorage.getItem(STORE_INDEX);
+    if (v === 'NIFTY' || v === 'BANKNIFTY' || v === 'both') return v;
+  } catch {
+    /* default below */
+  }
+  return 'both';
 }
 
 function download(name: string, text: string) {
@@ -49,6 +62,15 @@ export default function BacktestApp() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StrategyKey[]>(readSelected);
   const [mode, setMode] = useState<CostMode>('all');
+  const [index, setIndexPick] = useState<IndexPick>(readIndex);
+  const pickIndex = (v: IndexPick) => {
+    setIndexPick(v);
+    try {
+      localStorage.setItem(STORE_INDEX, v);
+    } catch {
+      /* not remembered */
+    }
+  };
 
   const loadResults = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -104,18 +126,18 @@ export default function BacktestApp() {
     }
   };
 
-  const trades = useMemo(() => (res ? select(res.trades, selected) : []), [res, selected]);
+  const trades = useMemo(() => (res ? select(res.trades, selected, index) : []), [res, selected, index]);
   const s = useMemo(() => stats(trades, mode), [trades, mode]);
   const years = useMemo(() => byYear(trades, mode), [trades, mode]);
   const months = useMemo(() => byMonth(trades, mode), [trades, mode]);
   const scale = useMemo(() => Math.max(1, ...months.flatMap((y) => y.months.map((v) => Math.abs(v ?? 0)))), [months]);
   const lines = useMemo<Line[]>(() => {
     if (!res) return [];
-    const out: Line[] = selected.map((k) => ({ id: k, label: labelOf(k), colorToken: colorOf(k), points: equity(select(res.trades, [k]), mode) }));
+    const out: Line[] = selected.map((k) => ({ id: k, label: labelOf(k), colorToken: colorOf(k), points: equity(select(res.trades, [k], index), mode) }));
     if (selected.length > 1) out.push({ id: 'all', label: 'Combined', colorToken: '--text', points: equity(trades, mode), bold: true });
     return out.filter((l) => l.points.length);
-  }, [res, selected, trades, mode]);
-  const per = useMemo(() => (res ? selected.map((k) => ({ key: k, s: stats(select(res.trades, [k]), mode) })) : []), [res, selected, mode]);
+  }, [res, selected, trades, mode, index]);
+  const per = useMemo(() => (res ? selected.map((k) => ({ key: k, s: stats(select(res.trades, [k], index), mode) })) : []), [res, selected, mode, index]);
   const span = res ? Object.values(res.dataSpan)[0] : null;
   const fmtDay = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -131,14 +153,15 @@ export default function BacktestApp() {
             <span className="bt-chips" role="group" aria-label="Strategies">
               {STRATEGIES.map((x) => (
                 <button key={x.key} type="button" className={`bt-chip ${selected.includes(x.key) ? 'on' : ''}`} aria-pressed={selected.includes(x.key)}
-                  onClick={() => toggle(x.key)} title={`${x.account} account`}>
-                  <i className={`bt-swatch s${STRATEGIES.indexOf(x) + 1}`} />{x.label}
+                  onClick={() => toggle(x.key)}
+                  title={`${x.account} account · Nifty + Bank Nifty${x.approx ? ` · approximate: ${res?.approximate?.[x.key] ?? 'Trending OI rebuilt from past option OI'}` : ''}`}>
+                  <i className={`bt-swatch s${STRATEGIES.indexOf(x) + 1}`} />{x.label}{x.approx ? ' ≈' : ''}
                 </button>
               ))}
-              <button type="button" className="bt-chip" disabled title={res?.notTested.Trend ?? 'Needs past option-chain OI every minute, which Dhan does not keep.'}>
-                Trend · not testable
-              </button>
             </span>
+          </div>
+          <div className="field">Index
+            <Segmented label="Index" options={INDEXES} value={index} onChange={(v) => pickIndex(v)} />
           </div>
           <div className="field">Results
             <Segmented label="Costs" options={COSTS} value={mode} onChange={(v) => setMode(v)} />
@@ -162,7 +185,7 @@ export default function BacktestApp() {
         <section className="card">
           <EmptyState>
             No backtest yet. Press <b>Run backtest</b> after market hours: the first run downloads 5 years of data from Dhan
-            (about 1–2 hours, the page shows progress), then every later run takes minutes.
+            (about 2–3 hours, the page shows progress), then every later run takes minutes.
           </EmptyState>
         </section>
       ) : !selected.length ? (
@@ -247,13 +270,13 @@ export default function BacktestApp() {
             </div>
             <div className="bt-scroll">
               <table className="t">
-                <thead><tr><th>Date</th><th>Strategy</th><th>Candle</th><th>Option</th><th className="num">Entry</th><th className="num">Exit</th><th>Exit reason</th><th className="num">Net (₹)</th></tr></thead>
+                <thead><tr><th>Date</th><th>Strategy</th><th>Index</th><th>Candle</th><th>Option</th><th className="num">Entry</th><th className="num">Exit</th><th>Exit reason</th><th className="num">Net (₹)</th></tr></thead>
                 <tbody>
                   {trades.slice(-300).reverse().map((t) => {
                     const v = mode === 'all' ? t.net : t.gross - t.charges;
                     return (
-                      <tr key={`${keyOf(t)}-${t.entry_ts}`}>
-                        <td>{t.day}</td><td>{labelOf(keyOf(t))}</td><td>{t.signal}</td><td>{inr(0)(t.strike)} {t.side}</td>
+                      <tr key={`${keyOf(t)}-${t.index}-${t.entry_ts}`}>
+                        <td>{t.day}</td><td>{labelOf(keyOf(t))}</td><td>{t.index === 'NIFTY' ? 'Nifty' : 'Bank Nifty'}</td><td>{t.signal}</td><td>{inr(0)(t.strike)} {t.side}</td>
                         <td className="num">{inr(2)(t.entry)}</td><td className="num">{inr(2)(t.exit)}</td><td>{t.reason}</td>
                         <td className={`num ${toneClass(v)}`}>{signed(0)(v)}</td>
                       </tr>
@@ -266,7 +289,8 @@ export default function BacktestApp() {
               Showing the latest 300; the CSV has all. One lot at today&apos;s size ({Object.entries(res.lots).map(([k, v]) => `${k === 'NIFTY' ? 'Nifty' : 'Bank Nifty'} ${v}`).join(', ')}) in every year.
               Costs: Dhan&apos;s charges at today&apos;s rates on both orders{mode === 'all' ? `, plus ${res.slippagePct}% slippage per order` : ''}.
               Left out because past data does not have them: PCR (4 Pillar), the OI-wall room filter, OI R1 / S1 as triggers, and futures
-              (the Dharani put reads the index). VWAP uses the index&apos;s average price. Trend cannot be tested. Details: docs/backtest.md.
+              (the Dharani put reads the index). VWAP uses the index&apos;s average price. Trend Rules (≈) is approximate: Trending OI is rebuilt
+              from past option OI of ATM ± 10 and counted from 09:15. Details: docs/backtest.md.
             </p>
           </section>
         </>

@@ -57,7 +57,7 @@ export function RuleCard({ r, fallbackName, emptyNote }: { r: RuleResult | null 
   }
   const side = r.side === 'PE' ? 'put' : 'call';
   const title = r.rule === 'tradingHub' ? `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`
-    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (3-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0})` : `${r.name} · ${NAMES[r.symbol]} (${r.setup})`;
+    : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (3-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0})` : `${r.name} · ${NAMES[r.symbol]} (Grade A only, ${side})`;
   return (
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>
       <div className="card-head">
@@ -230,9 +230,9 @@ export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined
 
 // ---------------------------------------------------------------- paper trading: both accounts
 const ACCOUNT_TITLE: Record<AccountKey, [string, string]> = {
-  megabull: ['MEGABULL ACCOUNT', 'Strict rules: 4 Pillar (Bank Nifty) and SuperTrend Nifty (via MegaBull API)'],
-  tradingHub: ['TREND ACCOUNT', 'App paper trading · ₹1 lakh · Trend rule (Grade A / B)'],
-  dharani: ['DHARANI ACCOUNT', 'App paper trading · ₹1 lakh · Dharani rule (3-min, SuperTrend exit)'],
+  megabull: ['MEGABULL ACCOUNT', 'Strict rules: 4 Pillar Rules and SuperTrend Rules, Nifty + Bank Nifty (via MegaBull API)'],
+  tradingHub: ['TREND ACCOUNT', 'App paper trading · ₹1 lakh · Trend Rules (Grade A / B)'],
+  dharani: ['DHARANI ACCOUNT', 'App paper trading · ₹1 lakh · Dharani Rules (3-min, SuperTrend exit)'],
 };
 
 /** Balance line for the app's own accounts: today's opening balance + today's realised P&L − charges. */
@@ -350,7 +350,7 @@ export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual 
           <p className="db-trade-name">Manual · {p.name} · {p.open_qty} qty · avg {n2(p.avg_buy)} · live {n2(ltp[p.security_id] ?? p.ltp)}</p>
           <span className="db-actions">
             <button className="btn primary" disabled={busy} onClick={() => onBracket(p.security_id)}
-              title="Stop at −15% (pending SL-M) and target at +20% (watched), as in the Trading Hub rule">Place stop + target together</button>
+              title="Stop at −15% (pending SL-M) and target at +20% (watched), as in Trend Rules">Place stop + target together</button>
             <button className="btn" disabled={busy} onClick={() => onExitManual(p.security_id)}>Exit position</button>
           </span>
         </div>
@@ -397,7 +397,7 @@ export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow:
                 return (
                   <tr key={t.id}>
                     <td>{name(t.account)}</td>
-                    <td>{t.rule}{t.setup ? ` (${t.setup})` : ''}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
+                    <td>{t.rule}{t.setup && t.setup.toUpperCase() !== t.rule ? ` (${t.setup})` : ''}{t.grade !== 'n.a.' ? ` · Grade ${t.grade}` : ''}</td>
                     <td>{t.instrument.name}</td><td className="num">{t.entryTime}</td><td className="num">{n2(t.entryPrice)}</td>
                     <td className="num">{exit != null ? n2(exit) : 'open'}</td><td>{t.exitReason ?? '—'}</td>
                     <td className={`num ${tone(pnl)}`}>{signed(2)(pnl)}</td><td className={`num ${tone(pct)}`}>{signed(1)(pct)}%</td>

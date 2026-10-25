@@ -277,16 +277,16 @@ def two_accounts(tmp_path):
 
 def test_megabull_rule_and_dharani_trade_on_separate_accounts(tmp_path):
     t, mb, dh, _ = two_accounts(tmp_path)
-    v1 = {**GO, "rule": "megabull", "name": "MEGABULL RULE", "setup": "SuperTrend Nifty", "symbol": "NIFTY", "side": "PE"}
-    d = {**GO, "rule": "dharaniV2", "name": "DHARANI RULE", "setup": "Dharani", "symbol": "NIFTY", "side": "PE"}
+    v1 = {**GO, "rule": "superTrend", "name": "SUPERTREND RULES", "setup": "SuperTrend Rules", "symbol": "NIFTY", "side": "PE"}
+    d = {**GO, "rule": "dharaniV2", "name": "DHARANI RULES", "setup": "Dharani Rules", "symbol": "NIFTY", "side": "PE"}
     assert t.on_signal(v1, STATE) == "Entry sent"
     wait_idle(t)
     assert t.on_signal(d, STATE) == "Entry sent"
     wait_idle(t)
-    assert [(tr["account"], tr["slot"]) for tr in t.state["trades"]] == [("megabull", "megabull"), ("dharani", "dharaniV2")]
+    assert [(tr["account"], tr["slot"]) for tr in t.state["trades"]] == [("megabull", "superTrend"), ("dharani", "dharaniV2")]
     assert mb.sent[0][0] == "BUY" and dh.sent[0][0] == "BUY"  # each on its own account
-    assert t.positions("NIFTY") == {"tradingHub": False, "megabull": True, "dharaniV2": True} or \
-        t.positions("NIFTY") == {"megabull": True, "dharaniV2": True}
+    pos = t.positions("NIFTY")
+    assert pos["superTrend"] and pos["dharaniV2"] and not pos["fourPillar"] and not pos.get("tradingHub")
     assert t.on_signal(d, STATE) == "Position already open on this index"
     st = t.status()
     assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "Dharani"
@@ -318,3 +318,17 @@ def test_dharani_entry_has_no_target_picks_strike_by_premium_and_exits_on_supert
             break
         time.sleep(0.05)
     assert tr["status"] == "closed" and tr["exitReason"] == "Signal"
+
+
+def test_four_pillar_and_supertrend_each_have_a_slot_on_megabull_on_any_index(tmp_path):
+    """Owner, 25-Oct-2026: both MegaBull rules on NIFTY and BANKNIFTY; one rule's trade does not block the other."""
+    t, mb, _dh, _ = two_accounts(tmp_path)
+    fp = {**GO, "rule": "fourPillar", "name": "4 PILLAR RULES", "setup": "4 Pillar Rules", "symbol": "NIFTY", "side": "CE"}
+    st = {**GO, "rule": "superTrend", "name": "SUPERTREND RULES", "setup": "SuperTrend Rules", "symbol": "NIFTY", "side": "PE"}
+    assert t.on_signal(fp, STATE) == "Entry sent"
+    wait_idle(t)
+    assert t.on_signal(st, STATE) == "Entry sent"
+    wait_idle(t)
+    assert [(tr["account"], tr["slot"]) for tr in t.state["trades"]] == [("megabull", "fourPillar"), ("megabull", "superTrend")]
+    assert t.on_signal(fp, STATE) == "Position already open on this index"
+    assert t.on_signal({**fp, "symbol": "BANKNIFTY"}, STATE) == "Entry sent"
