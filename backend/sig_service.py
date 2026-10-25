@@ -209,6 +209,10 @@ class SignalService:
                     if r["go"]:
                         why = self.trader.on_signal(r, st)
                         action += f"{key}: {why or 'not sent'}; "
+                        if why != "Entry sent" and not st["positions"].get(key):
+                            # a GO the account could not take (MegaBull still off, Auto OFF, a limit): track it in the
+                            # shadow log so the rule's results are not lost (owner: MegaBull setups go to the shadow log)
+                            self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
                     else:
                         self.skips[(key, self._skip_reason(r))] += 1
                         setup = skipped_setup(r)

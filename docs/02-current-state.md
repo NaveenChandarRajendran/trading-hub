@@ -124,6 +124,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   < 30, close beyond R1 / S1, close outside the Bollinger band), NIFTY and BANKNIFTY, MegaBull account, own rule card.
   The MegaBull Nifty setup is renamed Dharani v1. Auto trader positions are per rule ("slot"), not per account; a rule
   never buys the option another rule holds on the same account. Snapshot CSV has d2_* columns.
+- A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
+  MegaBull rule results are tracked before MegaBull orders are switched on.
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
