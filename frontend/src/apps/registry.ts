@@ -62,6 +62,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./premium-analysis/PremiumAnalysisApp')),
   },
   {
+    id: 'pcr-trend',
+    group: 'manual',
+    name: 'PCR Trend Analysis',
+    path: '/pcr-trend',
+    icon: '◐',
+    component: lazy(() => import('./pcr-trend/PcrTrendApp')),
+  },
+  {
     id: 'trending-oi',
     group: 'live',
     name: 'Trending OI',
