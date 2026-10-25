@@ -110,12 +110,22 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./order-flow/OrderFlowApp')),
   },
   {
+    // owner 25-Oct-2026: the chain + manual buy / sell (was "Paper Trading"), now with IV and Greeks
+    id: 'option-chain',
+    group: 'live',
+    name: 'Option Chain',
+    path: '/option-chain',
+    icon: '⊞',
+    component: lazy(() => import('./paper-trade/PaperTradeApp')),
+  },
+  {
+    // owner 25-Oct-2026: every strategy's paper orders and trades with history (MegaBull's too), like the Excel
     id: 'paper-trade',
     group: 'live',
     name: 'Paper Trading',
     path: '/paper-trade',
     icon: '⇄',
-    component: lazy(() => import('./paper-trade/PaperTradeApp')),
+    component: lazy(() => import('./paper-journal/PaperJournalApp')),
   },
   {
     // owner 25-Oct-2026: at the bottom of the sidebar, below Paper Trading

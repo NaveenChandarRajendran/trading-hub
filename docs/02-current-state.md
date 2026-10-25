@@ -145,6 +145,21 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - Market closed (owner 25-Oct-2026): Trending OI shows the last recorded session (`store.last_day`,
   `Tracker.last_session`, meta.sessionDay) instead of an empty table; Index Components on Saturday / Sunday compares the
   last session with the one before it (was 0.00 %; weekend cache key `<date>-wkd`). Holidays on weekdays still show 0.00 %.
+- Paper Trading journal + Option Chain (owner 25-Oct-2026, ADR 0008):
+  - **Option Chain** page (`apps/paper-trade`, route /option-chain, was "Paper Trading"): the chain with live LTP / OI,
+    plus OI change, volume, IV, delta, gamma, theta, vega from Dhan's option chain (/api/option-chain, every 15 s in
+    market hours; columns toggle "OI + volume" / "IV + Greeks"), PCR and max pain tiles; shows the last session's
+    chain when the market is closed. Manual buy / sell, positions, orders and P&L of the manual account as before.
+  - **Paper Trading** page (`apps/paper-journal`, route /paper-trade): all strategies in one place (4 Pillar Rules,
+    SuperTrend Rules, Dharani Rules, Trend Rules, Manual): order book of any past day, trades, open positions, daily
+    P&L calendar, strategies side by side, CSV. Strategy chips + Index filter + Date.
+  - Backend `journal.py`: the auto trader's on_order steps (entry, stop placed, exit) become order rows in
+    `data/journal/day_<date>.json` (MegaBull keeps only today's orders, so the app keeps its own); manual orders and
+    round trips come from the paper store. `data/journal/imported.json` = 1-23 Oct 2026 trades from the Excel tabs
+    (made once by Claude; 19 trades: 4 Pillar 10, SuperTrend 6, Trend 3; totals match the Consolidated sheet).
+    Endpoints GET /api/journal/days, /api/journal/orders?date=, /api/journal/trades?from=&to=.
+  - Limits: open positions show without live P&L here (live P&L stays on the Dashboard); Excel-imported trades have
+    one buy and one sell order each (the stop orders of those days were not recorded).
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 

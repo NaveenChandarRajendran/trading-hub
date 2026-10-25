@@ -315,20 +315,28 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     bts = bt_service.BacktestService(tracker.client, tracker.market_open)
     bt_service.register(app, bts)
     app.state.backtest = bts
+    import journal as journal_mod
+    jr = journal_mod.Journal("data")
+    journal_mod.register(app, jr, paper)
+    app.state.journal = jr
     if signal_config is not None:
-        signals = build_signals(signal_config, tracker, app.state.candles, get_expiries, lot_size, trending_oi_body, paper)
+        signals = build_signals(signal_config, tracker, app.state.candles, get_expiries, lot_size, trending_oi_body, paper,
+                                journal=jr)
         sig_service.register(app, signals)
         app.state.signals = signals
     return app
 
 
-def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_body, paper):
+def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_body, paper, journal=None):
     """Signal watcher + auto PAPER trader (Trading Hub paper account; MegaBull paper API when enabled)."""
     sig_rules.configure(cfg.get("rules", {}))
     trader = None
     svc_ref = {}
     alert = lambda kind, msg: svc_ref["svc"].alert(kind, msg)  # noqa: E731
-    on_order = lambda trade, event: svc_ref["svc"].on_order(trade, event)  # noqa: E731
+    def on_order(trade, event):
+        if journal is not None:  # the app's own order history (MegaBull keeps only today's)
+            journal.record(trade, event, tracker.clock())
+        svc_ref["svc"].on_order(trade, event)
     if paper:
         mb_cfg = cfg["megabull"]
 

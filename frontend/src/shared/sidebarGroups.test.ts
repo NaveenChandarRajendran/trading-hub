@@ -14,7 +14,7 @@ describe('sidebar groups', () => {
     expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard']);
     expect(apps[0].id).toBe('dashboard'); // landing page
     expect(g[1].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis']);
-    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'order-flow', 'paper-trade', 'backtest']); // Backtest last (owner 25-Oct-2026)
+    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'order-flow', 'option-chain', 'paper-trade', 'backtest']); // Backtest last (owner 25-Oct-2026)
   });
 
   it('drops empty sections', () => {

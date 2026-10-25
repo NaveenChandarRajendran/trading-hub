@@ -137,3 +137,13 @@
 .ds .chart-wrap:hover .chart-wheel-hint { opacity: 0.95; }
 .ds .chart-wrap:has(.chart-wheel-on) .chart-wheel-hint { opacity: 0; }
 .ds .chart-wheel-on { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* Toggle chips (multi-select filters, e.g. strategies). */
+.ds .chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ds .chip {
+  display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--control-h); padding: 0 var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2);
+  font-size: var(--fs-sm); cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.ds .chip:hover { border-color: var(--border-strong); }
+.ds .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 500; }

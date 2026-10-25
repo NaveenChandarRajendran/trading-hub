@@ -1,21 +1,30 @@
-import { useEffect, useState } from 'react';
+// Option Chain page (owner 25-Oct-2026: was "Paper Trading"): Nifty / Bank Nifty chain with live prices, OI, IV and
+// Greeks, plus the owner's own manual paper buy / sell, positions, orders and P&L of the manual account. The
+// strategy-wise journal of all paper trades is the new Paper Trading page (apps/paper-journal).
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, Pill, Segmented, Stat, Status } from '../../shared/ui';
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { STALE_AFTER_MS, STORAGE_PREFIX } from './config/settings';
 import { longDate, rupees, signedRupees, toneOf } from './format';
+import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { api, type Chain } from './logic/api';
+import { byStrike, maxPain, pcr } from './logic/greeks';
 import { keyOf } from './logic/feed';
 import { OrderTicket, type TicketTarget } from './OrderTicket';
 import { OrdersView } from './OrdersView';
 import { PnlView } from './PnlView';
-import { TradeView, liveUnrealized } from './TradeView';
+import { TradeView, liveUnrealized, type ChainCols } from './TradeView';
 import { usePaper, type Paper } from './usePaper';
 import './paper-trade.css';
 
 type View = 'trade' | 'orders' | 'pnl';
-const VIEWS = [{ value: 'trade', label: 'Trade' }, { value: 'orders', label: 'Orders' }, { value: 'pnl', label: 'P&L' }] as const;
+const VIEWS = [{ value: 'trade', label: 'Chain' }, { value: 'orders', label: 'Orders' }, { value: 'pnl', label: 'P&L' }] as const;
+const COL_SETS = [{ value: 'prices', label: 'OI + volume' }, { value: 'greeks', label: 'IV + Greeks' }] as const;
+const CHAIN_REFRESH_MS = 15000;
+
+const signedPts = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${inr(0)(Math.abs(v))}`;
 
 const load = (k: string) => {
   try {
@@ -112,6 +121,9 @@ export default function PaperTradeApp() {
   const [chain, setChain] = useState<Chain | null>(null);
   const [chainError, setChainError] = useState('');
   const [ticket, setTicket] = useState<TicketTarget | null>(null);
+  const [cols, setCols] = useState<ChainCols>(() => (load('cols') === 'greeks' ? 'greeks' : 'prices'));
+  const [dhan, setDhan] = useState<ChainResponse | null>(null);
+  useEffect(() => save('cols', cols), [cols]);
   const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
 
   useEffect(() => save('view', view), [view]);
@@ -136,6 +148,25 @@ export default function PaperTradeApp() {
     return () => ctrl.abort();
   }, [symbol, expiry]);
 
+  // OI change, volume, IV and Greeks: Dhan's option chain (backend cache), every 15 s while the market is open
+  const marketOpen = paper.meta?.marketOpen ?? false;
+  useEffect(() => {
+    const exp = expiry || chain?.expiry;
+    if (!exp) return;
+    const ctrl = new AbortController();
+    const pull = () => fetchOptionChain(symbol, exp, ctrl.signal).then(setDhan).catch(() => {});
+    setDhan(null);
+    void pull();
+    const t = marketOpen ? setInterval(pull, CHAIN_REFRESH_MS) : undefined;
+    return () => {
+      ctrl.abort();
+      if (t) clearInterval(t);
+    };
+  }, [symbol, expiry, chain?.expiry, marketOpen]);
+  const extras = useMemo(() => byStrike(dhan), [dhan]);
+  const chainPcr = useMemo(() => pcr(dhan), [dhan]);
+  const pain = useMemo(() => maxPain(dhan), [dhan]);
+
   // the Trade view subscribes to the chain + index itself; the other views still show the index in the summary
   const spotKey = chain ? keyOf(chain.spot.segment, chain.spot.securityId) : null;
   useEffect(() => {
@@ -143,7 +174,7 @@ export default function PaperTradeApp() {
   }, [view, spotKey, paper.subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onNotice = (kind: 'info' | 'error', text: string) => setNotice({ kind, text });
-  const spot = chain ? paper.ticks.get(keyOf(chain.spot.segment, chain.spot.securityId))?.ltp : undefined;
+  const spot = (chain ? paper.ticks.get(keyOf(chain.spot.segment, chain.spot.securityId))?.ltp : undefined) ?? dhan?.meta.spot;
   const positions = [...paper.positions.values()];
   const unrealized = positions.reduce((t, p) => t + liveUnrealized(paper, p), 0); // live, from the latest ticks
   const f = paper.funds;
@@ -166,6 +197,7 @@ export default function PaperTradeApp() {
             </label>
           )}
           <div className="field">View<Segmented label="View" options={VIEWS} value={view} onChange={setView} /></div>
+          {view === 'trade' && <div className="field">Columns<Segmented label="Columns" options={COL_SETS} value={cols} onChange={setCols} /></div>}
           <div className="toolbar-end">
             <Pill tone="accent">PAPER</Pill>
             <FeedStatus paper={paper} />
@@ -183,8 +215,9 @@ export default function PaperTradeApp() {
 
       <div className="stats">
         <Stat label={`${symbol} spot`} value={spot ? inr(2)(spot) : '–'} delta={paper.meta?.marketOpen ? '' : 'Last session'} />
+        <Stat label="PCR (OI)" value={chainPcr == null ? '–' : inr(2)(chainPcr)} delta={dhan ? `As of ${dhan.meta.asOf.slice(11, 16)} IST` : ''} />
+        <Stat label="Max pain" value={pain == null ? '–' : inr(0)(pain)} delta={pain != null && spot ? `${signedPts(spot - pain)} pts from spot` : ''} />
         <Stat label="Available" value={rupees(f?.available)} delta={f ? `of ${rupees(f.openingBalance, 0)} opening` : ''} />
-        <Stat label="Used" value={rupees(f?.used)} delta="Positions + pending buys" />
         <Stat label="Day P&L" value={<span className={toneOf(dayPnl)}>{signedRupees(dayPnl)}</span>}
           delta={f ? `Charges ${rupees(f.charges)}` : ''} />
         <Stat label="Open positions" value={positions.filter((p) => p.open_qty > 0).length}
@@ -193,7 +226,8 @@ export default function PaperTradeApp() {
 
       {view === 'trade' && (chainError ? (chainError !== paper.error && <Alert kind="error">{chainError}</Alert>)
         : !chain ? <p className="muted">Loading option chain…</p>
-        : <TradeView paper={paper} chain={chain} onTicket={setTicket} onNotice={onNotice} />)}
+        : <TradeView paper={paper} chain={chain} extras={extras} chainSpot={dhan?.meta.spot ?? null} cols={cols}
+            onTicket={setTicket} onNotice={onNotice} />)}
       {view === 'orders' && <OrdersView paper={paper} />}
       {view === 'pnl' && <PnlView paper={paper} />}
 

@@ -6,6 +6,7 @@ import { STRIKES_EACH_SIDE } from './config/settings';
 import { STATUS_TONE, hms, lakh, longDate, pct, price, shortName, signedRupees, toneOf } from './format';
 import { api, type Chain, type Order, type Position } from './logic/api';
 import { changePct, chainWindow, itm, spotGapAfter } from './logic/chain';
+import type { LegExtra } from './logic/greeks';
 import { keyOf, type InstrumentKey } from './logic/feed';
 import type { TicketTarget } from './OrderTicket';
 import type { Paper } from './usePaper';
@@ -22,14 +23,41 @@ export const liveUnrealized = (paper: Paper, p: Position) => {
   return ltp != null && p.open_qty ? (ltp - p.avg_buy) * p.open_qty : 0;
 };
 
-export function TradeView({ paper, chain, onTicket, onNotice }: {
+export type ChainCols = 'prices' | 'greeks';
+
+const fx = (d: number) => (v: number | null | undefined) => (v == null ? '–' : inr(d)(v));
+const lakhSigned = (v: number | null | undefined) => (v == null ? '–' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${inr(2)(Math.abs(v) / 100000)}`);
+
+/** Per side, outer -> inner (LTP next to the strike). Prices: OI, OI change, volume, change %. Greeks: IV, delta,
+ * gamma, theta, vega. Values come from the live tick when there is one, else from the last Dhan chain. */
+const COLS: Record<ChainCols, { h: string; title: string; cell: (x: LegExtra | null, oi: number | undefined, chg: number | null) => { v: string; tone?: string } }[]> = {
+  prices: [
+    { h: 'OI (L)', title: 'Open interest, lakh contracts', cell: (x, oi) => ({ v: lakh(oi ?? x?.oi) }) },
+    { h: 'OI Chg (L)', title: 'Change in OI vs the previous day\'s settled OI, lakh contracts', cell: (x) => ({ v: lakhSigned(x?.oiChg), tone: toneOf(x?.oiChg) }) },
+    { h: 'Vol (L)', title: 'Volume today, lakh contracts', cell: (x) => ({ v: lakh(x?.volume) }) },
+    { h: 'Chg %', title: 'LTP change vs previous close', cell: (_x, _oi, chg) => ({ v: pct(chg), tone: toneOf(chg) }) },
+  ],
+  greeks: [
+    { h: 'IV', title: 'Implied volatility %', cell: (x) => ({ v: fx(2)(x?.iv) }) },
+    { h: 'Delta', title: 'Delta', cell: (x) => ({ v: fx(3)(x?.delta) }) },
+    { h: 'Gamma', title: 'Gamma', cell: (x) => ({ v: fx(4)(x?.gamma) }) },
+    { h: 'Theta', title: 'Theta (₹ per day)', cell: (x) => ({ v: fx(2)(x?.theta) }) },
+    { h: 'Vega', title: 'Vega', cell: (x) => ({ v: fx(2)(x?.vega) }) },
+  ],
+};
+
+export function TradeView({ paper, chain, extras, chainSpot, cols, onTicket, onNotice }: {
   paper: Paper;
   chain: Chain;
+  extras: Map<number, { ce: LegExtra | null; pe: LegExtra | null }>;
+  chainSpot: number | null; // spot from the Dhan chain: used while there is no live tick (market closed)
+  cols: ChainCols;
   onTicket: (t: TicketTarget) => void;
   onNotice: (kind: 'info' | 'error', text: string) => void;
 }) {
   const spotKey = keyOf(chain.spot.segment, chain.spot.securityId);
-  const spot = paper.ticks.get(spotKey)?.ltp ?? null;
+  const spot = paper.ticks.get(spotKey)?.ltp ?? chainSpot ?? null;
+  const shown = COLS[cols];
   const win = useMemo(() => chainWindow(chain.rows, spot, STRIKES_EACH_SIDE), [chain.rows, spot]);
   const gapAfter = spotGapAfter(win.rows, spot); // the live spot line sits below this row
 
@@ -67,28 +95,33 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
         </div>
         {!win.rows.length ? (
           <EmptyState>
-            {paper.meta?.marketOpen ? `Waiting for the live ${chain.symbol} price…` : `Market closed. Live prices appear from 09:15 IST.`}
+            {paper.meta?.marketOpen ? `Waiting for the live ${chain.symbol} price…` : `Market closed. Loading the last session's chain…`}
           </EmptyState>
         ) : (
           <div className="pt-scroll">
             <table className="t pt-chain">
               <thead>
                 <tr className="pt-group">
-                  <th className="pt-call" colSpan={3}>CALLS</th>
+                  <th className="pt-call" colSpan={shown.length + 1}>CALLS</th>
                   <th className="pt-strike" rowSpan={2}>Strike</th>
-                  <th className="pt-put" colSpan={3}>PUTS</th>
+                  <th className="pt-put" colSpan={shown.length + 1}>PUTS</th>
                 </tr>
                 <tr>
-                  <th className="pt-call" title="Call open interest, lakh contracts">OI (L)</th><th className="pt-call">Chg %</th><th className="pt-call">LTP</th>
-                  <th className="pt-put">LTP</th><th className="pt-put">Chg %</th><th className="pt-put" title="Put open interest, lakh contracts">OI (L)</th>
+                  {shown.map((c) => <th key={`c${c.h}`} className="pt-call" title={c.title}>{c.h}</th>)}
+                  <th className="pt-call">LTP</th>
+                  <th className="pt-put">LTP</th>
+                  {[...shown].reverse().map((c) => <th key={`p${c.h}`} className="pt-put" title={c.title}>{c.h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {win.rows.map((r, i) => {
                   const ce = r.ce && paper.ticks.get(keyOf('NSE_FNO', r.ce.securityId));
                   const pe = r.pe && paper.ticks.get(keyOf('NSE_FNO', r.pe.securityId));
-                  const cpc = changePct(ce?.ltp, ce?.close);
-                  const ppc = changePct(pe?.ltp, pe?.close);
+                  const x = extras.get(r.strike);
+                  const cLtp = ce?.ltp ?? x?.ce?.ltp ?? undefined;
+                  const pLtp = pe?.ltp ?? x?.pe?.ltp ?? undefined;
+                  const cpc = changePct(cLtp, ce?.close ?? x?.ce?.close ?? undefined);
+                  const ppc = changePct(pLtp, pe?.close ?? x?.pe?.close ?? undefined);
                   const ticket = (side: 'BUY' | 'SELL', leg: typeof r.ce) => leg && onTicket({ side, securityId: leg.securityId, name: leg.name, lotSize: lot });
                   const money = spot != null ? itm(r.strike, spot) : { ce: false, pe: false };
                   const ceItm = money.ce ? 'pt-itm' : '';
@@ -96,25 +129,29 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
                   return (
                     <Fragment key={r.strike}>
                       <tr className={r.strike === win.atm ? 'hl' : ''}>
-                        <td className={ceItm}>{lakh(ce?.oi)}</td>
-                        <td className={`${toneOf(cpc)} ${ceItm}`}>{pct(cpc)}</td>
+                        {shown.map((c) => {
+                          const v = c.cell(x?.ce ?? null, ce?.oi, cpc);
+                          return <td key={`c${c.h}`} className={`${v.tone ?? ''} ${ceItm}`}>{v.v}</td>;
+                        })}
                         <td className={`pt-leg pt-leg-ce ${ceItm}`}>
                           {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
-                          {price(ce?.ltp)}
+                          {price(cLtp)}
                         </td>
                         <td className="pt-strike">{inr(0)(r.strike)}</td>
                         <td className={`pt-leg pt-leg-pe ${peItm}`}>
-                          {price(pe?.ltp)}
+                          {price(pLtp)}
                           {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
                         </td>
-                        <td className={`${toneOf(ppc)} ${peItm}`}>{pct(ppc)}</td>
-                        <td className={peItm}>{lakh(pe?.oi)}</td>
+                        {[...shown].reverse().map((c) => {
+                          const v = c.cell(x?.pe ?? null, pe?.oi, ppc);
+                          return <td key={`p${c.h}`} className={`${v.tone ?? ''} ${peItm}`}>{v.v}</td>;
+                        })}
                       </tr>
                       {i === gapAfter && (
                         <tr className="pt-spot-row" aria-label={`${chain.symbol} spot ${inr(2)(spot)}`}>
-                          <td colSpan={3} />
+                          <td colSpan={shown.length + 1} />
                           <td className="pt-strike"><span className="pill accent pt-spot-pill">{chain.symbol} {inr(2)(spot)}</span></td>
-                          <td colSpan={3} />
+                          <td colSpan={shown.length + 1} />
                         </tr>
                       )}
                     </Fragment>
@@ -124,7 +161,8 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
             </table>
           </div>
         )}
-        <p className="card-foot">Hover a row and press B or S. Sell closes an open position only (option buying, no short selling).</p>
+        <p className="card-foot">Hover a row and press B or S. Sell closes an open position only (option buying, no short selling).
+          LTP and OI are live; OI change, volume, IV and Greeks refresh with Dhan&apos;s option chain (every 15 s in market hours).</p>
       </section>
 
       <div className="pt-stack">

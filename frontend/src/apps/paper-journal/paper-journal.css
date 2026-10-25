@@ -1,0 +1,7 @@
+.pj .pj-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-4); }
+.pj .pj-scroll { max-height: 520px; overflow: auto; }
+.pj .pj-side { font-weight: 600; font-size: var(--fs-xs); }
+.pj .pj-side.buy { color: var(--up); }
+.pj .pj-side.sell { color: var(--down); }
+.pj .pj-sub { color: var(--text-3); font-size: var(--fs-xs); }
+.pj table.t td.txt, .pj table.t th.txt { text-align: left; }
