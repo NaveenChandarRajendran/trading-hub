@@ -121,8 +121,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - `keep_awake.py`: on Windows the backend stops the PC from sleeping until 16:00 IST (SetThreadExecutionState, like
   call apps); the screen may still lock. Owner 24-Oct-2026.
 - Dharani v2 (owner 25-Oct-2026, `docs/strategies/dharani-v2.md`, `sig_dharani_v2.py`): the teacher's tuned
-  Quantman setups copied as taught: NIFTY only, 3-minute candles (call on the index, put on the futures), call 5 and
-  put 8 conditions, exit on a SuperTrend close-through, no fixed target, −10 % safety stop, strike by premium near ₹250.
+  Quantman setups copied as taught: NIFTY and BANKNIFTY (owner added BANKNIFTY), 3-minute candles (call on the index, put on the futures), call 5 and
+  put 8 conditions, exit on a SuperTrend close-through, no fixed target, −10 % safety stop, strike by premium near ₹250 (NIFTY) / ₹500 (BANKNIFTY).
   The watcher now wakes on every 3- and 5-minute close; `CandleService.get_with_futures` keeps the futures' own candles
   and 4 sessions of history (EMA 200). The MegaBull Nifty setup is renamed Dharani v1. Auto trader positions are per
   rule ("slot"), not per account; a rule never buys the option another rule holds on the same account.

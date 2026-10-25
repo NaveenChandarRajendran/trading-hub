@@ -177,20 +177,23 @@ class SignalService:
 
     def v2_symbols(self):
         c = self.cfg.get("dharaniV2", {})
-        return c.get("symbols", ["NIFTY"]) if c.get("enabled", True) else []
+        return c.get("symbols", ["NIFTY", "BANKNIFTY"]) if c.get("enabled", True) else []
 
     def _v2(self, symbol, now, max_age=None):
         """Dharani v2 state on 3-minute candles, or (None, []) for an index it does not trade."""
         if symbol not in self.v2_symbols():
             return None, []
         try:
-            return build_state_v2(symbol, now, self.src, max_age=max_age)
+            st, problems = build_state_v2(symbol, now, self.src, max_age=max_age)
+            if st:
+                st["premiumNear"] = (self.cfg.get("dharaniV2", {}).get("premiumNear") or {}).get(symbol)
+            return st, problems
         except Exception as e:
             log.exception("dharani v2 state")
             return None, [f"{symbol} Dharani v2: {e}"]
 
     def run_v2(self):
-        """One 3-minute cycle: Dharani v2 exits and entries (NIFTY by default)."""
+        """One 3-minute cycle: Dharani v2 exits and entries (NIFTY and BANKNIFTY by default)."""
         self.heartbeat = self.clock()
         for symbol in self.v2_symbols():
             st, problems = None, []

@@ -2,11 +2,12 @@
 sig_dharani_v2.py - Dharani v2: the teacher's tuned Quantman setups, copied as taught (owner, 25-Oct-2026).
 docs/strategies/dharani-v2.md is the written rule; this file must match it.
 
-NIFTY, 3-minute candles (09:15-aligned, IST), evaluated after every 3-minute close.
-CALL ("L1 08 FINAL CE"), NIFTY index candles:
+NIFTY and BANKNIFTY (owner 25-Oct-2026; the teacher tested NIFTY), 3-minute candles (09:15-aligned, IST), evaluated
+after every 3-minute close.
+CALL ("L1 08 FINAL CE"), index candles:
     close > SuperTrend (10, 2)   RSI (14) > 70   close > R1 (Traditional, previous day)
     close > upper Bollinger (15, 3)   Williams %R (14) > -30
-PUT ("L1 10 PE ALT"), NIFTY near-month FUTURES candles (the teacher's "Fields: Future"):
+PUT ("L1 10 PE ALT"), the index's near-month FUTURES candles (the teacher's "Fields: Future"):
     close < SuperTrend (10, 2)   close < EMA 200   RSI (20) < 30   CCI (20) < -200   Williams %R (14) < -85
     close < CPR S1 (futures' previous day)   CPR is narrow (width < 0.2 %)   close < lower Bollinger (20, 2)
 Exit: a candle closing back through the SuperTrend line (call: below it, put: above it), on the same data as the entry.
@@ -25,7 +26,9 @@ CALL = {"rsi": (14, 70.0), "bb": (15, 3.0), "wr": (14, -30.0)}
 PUT = {"ema": 200, "rsi": (20, 30.0), "cci": (20, -200.0), "wr": (14, -85.0), "cprNarrowPct": 0.2, "bb": (20, 2.0)}
 ST = (10, 2.0)
 SESSIONS = 4  # history for EMA 200 on 3-minute candles
-PREMIUM_NEAR = 250  # option bought: current-week CE / PE whose premium is nearest Rs 250 (teacher's "Premium near")
+# option bought: CE / PE whose premium is nearest this (teacher's "Premium near 250" on NIFTY weeklies; BANKNIFTY has
+# monthly expiries only, so its options cost more: 500, owner 25-Oct-2026). Overridable in autopaper.json dharaniV2.premiumNear.
+PREMIUM_NEAR = {"NIFTY": 250, "BANKNIFTY": 500}
 
 
 def closed_bars(one_min, now):
@@ -116,7 +119,7 @@ def call_checks(state):
 def put_checks(state):
     f = state.get("fut")
     if not f:
-        return [check("futures", "NIFTY futures data", NOT_CHECKED, "Futures 3-minute candles not available", True),
+        return [check("futures", "Futures data", NOT_CHECKED, "Futures 3-minute candles not available", True),
                 window_check(state)]
     c, ind, cp, piv = f["bar"]["close"], f["ind"], f.get("cpr"), f.get("piv")
     s1 = piv["S1"] if piv else None
@@ -158,7 +161,8 @@ def dharani_v2_rule(state):
         "rule": "dharaniV2", "name": "DHARANI v2 RULE", "setup": "Dharani v2", "account": "MegaBull paper",
         "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
-        "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True, "premiumNear": PREMIUM_NEAR,
+        "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True,
+        "premiumNear": state.get("premiumNear") or PREMIUM_NEAR.get(state["symbol"], 250),
     }
 
 

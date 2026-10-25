@@ -222,7 +222,7 @@ export default function DashboardApp() {
       <div className="db-three">
         <RuleCard r={s?.rules.megabull} fallbackName="MEGABULL RULE" />
         <RuleCard r={s?.rules.dharaniV2} fallbackName="DHARANI v2 RULE"
-          emptyNote={d.symbol === 'NIFTY' ? 'No completed 3-minute candle yet.' : 'Dharani v2 trades NIFTY only (as the teacher tested it). Switch the index to NIFTY to see it.'} />
+          emptyNote="No completed 3-minute candle yet." />
         <RuleCard r={s?.rules.tradingHub} fallbackName="TRADING HUB RULE" />
         <OrderFlowCard f={s?.orderFlow} symbol={d.symbol} />
       </div>

@@ -114,3 +114,10 @@ def test_build_state_reads_index_and_futures():
     st, problems = build_state_v2("NIFTY", now, Src(fut=False))
     assert st["fut"] is None and problems
     assert dharani_v2_rule(st)["side"] in ("CE", "PE")
+
+
+def test_banknifty_uses_its_own_premium_target():
+    s = state(symbol="BANKNIFTY")
+    assert dharani_v2_rule(s)["premiumNear"] == 500
+    assert dharani_v2_rule(state())["premiumNear"] == 250
+    assert dharani_v2_rule(state(premiumNear=300))["premiumNear"] == 300  # autopaper.json override

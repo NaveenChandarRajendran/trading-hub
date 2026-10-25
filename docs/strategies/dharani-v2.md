@@ -7,8 +7,9 @@ account). Runs alongside Dharani v1 (`megabull.md`) until the 15 Nov review; tra
 The teacher's five further portfolio strategies are in his paid course and are not included.
 
 ## Data
-NIFTY only (as the teacher tested it). 3-minute candles, 09:15-aligned, IST; evaluated ~35 s after every 3-minute close.
-Call conditions use the NIFTY index; put conditions use the NIFTY near-month **futures** candles (his "Fields: Future").
+NIFTY and BANKNIFTY (owner, 25-Oct-2026: the teacher tested NIFTY only, so BANKNIFTY is an untested extension;
+results kept apart by the Index column). 3-minute candles, 09:15-aligned, IST; evaluated ~35 s after every 3-minute close.
+Call conditions use the index; put conditions use the index's near-month **futures** candles (his "Fields: Future").
 Pivots / CPR from the previous trading day of the same data (index for the call, futures for the put).
 
 ## Entry (all conditions on the same completed candle)
@@ -27,12 +28,13 @@ Order flow is not part of this setup.
 
 ## Trade
 - Market BUY of 1 lot right after the signal candle closes. Option: current week (on its expiry day, the next), CE or
-  PE, the strike whose last premium is nearest **₹250** (his "Premium near 250").
+  PE, the strike whose last premium is nearest **₹250 on NIFTY** (his "Premium near 250") and **₹500 on BANKNIFTY**
+  (monthly expiries only, so options cost more; owner 25-Oct-2026). Setting: `autopaper.json` dharaniV2.premiumNear.
 - Entry window: signal candles closing 09:18 to 15:00 (the teacher trades from 09:15).
 - **Exit when a 3-minute candle closes back through SuperTrend** (call: index closes below the line; put: futures close
   above it). No fixed target. Safety stop: SL at fill × 0.90 (owner's MegaBull −10%). Hard exit 15:15 (the teacher's
   ends 15:28).
-- One open v2 position at a time; a new entry is allowed after an exit when all conditions are true again. Never buys
+- One open v2 position per index at a time; a new entry is allowed after an exit when all conditions are true again. Never buys
   the option Dharani v1 holds. Daily limits are the MegaBull account's (6 trades, ₹10,000 loss; the teacher allows 10).
 - Shadow log: SuperTrend on the side and exactly one other condition missed = skipped setup; a GO the account could
   not take (MegaBull off, Auto OFF, a limit) = "GO, not sent".
