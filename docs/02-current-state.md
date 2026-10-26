@@ -177,6 +177,16 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
+## Watch list (owner, 26-Oct-2026: check regularly, every after-close review)
+- **Dhan OI verdict vs the OI itself.** 26-Oct 12:30 Nifty: PCR (OI + chg) 1.24 and puts ~55% (bullish lean), Trending
+  OI +57%, Sensibull bullish, yet the Dhan OI & OI Change verdict was Bearish: the final average (equal-weight mean of
+  ATM ±5..±25 windows, centred on the ATM strike 22,600) came out 22,577 while spot was 22,620, i.e. driven by spot
+  sitting 20 pts above the ATM strike, not by bearish OI. Arithmetic checked and correct; the formula is the owner's
+  Excel method and Trend Rules' must-have uses it, so it is NOT changed. Each day after close: count the 5-min candles
+  where the Dhan verdict disagrees with the OI lean / Trending OI, how many Trend GOs it blocked, and what price did
+  next. Planned: snapshot columns for the OI lean (put %) and spot minus ATM strike; the new dashboard shows the lean
+  next to the verdict. A weighted variant is tested in the backtest only if the blocks keep costing good trades.
+
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):
 a header-less top section (Dashboard), "Manual (Paste)" and "Live (Dhan)". The first registry entry is the landing page. Both start open; closed sections are remembered in localStorage (`shell.groups`).
