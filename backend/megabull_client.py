@@ -89,6 +89,10 @@ def _rows(payload):
                 return v
             if isinstance(v, dict):
                 return _rows(v)
+        # /api/order/my answers {"open": [...], "executed": [...]} (seen 26-Oct-2026): every list of orders together
+        lists = [v for v in payload.values() if isinstance(v, list) and all(isinstance(x, dict) for x in v)]
+        if lists:
+            return [row for v in lists for row in v]
     return []
 
 

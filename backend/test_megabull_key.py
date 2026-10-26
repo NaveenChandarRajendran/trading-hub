@@ -58,3 +58,17 @@ def test_megabull_lot_size_comes_from_dhan_with_a_fallback():
     from autopaper import MegaBullAccount
     assert MegaBullAccount(None, True, 2, lot_size=lambda s: 75)._lot("NIFTY") == 75
     assert MegaBullAccount(None, True, 2, lot_size=lambda s: 1 / 0)._lot("BANKNIFTY") == 30
+
+
+def test_order_status_reads_megabulls_open_and_executed_lists():
+    """/api/order/my answers {"open": [...], "executed": [...]} (real response, 26-Oct-2026)."""
+    from megabull_client import MegaBullClient
+
+    c = MegaBullClient.__new__(MegaBullClient)
+    c._call = lambda method, path, body=None: {
+        "open": [{"id": 9, "status": "TRIGGER PENDING", "price": 140.0}],
+        "executed": [{"id": 817389, "instrumentName": "NIFTY 27 OCT 22450 CE", "qty": 65, "type": "BUY",
+                      "price": 166.25, "status": "COMPLETE"}]}
+    assert c.order_status("817389")["status"] == "COMPLETE" and c.order_status(817389)["avgPrice"] == 166.25
+    assert c.order_status("9")["status"] == "TRIGGER PENDING"
+    assert c.order_status("1") is None
