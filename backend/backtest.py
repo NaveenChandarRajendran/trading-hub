@@ -162,12 +162,18 @@ def run_trade(book, day, side, strike, entry_ts, entry_px, qty, stop_pct, target
 RULES_5M = {"4 Pillar Rules": four_pillar_rule, "SuperTrend Rules": supertrend_rule}
 
 
-def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None, rules=RULES_5M):
-    """4 Pillar Rules and SuperTrend Rules, each with its own position (one slot per rule and index, as live)."""
-    return [t for name, fn in rules.items() for t in _megabull_one(sym, m, vix, book, slip, fn, name)]
+def megabull_trades(sym, m, vix, book, slip=SLIPPAGE, log=None, rules=RULES_5M, stop=0.10, target=0.20, day_rule=None):
+    """4 Pillar Rules and SuperTrend Rules, each with its own position (one slot per rule and index, as live).
+    stop / target: fractions of the entry premium. day_rule(day, stop, target) -> (stop, target), or None to skip that
+    day (stop-width and expiry tests, bt_variants.py); None = every day with the given stop / target."""
+    return [t for name, fn in rules.items() for t in _megabull_one(sym, m, vix, book, slip, fn, name, stop, target, day_rule)]
 
 
-def _megabull_one(sym, m, vix, book, slip, rule_fn, name):
+def _day_levels(day, stop, target, day_rule):
+    return day_rule(day, stop, target) if day_rule else (stop, target)
+
+
+def _megabull_one(sym, m, vix, book, slip, rule_fn, name, stop=0.10, target=0.20, day_rule=None):
     bars = bars_from_minutes(m, 5)
     ind = indicators_5m(bars)
     days = daily_hlc(bars)
@@ -196,10 +202,13 @@ def _megabull_one(sym, m, vix, book, slip, rule_fn, name):
             continue
         if r["blocked"] or per_day.get(day, 0) >= MAX_TRADES_DAY:
             continue
+        levels = _day_levels(day, stop, target, day_rule)
+        if levels is None:
+            continue
         strike, px = book.pick(day, r["side"], close_ts)
         if not px:
             continue
-        res = run_trade(book, day, r["side"], strike, close_ts, px, LOT[sym], 0.10, 0.20, None, slip, last_ts_of_day.get(day, close_ts))
+        res = run_trade(book, day, r["side"], strike, close_ts, px, LOT[sym], levels[0], levels[1], None, slip, last_ts_of_day.get(day, close_ts))
         trades.append({"strategy": name, "index": sym, "day": str(day), "signal": state["signalTime"],
                        "side": r["side"], "strike": strike, "entry": round(px, 2), "entry_ts": close_ts, **res})
         per_day[day] = per_day.get(day, 0) + 1
@@ -306,7 +315,7 @@ class TrendOi:
         return self.views.get(close_ts)
 
 
-def trend_trades(sym, m, book, slip=SLIPPAGE):
+def trend_trades(sym, m, book, slip=SLIPPAGE, stop=TREND_STOP, target=TREND_TARGET, day_rule=None, toi_cache=None):
     """Trend Rules (approximate): the live trading_hub_rule with Trending OI rebuilt from past option OI."""
     bars = bars_from_minutes(m, 5)
     ind = indicators_5m(bars)
@@ -323,6 +332,14 @@ def trend_trades(sym, m, book, slip=SLIPPAGE):
     toi = {"day": None, "oi": None}
 
     def oi_of(day):
+        if toi_cache is not None:  # several runs over the same days (bt_variants.py): rebuild each day once
+            if (sym, day) not in toi_cache:
+                o = TrendOi(sym, book.prices, day, by_day.get(day, []), spots)
+                # keep only what the rule and its exit read (newest 3 rows, the verdict), so 5 years fit in memory
+                o.rows = {k: v[:3] for k, v in o.rows.items()}
+                o.views = {k: (v and {"verdict": v["verdict"]}) for k, v in o.views.items()}
+                toi_cache[(sym, day)] = o
+            return toi_cache[(sym, day)]
         if toi["day"] != day:
             toi["day"], toi["oi"] = day, TrendOi(sym, book.prices, day, by_day.get(day, []), spots)
         return toi["oi"]
@@ -349,6 +366,9 @@ def trend_trades(sym, m, book, slip=SLIPPAGE):
         r = trading_hub_rule(st)
         if not r["go"]:
             continue
+        levels = _day_levels(day, stop, target, day_rule)
+        if levels is None:
+            continue
         strike, px = book.pick(day, r["side"], close_ts)
         if not px:
             continue
@@ -360,7 +380,7 @@ def trend_trades(sym, m, book, slip=SLIPPAGE):
                 return None
             return trading_hub_exit(state_at(j), side)
         last_ts = by_day[day][-1] if by_day.get(day) else close_ts
-        res = run_trade(book, day, side, strike, close_ts, px, LOT[sym], TREND_STOP, TREND_TARGET, signal_exit, slip, last_ts)
+        res = run_trade(book, day, side, strike, close_ts, px, LOT[sym], levels[0], levels[1], signal_exit, slip, last_ts)
         trades.append({"strategy": "Trend Rules", "index": sym, "day": str(day), "signal": st["signalTime"], "side": side,
                        "strike": strike, "entry": round(px, 2), "entry_ts": close_ts, "grade": r["grade"], **res})
         per_day[day] = per_day.get(day, 0) + 1

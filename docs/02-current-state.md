@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-23 (signal watcher + auto paper on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-26 (stop/target + expiry backtest, new-strategy search on `Diwakar_OptionBuy_Backtest`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -194,6 +194,14 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
+- Backtest tests (owner 26-Oct-2026, `docs/backtest.md` "Stop / target and expiry test", "New strategy search"):
+  `bt_variants.py` (4 stop / target pairs x expiry handling for Trend, 4 Pillar, SuperTrend; expiry days read from the
+  straddle roll in the data) and `strategy_research.py` + `research_data.py` (6 new buying ideas tuned on 2021-24, tested
+  once on 2025-26). Run both with `Run_Strategy_Research.bat` (no Dhan login; uses the saved data). Result 26-Oct: no
+  pair or expiry rule makes the three rules profitable (best: Trend -20/+30 skipping expiry day + eve, -Rs 2.28 L over
+  5 years); none of the new ideas survived 2025-26 (0 of 61). No live rule changed. `backtest.py` functions take optional
+  `stop`, `target`, `day_rule`, `toi_cache` (defaults = the live behaviour).
+
 ## Watch list (owner, 26-Oct-2026: check regularly, every after-close review)
 - **Dhan OI verdict vs the OI itself.** 26-Oct 12:30 Nifty: PCR (OI + chg) 1.24 and puts ~55% (bullish lean), Trending
   OI +57%, Sensibull bullish, yet the Dhan OI & OI Change verdict was Bearish: the final average (equal-weight mean of
@@ -203,6 +211,10 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   where the Dhan verdict disagrees with the OI lean / Trending OI, how many Trend GOs it blocked, and what price did
   next. Planned: snapshot columns for the OI lean (put %) and spot minus ATM strike; the new dashboard shows the lean
   next to the verdict. A weighted variant is tested in the backtest only if the blocks keep costing good trades.
+- 26-Oct result: Nifty verdict Bearish on 71 of 74 candles while the lean was bullish on 66; it alone blocked 6 Trend
+  calls (shadow: 2 target, 3 stop, 1 neither, about -5% of premium), so no cost today. Bank Nifty agreed on 70 of 74.
+  No Dext numbers typed on 26-Oct (nothing to compare); the estimated Nifty cumulative delta jumped -38K -> -620K at
+  12:45 in one candle (check `orderflow.py` if it repeats).
 
 ## Sidebar
 Grouped into collapsible sections from the `group` field in `src/apps/registry.ts` (`GROUPS` sets labels and order):

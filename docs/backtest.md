@@ -42,3 +42,16 @@ worst losing streak, exits by kind, year by year) and `trades.csv` (every trade)
 Chips: 4 Pillar Rules, SuperTrend Rules, Dharani Rules, Trend Rules ≈ (each covers both indices); Index: Both / Nifty /
 Bank Nifty. Results from the first version (names "MegaBull 4 Pillar", "MegaBull SuperTrend Nifty", "Dharani") still
 show under the new names.
+
+## Stop / target and expiry test (owner 26-Oct-2026, `bt_variants.py`)
+Same engine and costs. Pairs -10/+20, -15/+20, -10/+15, -20/+30; expiry handling: all days, skip expiry day, skip expiry
+day + the day before, wider stop (+10 points) on those two days. Expiry days come from the data: the nearest-expiry ATM
+straddle at least doubles from one close to the next open only when the series rolls (260 Nifty, 181 Bank Nifty found).
+Output `variants.json` / `variants.csv`. Result 26-Oct: all 48 combinations lose over 5 years.
+
+## New strategy search (owner 26-Oct-2026, `strategy_research.py`, `research_data.py`)
+Six buying ideas (ORB, previous-day high/low break, trend pull-back, momentum breakout, Bollinger and VWAP reversion), ATM
+option, fixed or trailing exits. Chosen on 2021-11..2024-12 only (each of 2022-24 positive, PF >= 1.1, 60+ trades), then
+run once on 2025-01..2026-10. Selling the opposite ATM option is reported for information only. `research_data.py` turns
+the cache into per-day arrays (`research_<SYM>.pkl`). Output `research_results.json`, `research_trades.csv`,
+`research_report.md`. Result 26-Oct: 0 of 61 passing settings made money in 2025-26.
