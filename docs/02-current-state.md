@@ -207,6 +207,8 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   `stop`, `target`, `day_rule`, `toi_cache` (defaults = the live behaviour).
 
 ## Watch list (owner, 26-Oct-2026: check regularly, every after-close review)
+- **Excel tracker, every sheet, every trading day**: follow `docs/excel-daily-checklist.md` (the MegaBull P&L calendar
+  is hand-filled and was missed once on 26-Oct). The Excel is the record for the 15-Nov-2026 review.
 - **Dhan OI verdict vs the OI itself.** 26-Oct 12:30 Nifty: PCR (OI + chg) 1.24 and puts ~55% (bullish lean), Trending
   OI +57%, Sensibull bullish, yet the Dhan OI & OI Change verdict was Bearish: the final average (equal-weight mean of
   ATM ±5..±25 windows, centred on the ATM strike 22,600) came out 22,577 while spot was 22,620, i.e. driven by spot
