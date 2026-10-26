@@ -2,7 +2,7 @@
 sig_rules.py - the two written rules, evaluated on the last completed 5-minute candle. Pure: no clock, no I/O.
 
 Specs (the code must match them exactly; change the doc first):
-    Trading Hub rule  docs/strategies/trading-hub-trend.md
+    Trading Hub rule  docs/strategies/trading-hub-trend.md (no entries on expiry day or the day before, owner 26-Oct-2026)
     MegaBull rules    docs/strategies/megabull.md (4 Pillar Rules, SuperTrend Rules; any index)
 
 Input is a `state` dict built by sig_market.build_state():
@@ -15,6 +15,7 @@ Input is a `state` dict built by sig_market.build_state():
     toi           Trending OI 5-min rows, completed only, newest first: [{time "HH:MM", strengthPct, ...}]
     vix, pcr      India VIX, PCR (OI & OI Change's)
     hm            (hour, minute) IST of the signal candle's CLOSE, i.e. the next candle's open = the entry time
+    expiryPhase   "expiry" (today is the nearest expiry) | "eve" (the next trading day is) | None
 
 Every check is {"id", "label", "detail", "state", "must"}; state is "pass" | "fail" | "borderline" | "notChecked".
 """
@@ -24,6 +25,7 @@ PASS, FAIL, BORDER, NOT_CHECKED = "pass", "fail", "borderline", "notChecked"
 TH_TOI_STRENGTH = 50.0  # %
 TH_TOI_ROWS = 3
 TH_LAST_ENTRY = (14, 30)
+TH_SKIP_EXPIRY = True  # owner 26-Oct-2026: no Trend entries on expiry day or the day before (backtest; shadow-logged)
 TH_RSI_PUT = (30.0, 45.0)  # green inside, borderline below
 TH_RSI_CALL = (55.0, 70.0)  # green inside, borderline above
 
@@ -43,7 +45,11 @@ DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not che
 SETTINGS = {
     "trendingOiStrength": "TH_TOI_STRENGTH", "trendingOiRows": "TH_TOI_ROWS", "vixMax": "MB_VIX_MAX", "pcr": "MB_PCR",
     "rsi4Pillar": "MB_RSI_4P", "pivotRoom": "MB_PIVOT_ROOM", "wallRoom": "MB_WALL_ROOM",
+    "trendSkipExpiryDays": "TH_SKIP_EXPIRY",
 }
+
+# the two Trend gates added 26-Oct-2026; sig_service.skipped_setup shadows a setup blocked only by these
+EXPIRY_GATES = {"expiry": "Expiry day (Trend Rules does not trade it)", "eve": "Day before expiry (Trend Rules does not trade it)"}
 
 
 def configure(rules):
@@ -203,6 +209,8 @@ def trading_hub_rule(state):
     side, checks = pick_side(state, trading_hub_checks)
     g = grade(checks)
     blocked = gates(state, "tradingHub", TH_LAST_ENTRY)
+    if TH_SKIP_EXPIRY and state.get("expiryPhase") in EXPIRY_GATES:
+        blocked.append(EXPIRY_GATES[state["expiryPhase"]])
     go = g is not None and not blocked
     return {
         "rule": "tradingHub", "name": "TREND RULES", "account": "Trading Hub paper", "symbol": state["symbol"],

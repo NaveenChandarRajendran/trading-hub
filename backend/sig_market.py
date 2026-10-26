@@ -5,9 +5,10 @@ from the tracker, India VIX from one index-LTP call.
 
 Pure helpers (tested): five_minute_bars, previous_session, indicators. build_state() wires them to the services.
 """
-from datetime import datetime
+from datetime import date, datetime
 
 from candles import aggregate
+from holidays import next_trading_day
 from sig_indicators import IST, bollinger, ema, pivots, rsi, supertrend, vwap
 
 INTERVAL = 5
@@ -60,6 +61,20 @@ def today_range(one_min, today):
     return {"high": max(m["high"] for m in rows), "low": min(m["low"] for m in rows), "last": rows[-1]["close"]}
 
 
+def expiry_phase(expiry, today):
+    """"expiry" when today IS the nearest expiry, "eve" when the next trading day is, else None (Trend Rules skips
+    both; owner 26-Oct-2026). expiry = "YYYY-MM-DD" from Dhan, today = the session's date."""
+    if not expiry or not today:
+        return None
+    try:
+        exp = date.fromisoformat(expiry) if isinstance(expiry, str) else expiry
+    except ValueError:
+        return None
+    if exp == today:
+        return "expiry"
+    return "eve" if exp == next_trading_day(today) else None
+
+
 def build_state(symbol, now, src):
     """src: sig_service.MarketSources (candles, chain, trending rows, VIX, open positions). Never raises for a
     missing section: the rule shows that check as "not checked" instead. Returns (state, problems)."""
@@ -90,6 +105,7 @@ def build_state(symbol, now, src):
     except Exception as e:
         problems.append(f"{symbol} option chain: {e}")
     state["expiry"] = expiry
+    state["expiryPhase"] = expiry_phase(expiry, sessions[-1])
     if body:
         from sig_oi import oi_change_view, sensibull_view, sr_view
         state["oi"], state["sb"], state["sr"] = oi_change_view(body), sensibull_view(body), sr_view(body)

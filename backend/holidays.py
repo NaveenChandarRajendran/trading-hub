@@ -9,3 +9,16 @@ NSE_HOLIDAYS = {
     "2026-10-20",  # Dussehra
     "2026-11-10", "2026-11-24", "2026-12-25",
 }
+
+
+def is_trading_day(d):
+    """d = datetime.date. Weekday and not in NSE_HOLIDAYS (special sessions are not covered)."""
+    return d.weekday() < 5 and d.isoformat() not in NSE_HOLIDAYS
+
+
+def next_trading_day(d):
+    from datetime import timedelta
+    n = d + timedelta(days=1)
+    while not is_trading_day(n):
+        n += timedelta(days=1)
+    return n

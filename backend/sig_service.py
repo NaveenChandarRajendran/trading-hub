@@ -36,7 +36,7 @@ from sig_indicators import IST
 from sig_market import build_state
 from sig_oi import trending_view, votes
 from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
-from sig_rules import PASS, four_pillar_rule, supertrend_rule, trading_hub_rule
+from sig_rules import EXPIRY_GATES, PASS, four_pillar_rule, supertrend_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
 SYMBOLS = ("NIFTY", "BANKNIFTY")
@@ -618,8 +618,13 @@ def skipped_setup(r):
     st, toi = by.get("supertrend", {}).get("state"), by.get("trendingOi", {}).get("state")
     if PASS not in (st, toi):
         return None
-    if r.get("grade"):  # a valid grade blocked only by a gate (time, open position): not a skipped setup
-        return None
+    if r.get("grade"):
+        # a valid grade blocked only by the expiry-day gates (owner 26-Oct-2026) IS shadowed, so those days'
+        # results keep being tracked; blocked by time or an open position is not a skipped setup
+        exp_only = r["blocked"] and all(b in EXPIRY_GATES.values() for b in r["blocked"])
+        if not exp_only:
+            return None
+        return "-", "; ".join(r["blocked"])
     must_off = [c["label"] for c in r["checks"] if c["must"] and not c.get("exempt") and c["state"] != PASS]
     soft_off = [c["label"] for c in r["checks"] if not c["must"] and c["state"] != PASS]
     why = "Must-have missed" if must_off else f"{len(soft_off)} other checks off (Grade B allows one)"

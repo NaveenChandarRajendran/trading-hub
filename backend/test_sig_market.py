@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from sig_indicators import IST
+import sig_market
 from sig_market import five_minute_bars, previous_session
 
 
@@ -24,3 +25,15 @@ def test_previous_session_high_low_close():
     mins = [minute(22, "15:28", 200), minute(22, "15:29", 205), minute(23, "09:15", 300)]
     p = previous_session(mins, (date(2026, 10, 22), date(2026, 10, 23)))
     assert p == {"high": 206, "low": 199, "close": 205, "date": "2026-10-22"}
+
+
+def test_expiry_phase_from_the_nearest_expiry():
+    """Owner 26-Oct-2026: Trend Rules skips expiry day and the day before (sig_rules reads expiryPhase)."""
+    assert sig_market.expiry_phase("2026-10-27", date(2026, 10, 27)) == "expiry"
+    assert sig_market.expiry_phase("2026-10-27", date(2026, 10, 26)) == "eve"
+    assert sig_market.expiry_phase("2026-10-27", date(2026, 10, 23)) is None
+    # Friday 23-Oct with a Monday expiry: the next trading day skips the weekend
+    assert sig_market.expiry_phase("2026-10-26", date(2026, 10, 23)) == "eve"
+    # 20-Oct-2026 is a holiday, so the eve of a 21-Oct expiry is Monday 19-Oct
+    assert sig_market.expiry_phase("2026-10-21", date(2026, 10, 19)) == "eve"
+    assert sig_market.expiry_phase(None, date(2026, 10, 26)) is None

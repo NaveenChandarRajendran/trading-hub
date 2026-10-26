@@ -33,6 +33,10 @@ A check whose data is missing (for example VWAP before any futures volume) is **
 
 ## Gates (NO GO even with a grade)
 One position per index on this account; no new entries after 14:30; market closed; Auto OFF; daily limit reached.
+**No entries on the nearest expiry's day or the trading day before it** (owner 26-Oct-2026, from the 5-year backtest:
+expiry-day Trend trades had profit factor 0.54, and skipping both days cut the 5-year loss from Rs 5.83 L to Rs 3.14 L).
+Such a setup keeps its grade and goes to `shadow_skips.csv`, so those days' results are still tracked.
+Switch in `autopaper.json` "rules": `trendSkipExpiryDays` (true).
 
 ## Trade
 - Entry: market BUY of 1 lot at the next candle's open (right after the signal candle closes). Strike = ATM (nearest

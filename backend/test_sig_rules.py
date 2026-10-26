@@ -184,3 +184,16 @@ def test_both_megabull_rules_run_on_any_index():
     n = {**s, "symbol": "NIFTY"}
     r = four_pillar_rule(n)
     assert r["symbol"] == "NIFTY" and r["name"] == "4 PILLAR RULES" and r["checks"]  # NIFTY thresholds exist
+
+
+def test_trend_rules_skip_expiry_day_and_the_day_before(monkeypatch):
+    """Owner 26-Oct-2026: a Grade A Trend setup is blocked on expiry day and the day before, and keeps its grade so
+    sig_service shadows it."""
+    import sig_rules
+    assert trading_hub_rule(put_state())["go"]
+    for phase, word in (("expiry", "Expiry day"), ("eve", "Day before expiry")):
+        r = trading_hub_rule(put_state(expiryPhase=phase))
+        assert not r["go"] and r["grade"] == "A"
+        assert any(b.startswith(word) for b in r["blocked"])
+    monkeypatch.setattr(sig_rules, "TH_SKIP_EXPIRY", False)
+    assert trading_hub_rule(put_state(expiryPhase="expiry"))["go"]

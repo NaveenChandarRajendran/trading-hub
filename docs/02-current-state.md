@@ -194,6 +194,10 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
+- Trend Rules skips expiry day and the day before (owner 26-Oct-2026, from the backtest below): `sig_market.expiry_phase`
+  (`holidays.next_trading_day`) sets `state["expiryPhase"]`; `sig_rules.TH_SKIP_EXPIRY` (autopaper.json "rules"
+  `trendSkipExpiryDays`) turns it into a gate, and `sig_service.skipped_setup` shadows a Grade A/B setup blocked only by
+  it, so those days keep being tracked. 4 Pillar, SuperTrend and Dharani are unchanged.
 - Backtest tests (owner 26-Oct-2026, `docs/backtest.md` "Stop / target and expiry test", "New strategy search"):
   `bt_variants.py` (4 stop / target pairs x expiry handling for Trend, 4 Pillar, SuperTrend; expiry days read from the
   straddle roll in the data) and `strategy_research.py` + `research_data.py` (6 new buying ideas tuned on 2021-24, tested
