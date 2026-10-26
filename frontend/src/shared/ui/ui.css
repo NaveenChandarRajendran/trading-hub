@@ -147,3 +147,14 @@
 }
 .ds .chip:hover { border-color: var(--border-strong); }
 .ds .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 500; }
+
+/* Trade alerts (top bar button + corner notes). */
+.btn.alerts-on { color: var(--accent); }
+.trade-toasts { position: fixed; right: var(--sp-5); bottom: var(--sp-5); z-index: 50; display: flex; flex-direction: column; gap: var(--sp-2); max-width: 380px; }
+.trade-toast {
+  display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-lg);
+  border: 1px solid var(--border-strong); background: var(--surface); box-shadow: var(--shadow-pop); font-size: var(--fs-md); color: var(--text);
+}
+.trade-toast.entry { border-left: 3px solid var(--accent); }
+.trade-toast.exit { border-left: 3px solid var(--warn); }
+.trade-toast span { color: var(--text-2); font-size: var(--fs-sm); }

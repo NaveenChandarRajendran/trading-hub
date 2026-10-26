@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { apps, groupApps } from './apps/registry';
 import { loadClosed, saveClosed } from './shared/sidebarGroups';
 import { useTheme } from './shared/theme';
+import { TradeAlerts } from './shared/ui/TradeAlerts';
 
 const sections = groupApps();
 
@@ -55,6 +56,7 @@ export default function App() {
           <button className="icon-btn" onClick={() => setCollapsed((c) => !c)} aria-label="Toggle sidebar">☰</button>
           <h1>{current?.name ?? 'Trading Hub'}</h1>
           <div className="spacer" />
+          <TradeAlerts />
           <button className="btn ghost" onClick={toggle}>{mode === 'dark' ? '☀ Light' : '☾ Dark'}</button>
         </header>
         <main className="content">

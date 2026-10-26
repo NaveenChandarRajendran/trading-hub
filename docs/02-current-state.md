@@ -170,6 +170,10 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
 - MegaBull test order PASSED 26-Oct-2026 09:45 (buy, SL placed, SL cancelled, sell; NIFTY 22450 CE, +₹234 paper).
   Confirmed: /api/order/my = {"open": [...], "executed": [...]} with id / status / price; bulk cancel body = a plain list
   of numeric ids. `autopaper.json` megabull.enabled = true: 4 Pillar Rules and SuperTrend Rules now send MegaBull orders.
+- Trade alerts (owner 26-Oct-2026): top-bar button "Trade alerts on/off" (`shared/ui/TradeAlerts.tsx`, logic
+  `shared/live/tradeAlerts.ts`): every 15 s reads today's trades from /api/journal/trades; a new entry or exit plays two
+  short tones, shows a desktop pop-up (after the browser's permission) and a corner note for 20 s. Any page, also in a
+  background tab (the browser may slow background checks to about once a minute). Sound starts after the first click.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
