@@ -5,7 +5,7 @@
   "keyMaxAgeDays": 25,
   "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
   "tradingHub": {"enabled": true, "lots": 1, "stopPct": 15, "targetPct": 20, "_note": "Trend rule: the app's own Rs 1 lakh paper account (strategy book 'trend')."},
-  "megabull": {"enabled": false, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
+  "megabull": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
   "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20, "_note": "The app's own Rs 1 lakh paper account for the Dharani rule (strategy book). stopPct = safety stop; the rule exits on SuperTrend, targetPct is not used."},
   "manual": {"lots": 1, "stopPct": 15, "targetPct": 20},
   "dharaniV2": {"enabled": true, "symbols": ["NIFTY", "BANKNIFTY"], "premiumNear": {"NIFTY": 250, "BANKNIFTY": 500}, "_note": "Dharani rule (teacher's tuned setups, docs/strategies/dharani-v2.md) on the app's 'dharani' paper account, 3-minute candles, SuperTrend exit; BANKNIFTY added by the owner (the teacher tested NIFTY)."},

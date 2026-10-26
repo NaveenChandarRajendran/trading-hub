@@ -72,3 +72,14 @@ def test_order_status_reads_megabulls_open_and_executed_lists():
     assert c.order_status("817389")["status"] == "COMPLETE" and c.order_status(817389)["avgPrice"] == 166.25
     assert c.order_status("9")["status"] == "TRIGGER PENDING"
     assert c.order_status("1") is None
+
+
+def test_cancel_sends_a_plain_list_of_numeric_ids():
+    """MegaBull refuses {"orderIds": [...]} with HTTP 400; a plain list works (26-Oct-2026 test order)."""
+    from megabull_client import MegaBullClient
+
+    sent = []
+    c = MegaBullClient.__new__(MegaBullClient)
+    c._call = lambda method, path, body=None: sent.append((method, path, body))
+    c.cancel(["817533"])
+    assert sent == [("PUT", "/api/order/bulk/cancel", [817533])]

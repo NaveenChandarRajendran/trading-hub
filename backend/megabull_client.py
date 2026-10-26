@@ -18,7 +18,7 @@ Endpoints used (owner's brief, 23-Oct-2026):
     GET  /api/order/my, GET /api/position/my, GET /api/report/monthly/day/{date}
 
 Instrument file CONFIRMED 23-Oct-2026 (the endpoint returns {"downloadUrl"}; the file has tradingSymbol,
-instrumentName, instrumentToken). NOT VERIFIED YET: the order / position response fields and the bulk-cancel body. The parsers below look for the usual names and fail loudly otherwise.
+instrumentName, instrumentToken). Order / position fields and the bulk-cancel body CONFIRMED by the 26-Oct-2026 test order (buy, SL, cancel, sell). The parsers below look for the usual names and fail loudly otherwise.
 Run `python megabull_client.py check` once: it calls only read-only endpoints and writes what it found (field names,
 no key) to megabull_check.txt, so the parsers can be confirmed before Auto sends MegaBull orders.
 """
@@ -303,7 +303,9 @@ class MegaBullClient:
         return self._call("PUT", f"/api/order/buysell/{order_id}", fields)
 
     def cancel(self, order_ids):
-        return self._call("PUT", "/api/order/bulk/cancel", {"orderIds": [str(o) for o in order_ids]})
+        # body = a plain JSON list of numeric order ids (confirmed by the 26-Oct-2026 test order; {"orderIds": [...]}
+        # is refused with HTTP 400)
+        return self._call("PUT", "/api/order/bulk/cancel", [int(o) for o in order_ids])
 
     def order_status(self, order_id):
         """{status, avgPrice} for one of today's orders, or None if MegaBull does not list it (status unknown)."""

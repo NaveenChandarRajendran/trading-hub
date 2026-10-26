@@ -167,6 +167,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   Backtest: profit curve green above ₹0 / red below (baseline area, thick line), drawdown chart, tiles for yearly
   return on ₹1 lakh (1 lot, not reinvested), profit factor, payoff, average a month / a trade; "What costs do to the
   result" table; month cells show the amount in thousands.
+- MegaBull test order PASSED 26-Oct-2026 09:45 (buy, SL placed, SL cancelled, sell; NIFTY 22450 CE, +₹234 paper).
+  Confirmed: /api/order/my = {"open": [...], "executed": [...]} with id / status / price; bulk cancel body = a plain list
+  of numeric ids. `autopaper.json` megabull.enabled = true: 4 Pillar Rules and SuperTrend Rules now send MegaBull orders.
 - A GO the account cannot take (MegaBull still off, Auto OFF, a limit) now goes to the shadow log as "GO, not sent", so
   MegaBull rule results are tracked before MegaBull orders are switched on.
 
