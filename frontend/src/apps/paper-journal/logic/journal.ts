@@ -18,7 +18,8 @@ export interface JOrder {
   symbol: string;
   instrument: string | null;
   qty: number;
-  time: string | null; // "10:05:35" IST
+  time: string | null; // "10:05:35" IST: fill time of a filled stop, else when it was placed
+  placedAt?: string | null; // a filled stop: when it was placed
   orderId: string | null;
   side: 'BUY' | 'SELL';
   type: string; // MARKET | SL-M | LIMIT ...
@@ -111,6 +112,16 @@ const cell = (v: unknown) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+/** Time in the trade, "6m 25s" / "1h 04m" ('' while open or without both times). */
+export function heldFor(t: Pick<JTrade, 'entryTime' | 'exitTime'>): string {
+  const sec = (x: string) => { const [h, m, s = '0'] = x.split(':'); return +h * 3600 + +m * 60 + +s; };
+  if (!t.entryTime || !t.exitTime) return '';
+  const d = sec(t.exitTime) - sec(t.entryTime);
+  if (!Number.isFinite(d) || d < 0) return '';
+  const h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60), s = d % 60;
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
 export function tradesCsv(trades: JTrade[]): string {
   const cols: (keyof JTrade)[] = ['day', 'strategy', 'account', 'symbol', 'instrument', 'side', 'qty', 'entryTime', 'entryPrice',
     'exitTime', 'exitPrice', 'exitReason', 'grossPnl', 'charges', 'netPnl', 'status', 'source'];
@@ -118,6 +129,6 @@ export function tradesCsv(trades: JTrade[]): string {
 }
 
 export function ordersCsv(day: string, orders: JOrder[]): string {
-  const cols: (keyof JOrder)[] = ['time', 'strategy', 'account', 'symbol', 'instrument', 'side', 'type', 'qty', 'price', 'trigger', 'status', 'note', 'orderId'];
+  const cols: (keyof JOrder)[] = ['time', 'placedAt', 'strategy', 'account', 'symbol', 'instrument', 'side', 'type', 'qty', 'price', 'trigger', 'status', 'note', 'orderId'];
   return [['day', ...cols].join(','), ...orders.map((o) => [day, ...cols.map((c) => cell(o[c]))].join(','))].join('\n');
 }

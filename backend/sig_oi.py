@@ -90,6 +90,8 @@ def oi_change_view(body):
         "pcr": _div(tot("putNet"), tot("callNet")),
         "callOi": tot("callOi"), "callChg": tot("callChg"), "putOi": tot("putOi"), "putChg": tot("putChg"),
         "windows": windows, "unit": "contracts",
+        # owner 26-Oct-2026: the "lean" next to the verdict (share of puts in OI + change) and where spot sits vs the ATM strike
+        "atm": rows[atm]["strike"], "putShare": _div(tot("putNet") * 100, tot("putNet") + tot("callNet")),
     }
 
 

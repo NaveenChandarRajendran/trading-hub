@@ -129,3 +129,49 @@
 .db .db-rule-note.warn { color: var(--warn); }
 .db .db-inline { flex-direction: row; align-items: center; gap: var(--sp-2); }
 .db .db-inline select { min-width: 0; }
+
+/* redesign 26-Oct-2026: status strip, strategy board, split charts, maximize, market context */
+.db .db-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-5); }
+.db .db-strip-figs { display: inline-flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); font-size: var(--fs-sm); }
+.db .db-strip-figs b { font-weight: 600; color: var(--text); }
+.db .db-strip-figs b.up { color: var(--up); }
+.db .db-strip-figs b.down { color: var(--down); }
+.db .db-strip .toolbar-end { margin-left: auto; display: inline-flex; align-items: center; gap: var(--sp-3); }
+
+.db .db-board { display: grid; gap: var(--sp-2); align-items: stretch; }
+.db .db-board-h { font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; padding: 0 var(--sp-2); }
+.db .db-board-name, .db .db-cell {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; min-width: 0;
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  font: inherit; color: var(--text); cursor: pointer; transition: background-color 120ms, border-color 120ms;
+}
+.db .db-board-name:hover, .db .db-cell:hover { background: var(--surface-2); }
+.db .db-board-name:focus-visible, .db .db-cell:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.db .db-board-name span, .db .db-cell span { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.db .db-board-name.on { border-color: var(--accent); background: var(--accent-soft); }
+.db .db-board-name.on b { color: var(--accent); }
+.db .db-cell b { font-weight: 600; }
+.db .db-cell.trade { border-color: var(--accent); background: var(--accent-soft); }
+.db .db-cell.trade b { color: var(--accent); }
+.db .db-cell.go { border-color: var(--up); background: var(--up-soft); }
+.db .db-cell.go b { color: var(--up); }
+.db .db-cell.near { border-color: var(--warn); }
+.db .db-cell.near b { color: var(--warn); }
+.db .db-cell.wait b, .db .db-cell.none b { color: var(--text-2); }
+.db .db-cell.open { box-shadow: inset 0 -3px 0 var(--accent); }
+.db .db-board-detail { margin-top: var(--sp-3); max-width: 720px; }
+
+.db .db-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+@media (max-width: 1200px) { .db .db-split { grid-template-columns: 1fr; } }
+.db .db-split .db-chart { height: 520px; }
+.db .db-chart-card .icon-btn { font-size: var(--fs-md); }
+.db .db-max { position: fixed; inset: var(--sp-4); z-index: 50; box-shadow: var(--shadow-pop); overflow: auto; }
+.db .db-max .db-chart, .db .db-split .db-max .db-chart { height: calc(100vh - 170px); }
+
+.db .db-context > summary { cursor: pointer; list-style: revert; }
+.db .db-context-body { display: flex; flex-direction: column; gap: var(--sp-4); margin-top: var(--sp-4); }
+.db .db-context-index { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* pop-out window: the chart alone */
+.chart-window { padding: var(--sp-3); min-height: 100vh; background: var(--bg); box-sizing: border-box; }
+.chart-window .db-chart { height: calc(100vh - 140px); }

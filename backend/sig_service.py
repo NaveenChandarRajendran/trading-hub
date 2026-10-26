@@ -58,6 +58,7 @@ SNAPSHOT_FIELDS = [
     "d2_side", "d2_go", "d2_score", "d2_blocked", "d2_checks",
     "est_delta", "est_cumulative_delta", "dext_typed", "dext_match",
     "auto", "action", "note",
+    "dhan_oi_lean_put_pct", "spot_minus_atm",  # added 26-Oct-2026 at the end so older day files keep their columns
 ]
 
 
@@ -71,6 +72,13 @@ def load_config(path=os.path.join(HERE, "autopaper.json")):
         p = os.path.expanduser(cfg[k])
         cfg[k] = p if os.path.isabs(p) else os.path.normpath(os.path.join(HERE, p))
     return cfg
+
+
+def _spot_vs_atm(oi):
+    """Spot minus the ATM strike of the Dhan OI view (+20 = spot 20 pts above the strike the verdict is centred on)."""
+    if not oi or oi.get("atm") is None or not oi.get("spot"):
+        return None
+    return round(oi["spot"] - oi["atm"], 2)
 
 
 def _r(x, d=2):
@@ -352,6 +360,8 @@ class SignalService:
             "dhan_oi_verdict": (st.get("oi") or {}).get("verdict"), "dhan_oi_average": _r((st.get("oi") or {}).get("average")),
             "sensibull_verdict": (st.get("sb") or {}).get("verdict"), "sensibull_average": _r((st.get("sb") or {}).get("average")),
             "oi_agreement": agreement(st.get("oi"), st.get("sb")),
+            "dhan_oi_lean_put_pct": _r((st.get("oi") or {}).get("putShare")),
+            "spot_minus_atm": _spot_vs_atm(st.get("oi")),
             "oi_r1": (sr.get("levels", {}).get("R") or [{}])[0].get("strike") if sr else None,
             "oi_s1": (sr.get("levels", {}).get("S") or [{}])[0].get("strike") if sr else None,
             "biggest_call_wall": (sr.get("biggestCallAbove") or {}).get("strike"), "biggest_put_wall": (sr.get("biggestPutBelow") or {}).get("strike"),

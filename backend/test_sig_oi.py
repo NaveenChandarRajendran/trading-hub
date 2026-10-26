@@ -92,3 +92,14 @@ def test_sensibull_view_counts_from_the_0915_oi_when_recorded():
     # only call OI rose since 09:15 -> every strike's average sits at strike - 0 -> anticipated = mean of strikes = spot
     body2 = {"meta": {"symbol": "NIFTY", "spot": 22600}, "rows": [{**r, "ce": {"oi": 1000, "previous_oi": 0}, "pe": {"oi": 500, "previous_oi": 0}} for r in rows]}
     assert sensibull_view(body2)["since"] == "previous close"
+
+
+def test_oi_change_lean_and_atm_strike():
+    """Owner 26-Oct-2026: puts' share of OI + change ("lean") and the ATM strike the windows centre on."""
+    v = oi_change_view(BODY)
+    net = lambda k: sum(2 * (r[k] or {}).get("oi", 0) - (r[k] or {}).get("previous_oi", 0) for r in BODY["rows"])  # noqa: E731
+    assert math.isclose(v["putShare"], net("pe") / (net("pe") + net("ce")) * 100, rel_tol=1e-12)
+    assert v["atm"] == 22800  # spot 22,811.35, Nifty strikes every 50
+    from sig_service import _spot_vs_atm
+    assert _spot_vs_atm(v) == 11.35
+    assert _spot_vs_atm(None) is None

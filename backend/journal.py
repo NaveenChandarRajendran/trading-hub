@@ -140,7 +140,8 @@ class Journal:
         return out
 
     def orders(self, day):
-        rows = list(self._read(day)["orders"])
+        # a filled stop is shown at its fill time, with the time it was placed kept as "placedAt" (owner 26-Oct-2026)
+        rows = [{**o, "time": o["filledAt"], "placedAt": o.get("time")} if o.get("filledAt") else o for o in self._read(day)["orders"]]
         for t in self.imported():
             if t["day"] == day:
                 rows += excel_orders(t)

@@ -48,6 +48,8 @@ def test_stop_fill_updates_the_stop_order_and_manual_is_not_recorded():
     o = j.orders("2026-10-26")
     assert [(x["side"], x["status"], x["price"]) for x in o] == [("BUY", "FILLED", 339.5), ("SELL", "FILLED", 223.0)]
     assert o[0]["strategy"] == "Dharani Rules" and o[0]["account"] == "App · Dharani"
+    # the filled stop shows its fill time; the time it was placed is kept as placedAt
+    assert (o[1]["time"], o[1]["placedAt"]) == ("11:00:00", NOW.strftime("%H:%M:%S"))
     j.record(trade(id="m1", account="manual", slot="manual"), "bracket", NOW)
     assert all(x["tradeId"] != "m1" for x in j.orders("2026-10-26"))
 

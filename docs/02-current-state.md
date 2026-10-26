@@ -59,7 +59,24 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
 
 ## Signal watcher + auto paper trading (branch `Diwakar_OptionBuy_Backtest`, ADR 0004)
 PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend.md`, `docs/strategies/megabull.md`.
-- Dashboard layout, top to bottom: top bar (index, expiry, interval, "Exit by 3:15 PM · N min left" chip, India VIX chip
+- **Dashboard redesign 26-Oct-2026 (owner's notepad list + approved mockups; replaces the layout described next):**
+  status strip (Both / Nifty / Bank Nifty tabs, both spots, Day P&L, open trades, VIX, exit-by chip, Refresh, Settings
+  with the OI-levels expiry per index) → **strategy board** (`StrategyBoard.tsx`, `logic/board.ts`: 4 strategies × index
+  columns; box = In trade (blue) / GO (green) / Close = one condition away (amber) / Blocked / Waiting "x of y"; click a
+  strategy = its indicators on the charts, click a box = its checklist) → **charts** (`ChartPanel.tsx`: split Nifty |
+  Bank Nifty under "Both", one chart under a single tab; `CHART_PRESETS`: only the selected strategy's indicators and its
+  candle size — Dharani 3-min with EMA 200 / Bollinger 15,3; others 5-min; "All indicators" = own toggles + interval;
+  ▲ buy / ▼ sell of today's paper trades; zoom saved per index + strategy + interval in localStorage
+  `dashboard.view.*`, double-click = whole day; ⤢ maximize (Esc back), ⧉ pop-out = `#/chart-window?symbol=&strategy=`,
+  `ChartWindow.tsx`, no sidebar) → paper accounts (both indices under "Both") + today's trades → **Market context**
+  (collapsed `<details>`, remembered: day levels, per index levels row + Copy, Trending OI, OI views, OI S&R, order flow)
+  → snapshot bar. `useDashboard(optionIds, {symbol, interval})` runs once per index; `useSignals` per index.
+  OI views card: PCR labelled "(Dhan: OI + chg)", votes "Split: 1 bullish · 1 bearish · 1 neutral" when no majority,
+  "OI lean NN% puts" next to the Dhan verdict. Snapshot CSV: new last columns `dhan_oi_lean_put_pct`, `spot_minus_atm`
+  (`sig_oi.oi_change_view` now returns `putShare`, `atm`). Order Flow chart axis in IST. Paper Trading page: a filled
+  stop shows its fill time with "placed hh:mm:ss" (journal `orders()` returns `placedAt`); Trades tab has Buy time,
+  Sell time, Time in trade (`heldFor`).
+- Earlier dashboard layout (23-Oct), top to bottom: top bar (index, expiry, interval, "Exit by 3:15 PM · N min left" chip, India VIX chip
   (record only), clock, Refresh) → day levels (both indices: previous H / C / L, pivot = (H+L+C)/3, today H / L, VIX,
   PCR) → chart (SuperTrend 10,2 red/green, Bollinger 20,2, EMA 20, VWAP on futures volume, volume, RSI 14 with put
   30-45 / call 55-70 guide lines, pivot and S1-S3 / R1-R3 dashed) → MEGABULL RULE and TRADING HUB RULE cards (GO / NO GO,

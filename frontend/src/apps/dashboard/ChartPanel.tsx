@@ -1,0 +1,106 @@
+// One index chart of the dashboard (owner 26-Oct-2026): the selected strategy's indicators only, its candle size, the
+// pivot and OI levels, the strategy's buy / sell points today, and a saved zoom per index + strategy. Used twice in the
+// split view, once in the single view and once in the pop-out window. Maximize (⤢) fills the app area; Esc returns.
+import { useEffect, useMemo, useState } from 'react';
+import { nseDate } from '../../shared/dhan/chainAdapter';
+import { inr } from '../../shared/grid';
+import { errorText } from '../../shared/live/liveStatus';
+import { Alert, EmptyState } from '../../shared/ui';
+import { DAILY_RANGES, INTERVALS, SR_RANGE, type IndicatorToggles } from './config/settings';
+import { BOARD, CHART_PRESETS, tradeMarks, type ChartStrategy } from './logic/board';
+import { pivots } from './logic/indicators';
+import { srLevels } from './logic/levels';
+import type { SignalsState } from './logic/signals';
+import { PriceChart } from './PriceChart';
+import type { Dashboard } from './useDashboard';
+
+export const INDEX_NAME: Record<string, string> = { NIFTY: 'Nifty', BANKNIFTY: 'Bank Nifty' };
+export const strategyName = (k: ChartStrategy) => (k === 'all' ? 'All indicators' : BOARD.find((b) => b.key === k)?.name ?? k);
+
+/** Opens the chart in its own browser window (live, same app). */
+export function popOut(symbol: string, strategy: ChartStrategy) {
+  const url = `${window.location.href.split('#')[0]}#/chart-window?symbol=${symbol}&strategy=${strategy}`;
+  window.open(url, `chart-${symbol}`, 'popup,width=1280,height=800');
+}
+
+export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, poppable = true }: {
+  d: Dashboard; // useDashboard of this index
+  sig: SignalsState | null; // signal state of this index (pivot, today's trades)
+  strategy: ChartStrategy;
+  indicators: IndicatorToggles; // the user's own toggles (used when strategy = all)
+  maximizable?: boolean;
+  poppable?: boolean;
+}) {
+  const [max, setMax] = useState(false);
+  useEffect(() => {
+    if (!max) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMax(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [max]);
+
+  const preset = CHART_PRESETS[strategy];
+  const shown = strategy === 'all' ? indicators : preset.indicators;
+  const params = { emaPeriod: preset.emaPeriod, bbPeriod: preset.bb.period, bbMult: preset.bb.mult };
+  const levelsChain = d.levelsBasis?.chain ?? null;
+  const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
+  const ctx = sig?.context.find((c) => c?.symbol === d.symbol) ?? null;
+  const pivot = d.isDaily ? null : d.day ? (d.prevSession ? pivots(d.prevSession.high, d.prevSession.low, d.prevSession.close).P : null) : ctx?.pivot ?? null;
+  const marks = useMemo(() => (d.live ? tradeMarks(sig?.auto, strategy, d.symbol) : []), [d.live, sig?.auto, strategy, d.symbol]);
+  const intervalLabel = INTERVALS.find((x) => x.value === d.interval)?.label ?? `${d.interval} min`;
+  const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const spot = d.summary?.chain.data?.meta.spot;
+
+  return (
+    <section className={`card db-chart-card ${max ? 'db-max' : ''}`}>
+      <div className="card-head">
+        <h3 className="card-title">{INDEX_NAME[d.symbol] ?? d.symbol}
+          <span className="db-muted"> · {intervalLabel}{d.isDaily ? '' : ` · ${d.day ? nseDate(d.day) : 'today'}`}
+            {spot != null && <> · spot <b className="num">{inr(2)(spot)}</b></>}
+            {d.live && d.feedState !== 'open' && ` · live feed ${d.feedState}`}</span></h3>
+        <span className="db-head-end">
+          {strategy === 'all' && (
+            <label className="field db-inline">Interval
+              <select value={d.interval} onChange={(e) => d.setInterval(Number(e.target.value))}>
+                {INTERVALS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </select>
+            </label>
+          )}
+          {d.isDaily ? (
+            <label className="field db-inline">Range
+              <select value={d.rangeDays} onChange={(e) => d.setRangeDays(Number(e.target.value))}>
+                {DAILY_RANGES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </select>
+            </label>
+          ) : (
+            <label className="field db-inline">Date
+              <select value={d.day} onChange={(e) => d.setDay(e.target.value)}>
+                <option value="">Today (live)</option>
+                {d.sessions.filter((x) => x !== todayIst).map((x) => <option key={x} value={x}>{nseDate(x)}</option>)}
+              </select>
+            </label>
+          )}
+          {maximizable && (
+            <button type="button" className="icon-btn" title={max ? 'Back (Esc)' : 'Maximize'} aria-label={max ? 'Back' : 'Maximize'}
+              onClick={() => setMax((v) => !v)}>{max ? '✕' : '⤢'}</button>
+          )}
+          {poppable && (
+            <button type="button" className="icon-btn" title="Open in its own window" aria-label="Pop out"
+              onClick={() => popOut(d.symbol, strategy)}>⧉</button>
+          )}
+        </span>
+      </div>
+      {d.candlesError != null && <Alert kind="error">Candles: {errorText(d.candlesError)}</Alert>}
+      {!d.bars.length ? (
+        <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
+      ) : (
+        <PriceChart bars={d.bars} levels={d.live ? sr?.levels ?? null : null} pivot={pivot}
+          resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`}
+          indicators={shown} params={params} marks={marks}
+          volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
+      )}
+      <p className="card-foot">{strategyName(strategy)}: {preset.note} ▲ buy · ▼ sell (today&apos;s paper trades).
+        {!d.live && ' An earlier day or the daily chart: no live updates and no OI levels.'}</p>
+    </section>
+  );
+}

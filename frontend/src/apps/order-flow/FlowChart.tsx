@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { wheelOnClick } from '../../shared/chartWheel';
 import {
-  CandlestickSeries, ColorType, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp,
+  CandlestickSeries, ColorType, HistogramSeries, LineSeries, TickMarkType, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp,
 } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { useTheme } from '../../shared/theme';
@@ -38,7 +38,13 @@ export function FlowChart({ bars, flow, resetKey }: { bars: Candle[]; flow: Flow
   useEffect(() => {
     const c = createChart(box.current!, {
       autoSize: true,
-      timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 2 },
+      // axis labels in IST too (owner 26-Oct-2026: the axis showed UTC 04:00-06:00 while the tooltip said IST)
+      timeScale: {
+        timeVisible: true, secondsVisible: false, rightOffset: 2,
+        tickMarkFormatter: (t: Time, type: TickMarkType) => new Date((t as number) * 1000).toLocaleString('en-IN', {
+          timeZone: IST, hour12: false, ...(type <= TickMarkType.DayOfMonth ? { day: '2-digit', month: 'short' } : { hour: '2-digit', minute: '2-digit' }),
+        }),
+      },
       localization: {
         locale: 'en-IN', priceFormatter: (p: number) => inr(0)(p),
         timeFormatter: (t: number) => new Date(t * 1000).toLocaleString('en-IN', { timeZone: IST, hour12: false, hour: '2-digit', minute: '2-digit' }),

@@ -1,7 +1,7 @@
 // Hand-checked on a 4-trade fixture: two 4 Pillar trades on 1 Oct, one SuperTrend on 12 Oct, one open Dharani trade.
 import { describe, expect, it } from 'vitest';
 import fixture from './__fixtures__/trades-small.json';
-import { dailyRows, ordersCsv, pick, totals, tradesCsv, type JTrade } from './journal';
+import { dailyRows, heldFor, ordersCsv, pick, totals, tradesCsv, type JTrade } from './journal';
 
 const trades = fixture as unknown as JTrade[];
 
@@ -32,6 +32,12 @@ describe('paper journal logic', () => {
     expect(csv[0].startsWith('day,strategy,account')).toBe(true);
     const o = ordersCsv('2026-10-26', [{ tradeId: null, strategy: 'Manual', account: 'App · Manual', symbol: 'NIFTY', instrument: 'X', qty: 65,
       time: '09:40:00', orderId: 'PT1', side: 'BUY', type: 'MARKET', price: 100, trigger: null, status: 'FILLED', note: 'a, b' }]);
-    expect(o.split('\n')[1]).toBe('2026-10-26,09:40:00,Manual,App · Manual,NIFTY,X,BUY,MARKET,65,100,,FILLED,"a, b",PT1');
+    expect(o.split('\n')[1]).toBe('2026-10-26,09:40:00,,Manual,App · Manual,NIFTY,X,BUY,MARKET,65,100,,FILLED,"a, b",PT1');
+  });
+
+  it('time in trade', () => {
+    expect(heldFor({ entryTime: '12:35:43', exitTime: '12:37:10' })).toBe('1m 27s');
+    expect(heldFor({ entryTime: '09:35', exitTime: '10:39:00' })).toBe('1h 04m');
+    expect(heldFor({ entryTime: '09:35:45', exitTime: null })).toBe('');
   });
 });

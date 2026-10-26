@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { apps, groupApps } from './apps/registry';
 import { loadClosed, saveClosed } from './shared/sidebarGroups';
@@ -6,6 +6,7 @@ import { useTheme } from './shared/theme';
 import { TradeAlerts } from './shared/ui/TradeAlerts';
 
 const sections = groupApps();
+const ChartWindow = lazy(() => import('./apps/dashboard/ChartWindow')); // pop-out chart: no sidebar, no top bar
 
 export default function App() {
   const { mode, toggle } = useTheme();
@@ -14,6 +15,10 @@ export default function App() {
   const { pathname } = useLocation();
   // Exact segment match: '/sensibull-oi-live' must not resolve to '/sensibull-oi'.
   const current = apps.find((a) => pathname === a.path || pathname.startsWith(`${a.path}/`));
+
+  if (pathname === '/chart-window') {
+    return <Suspense fallback={<p className="muted">Loading…</p>}><ChartWindow /></Suspense>;
+  }
 
   const toggleSection = (id: string) => {
     const next = closed.includes(id) ? closed.filter((c) => c !== id) : [...closed, id];

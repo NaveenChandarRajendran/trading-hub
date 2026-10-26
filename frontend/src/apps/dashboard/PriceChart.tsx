@@ -6,8 +6,8 @@
 import { useEffect, useRef } from 'react';
 import { wheelOnClick } from '../../shared/chartWheel';
 import {
-  CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart,
-  type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type Time, type UTCTimestamp,
+  CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart, createSeriesMarkers,
+  type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp,
 } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { useTheme } from '../../shared/theme';
@@ -60,12 +60,46 @@ const thinLine = { lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible
 interface Pt { time: number; value: number }
 interface ColorPt extends Pt { color: string }
 
+export interface ChartParams { emaPeriod: number; bbPeriod: number; bbMult: number }
+export const DEFAULT_PARAMS: ChartParams = { emaPeriod: EMA_PERIOD, bbPeriod: BB_PERIOD, bbMult: BB_MULT };
+/** A trade's buy / sell point on the chart (owner 26-Oct-2026). time: epoch seconds of the fill. */
+export interface TradeMark { time: number; kind: 'buy' | 'sell'; text: string }
+
+// saved zoom (owner 26-Oct-2026: the chart view stays when you come back): bars from the right edge, per view key
+const VIEW_PREFIX = 'dashboard.view.';
+const readView = (k: string): { from: number; to: number } | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_PREFIX + k) ?? 'null');
+    return v && typeof v.from === 'number' && typeof v.to === 'number' ? v : null;
+  } catch {
+    return null;
+  }
+};
+const writeView = (k: string, v: { from: number; to: number } | null) => {
+  try {
+    if (v) localStorage.setItem(VIEW_PREFIX + k, JSON.stringify(v));
+    else localStorage.removeItem(VIEW_PREFIX + k);
+  } catch {
+    /* storage blocked: the zoom just isn't remembered */
+  }
+};
+
+/** Candle a fill falls in: the last bar that starts at or before it. */
+export function barTimeOf(bars: { time: number }[], t: number): number | null {
+  let lo = 0, hi = bars.length - 1, hit: number | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid].time <= t) { hit = bars[mid].time; lo = mid + 1; } else hi = mid - 1;
+  }
+  return hit;
+}
+
 /** Indicator points for the bars, oldest first. */
-function indicatorData(bars: Candle[]) {
+function indicatorData(bars: Candle[], p: ChartParams) {
   const times = bars.map((b) => b.time);
   const closes = bars.map((b) => b.close);
   const st = supertrend(bars, ST_PERIOD, ST_FACTOR);
-  const bb = bollinger(closes, BB_PERIOD, BB_MULT);
+  const bb = bollinger(closes, p.bbPeriod, p.bbMult);
   const up = token('--up');
   const down = token('--down');
   const stPts: ColorPt[] = [];
@@ -73,14 +107,14 @@ function indicatorData(bars: Candle[]) {
     if (v != null) stPts.push({ time: times[i], value: v, color: st.direction[i] === -1 ? up : down });
   });
   return {
-    rsi: toPoints(times, rsi(closes, RSI_PERIOD)), ema: toPoints(times, ema(closes, EMA_PERIOD)), vwap: toPoints(times, vwap(bars)),
+    rsi: toPoints(times, rsi(closes, RSI_PERIOD)), ema: toPoints(times, ema(closes, p.emaPeriod)), vwap: toPoints(times, vwap(bars)),
     st: stPts, bbBasis: toPoints(times, bb.basis), bbUpper: toPoints(times, bb.upper), bbLower: toPoints(times, bb.lower),
   };
 }
 type Data = ReturnType<typeof indicatorData>;
 type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [] }: {
+export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, marks = [] }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
@@ -88,6 +122,9 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
   delta?: { time: number; cumulative: number }[]; // estimated cumulative delta at each candle's end (own pane under RSI)
+  params?: ChartParams; // EMA and Bollinger settings of the selected strategy
+  viewKey?: string; // zoom is saved under this key and restored when the chart comes back
+  marks?: TradeMark[];
 }) {
   const { mode } = useTheme();
   const box = useRef<HTMLDivElement>(null);
@@ -106,16 +143,22 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   const volSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
   const deltaSeries = useRef<ISeriesApi<'Line'> | null>(null);
   const shown = useRef<{ bars: Candle[]; key: string }>({ bars: [], key: '' });
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const viewRef = useRef(viewKey);
+  viewRef.current = viewKey;
+  const restoring = useRef(false);
+  const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   /** Whole indicator series (after history loads or an indicator is switched on). */
   const fillIndicators = () => {
-    const d = indicatorData(all.current);
+    const d = indicatorData(all.current, paramsRef.current);
     for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) s.setData((d[k] as Pt[]).map(asTime));
     volSeries.current?.setData(all.current.map(volumePoint));
   };
   /** Only the last point (each live tick). */
   const updateIndicators = () => {
-    const d: Data = indicatorData(all.current);
+    const d: Data = indicatorData(all.current, paramsRef.current);
     for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) {
       const last = (d[k] as Pt[]).at(-1);
       if (last) s.update(asTime(last));
@@ -153,9 +196,27 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     chart.current = c;
     series.current = s;
     lines.current = new LevelLines(s);
+    markers.current = createSeriesMarkers(s, []);
     const unwheel = wheelOnClick(c, box.current!);
+    const onRange = () => {
+      const k = viewRef.current;
+      const r = c.timeScale().getVisibleLogicalRange();
+      const n = all.current.length;
+      if (!k || !r || !n || restoring.current) return;
+      writeView(k, { from: n - 1 - r.from, to: n - 1 - r.to });
+    };
+    c.timeScale().subscribeVisibleLogicalRangeChange(onRange);
+    const el = box.current!;
+    const fit = () => {
+      c.timeScale().fitContent();
+      if (viewRef.current) writeView(viewRef.current, null);
+    };
+    el.addEventListener('dblclick', fit);
     return () => {
+      el.removeEventListener('dblclick', fit);
+      c.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
       unwheel();
+      markers.current = null;
       c.remove();
       chart.current = series.current = lines.current = volSeries.current = pivotLine.current = deltaSeries.current = null;
       lineSeries.current = {};
@@ -205,7 +266,12 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     }
   }, [indicators.rsi]);
 
-  useEffect(() => toggleLine('ema', indicators.ema, { color: emaColor(), title: `EMA ${EMA_PERIOD}` }), [indicators.ema]);
+  useEffect(() => toggleLine('ema', indicators.ema, { color: emaColor(), title: `EMA ${paramsRef.current.emaPeriod}` }), [indicators.ema]);
+  // another strategy's EMA / Bollinger settings: retitle and redraw
+  useEffect(() => {
+    lineSeries.current.ema?.applyOptions({ title: `EMA ${params.emaPeriod}` });
+    fillIndicators();
+  }, [params.emaPeriod, params.bbPeriod, params.bbMult]);
   useEffect(() => toggleLine('vwap', indicators.vwap, { color: token('--series-vwap'), title: 'VWAP' }), [indicators.vwap]);
   useEffect(() => toggleLine('st', indicators.supertrend, { lineWidth: 2, title: `ST ${ST_PERIOD},${ST_FACTOR}` }), [indicators.supertrend]);
   useEffect(() => {
@@ -296,10 +362,31 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     }
     shown.current = { bars, key: resetKey };
     if (bars.length && fitted.current !== resetKey) {
-      chart.current?.timeScale().fitContent();
+      const saved = viewKey ? readView(viewKey) : null;
+      const ts = chart.current?.timeScale();
+      restoring.current = true;
+      if (saved) ts?.setVisibleLogicalRange({ from: bars.length - 1 - saved.from, to: bars.length - 1 - saved.to });
+      else ts?.fitContent();
+      restoring.current = false;
       fitted.current = resetKey;
     }
   }, [bars, resetKey]);
+
+  // buy / sell points of the strategy's trades, snapped to their candle
+  useEffect(() => {
+    const up = token('--up');
+    const down = token('--down');
+    const list: SeriesMarker<Time>[] = [];
+    for (const m of marks) {
+      const t = barTimeOf(bars, m.time);
+      if (t == null) continue;
+      list.push(m.kind === 'buy'
+        ? { time: t as UTCTimestamp, position: 'belowBar', shape: 'arrowUp', color: up, text: m.text }
+        : { time: t as UTCTimestamp, position: 'aboveBar', shape: 'arrowDown', color: down, text: m.text });
+    }
+    list.sort((a, b) => (a.time as number) - (b.time as number));
+    markers.current?.setMarkers(list);
+  }, [marks, bars, mode]);
 
   useEffect(() => {
     lines.current?.update(levels, levelColors());
@@ -321,7 +408,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   return (
     <div className="chart-wrap">
       <div className="db-chart" ref={box} />
-      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel</span>
+      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel · double-click to show the whole day</span>
     </div>
   );
 }

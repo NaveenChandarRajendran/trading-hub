@@ -9,7 +9,7 @@ import { Alert, EmptyState, Heatmap, Pill, Segmented, Stat, type Tone } from '..
 import { downloadCsv, longDate, price, signedRupees, toneOf } from '../paper-trade/format';
 import { buildCalendar, fyLabel, fyOf, fyRange, istToday } from '../paper-trade/logic/calendar';
 import {
-  ACCOUNT_OF, STRATEGIES, dailyRows, fetchDays, fetchOrders, fetchTrades, ordersCsv, pick, totals, tradesCsv,
+  ACCOUNT_OF, STRATEGIES, dailyRows, fetchDays, fetchOrders, fetchTrades, heldFor, ordersCsv, pick, totals, tradesCsv,
   type IndexPick, type JOrder, type JTrade,
 } from './logic/journal';
 import './paper-journal.css';
@@ -40,7 +40,6 @@ const save = (k: string, v: string) => {
 
 const STATUS_TONE: Record<string, Tone> = { FILLED: 'up', OPEN: 'warn', PENDING: 'warn', TRIGGERED: 'warn', CANCELLED: 'neutral', REJECTED: 'down' };
 const idx = (s: string) => (s === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty');
-const hm = (t: string | null) => (t ? t.slice(0, 5) : '–');
 
 function readStrategies(): string[] {
   try {
@@ -166,7 +165,7 @@ export default function PaperJournalApp() {
               <tbody>
                 {dayOrders.map((o, i) => (
                   <tr key={`${o.orderId ?? i}-${o.side}-${o.type}`}>
-                    <td>{o.time ?? '–'}</td><td className="txt">{o.strategy}</td><td className="txt">{o.account}</td>
+                    <td>{o.time ?? '–'}{o.placedAt && <span className="pj-sub" title="When the stop order was placed"> placed {o.placedAt}</span>}</td><td className="txt">{o.strategy}</td><td className="txt">{o.account}</td>
                     <td className="txt" title={o.instrument ?? ''}>{o.instrument ?? '–'}</td>
                     <td className="txt"><span className={`pj-side ${o.side === 'BUY' ? 'buy' : 'sell'}`}>{o.side}</span></td>
                     <td className="txt">{o.type}</td><td className="num">{o.qty}</td><td>{price(o.price)}</td><td>{price(o.trigger)}</td>
@@ -226,14 +225,16 @@ function TradeTable({ rows }: { rows: JTrade[] }) {
   return (
     <div className="pj-scroll">
       <table className="t">
-        <thead><tr><th>Date</th><th className="txt">Strategy</th><th className="txt">Index</th><th className="txt">Option</th><th>Qty</th><th>Entry</th><th>Exit</th><th className="txt">Exit reason</th><th>Charges</th><th>Net (₹)</th></tr></thead>
+        <thead><tr><th>Date</th><th className="txt">Strategy</th><th className="txt">Index</th><th className="txt">Option</th><th>Qty</th><th>Buy time</th><th>Entry</th><th>Sell time</th><th>Exit</th><th>Time in trade</th><th className="txt">Exit reason</th><th>Charges</th><th>Net (₹)</th></tr></thead>
         <tbody>
           {rows.map((t) => (
             <tr key={t.id}>
               <td>{t.day.slice(8, 10)}-{t.day.slice(5, 7)}</td><td className="txt">{t.strategy}{t.grade ? <span className="pj-sub"> · {t.grade}</span> : null}</td>
               <td className="txt">{idx(t.symbol)}</td><td className="txt" title={t.instrument ?? ''}>{t.instrument ?? '–'}</td><td className="num">{t.qty}</td>
-              <td>{price(t.entryPrice)} <span className="pj-sub">{hm(t.entryTime)}</span></td>
-              <td>{t.status === 'open' ? <Pill tone="warn">Open</Pill> : <>{price(t.exitPrice)} <span className="pj-sub">{hm(t.exitTime)}</span></>}</td>
+              <td>{t.entryTime ?? '–'}</td><td>{price(t.entryPrice)}</td>
+              <td>{t.status === 'open' ? '–' : t.exitTime ?? '–'}</td>
+              <td>{t.status === 'open' ? <Pill tone="warn">Open</Pill> : price(t.exitPrice)}</td>
+              <td>{heldFor(t) || '–'}</td>
               <td className="txt">{t.exitReason ?? '–'}</td><td>{t.charges == null ? '–' : inr(2)(t.charges)}</td>
               <td className={toneOf(t.netPnl)}>{signedRupees(t.netPnl)}</td>
             </tr>

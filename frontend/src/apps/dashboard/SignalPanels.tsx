@@ -1,6 +1,7 @@
 // Dashboard sections fed by GET /api/signals/state (backend sig_service.py): day levels, the two rule cards, the OI
 // section, the paper trade card and the snapshot log bar. Display only: every number and tick comes from the backend's
 // evaluation, which is what the signal watcher trades on.
+import { putShare, votesText } from './logic/board';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { inr, signed } from '../../shared/grid';
@@ -140,18 +141,20 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
   const t = views?.trending ?? null;
   const dhanR = sr?.levels.R[0]?.strike;
   const dhanS = sr?.levels.S[0]?.strike;
+  const votes = votesText([views?.dhan, views?.sensibull, views?.trending]);
+  const lean = putShare(views?.dhan);
   return (
     <section className="card">
-      <div className="card-head"><h3 className="card-title">OI views side by side</h3><Pill tone={verdictTone(views?.votes?.split(' ').pop())}>{views?.votes ?? 'Dhan · Sensibull · Trending OI'}</Pill></div>
+      <div className="card-head"><h3 className="card-title">OI views side by side</h3><Pill tone={verdictTone(votes.split(' ').pop())}>{votes === '—' ? 'Dhan · Sensibull · Trending OI' : votes}</Pill></div>
       <table className="t">
         <thead><tr><th /><th>Dhan<br /><span className="db-muted">OI &amp; OI Change Live</span></th><th>Sensibull<br /><span className="db-muted">OI Change Live (record only)</span></th><th>Trending OI<br /><span className="db-muted">last {t?.strength.length ?? 3} rows{t?.time ? ` to ${t.time.slice(0, 5)}` : ''}</span></th></tr></thead>
         <tbody>
-          <tr><td>Verdict</td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(t?.verdict)}>{t?.verdict ?? '—'}</Pill></td></tr>
+          <tr><td>Verdict</td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill>{lean != null && <span className="db-muted" title="Share of puts in OI + change: above 50 % leans bullish"> · OI lean {n0(lean)}% puts</span>}</td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(t?.verdict)}>{t?.verdict ?? '—'}</Pill></td></tr>
           <tr><td>Average (final / anticipated)</td><td className="num">{d?.average ?? '—'}</td><td className="num">{s?.average ?? '—'}</td><td className="num">{t ? `Strength ${t.strength.map((x) => `${signed(0)(x)}%`).join(' / ')}` : '—'}</td></tr>
           <tr><td>vs spot {spot ? n2(spot) : ''}</td><td className="num">{d?.vsSpot ?? '—'}</td><td className="num">{s?.vsSpot ?? '—'}</td><td className="num">{t ? `needs ±${n0(t.threshold)}% on every row` : '—'}</td></tr>
           <tr><td>Support</td><td className="num">{n0(dhanS)}</td><td className="num">{n0(views?.sensibull?.support)}</td><td className="num">—</td></tr>
           <tr><td>Resistance</td><td className="num">{n0(dhanR)}</td><td className="num">{n0(views?.sensibull?.resistance)}</td><td className="num">—</td></tr>
-          <tr><td>PCR</td><td className="num">{d?.pcr ?? '—'}</td><td className="num">{s ? `${s.pcr} (average)` : '—'}</td><td className="num">{t?.pcr != null ? `${n2(t.pcr)} (net)` : '—'}</td></tr>
+          <tr><td>PCR <span className="db-muted">(Dhan: OI + chg)</span></td><td className="num">{d?.pcr ?? '—'}</td><td className="num">{s ? `${s.pcr} (average)` : '—'}</td><td className="num">{t?.pcr != null ? `${n2(t.pcr)} (net)` : '—'}</td></tr>
           <tr><td>Total call OI</td><td className="num">{views?.dhan?.callOi != null ? `${lakh(views.dhan.callOi)} (${signed(0)(views.dhan.callChg ?? 0)})` : '—'}</td><td className="num">—</td><td className="num">{t ? `${signed(0)(t.callChg)} chg` : '—'}</td></tr>
           <tr><td>Total put OI</td><td className="num">{views?.dhan?.putOi != null ? `${lakh(views.dhan.putOi)} (${signed(0)(views.dhan.putChg ?? 0)})` : '—'}</td><td className="num">—</td><td className="num">{t ? `${signed(0)(t.putChg)} chg` : '—'}</td></tr>
         </tbody>
@@ -285,7 +288,7 @@ export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, chi
   const [orders, setOrders] = useState<Record<string, unknown>[] | null>(null);
   const [ordersError, setOrdersError] = useState('');
   const a = auto?.accounts[account];
-  const open = (auto?.open ?? []).filter((t) => t.account === account && t.symbol === symbol);
+  const open = (auto?.open ?? []).filter((t) => t.account === account && (!symbol || t.symbol === symbol)); // '' = both indices
   const [title, sub] = ACCOUNT_TITLE[account];
   const status = !auto ? 'Not running' : !a?.available ? 'Auto off for this account' : a.halted ? 'Stopped today' : open.length ? 'Open'
     : auto.auto ? 'Auto ON · waiting' : 'Auto OFF';

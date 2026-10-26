@@ -32,14 +32,18 @@ const write = (k: string, v: string) => {
 };
 const stocksOf = (symbol: string) => ((constituents as Record<string, { symbol: string }[]>)[symbol] ?? []).map((c) => c.symbol);
 
-/** optionIds: option security IDs whose live premium the page shows (the paper trade card). */
-export function useDashboard(optionIds: number[] = []) {
-  const [symbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
-  const [interval, setIntervalState] = useState(() => {
+/** optionIds: option security IDs whose live premium the page shows (the paper trade card).
+ * opts.symbol fixes the index (split view: one chart per index); opts.interval overrides the chosen interval while a
+ * strategy's chart is shown (its own candle size). */
+export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; interval?: number | null } = {}) {
+  const [pickedSymbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
+  const symbol = opts.symbol ?? pickedSymbol;
+  const [pickedInterval, setIntervalState] = useState(() => {
     const v = Number(read('interval'));
     return INTERVALS.some((x) => x.value === v) ? v : DEFAULT_INTERVAL;
   });
   // date dropdown: '' = today (live); otherwise an earlier trading day. Range: days shown on the daily chart.
+  const interval = opts.interval ?? pickedInterval;
   const [day, setDayState] = useState('');
   const [rangeDays, setRangeState] = useState(() => {
     const v = Number(read('range'));
@@ -259,7 +263,7 @@ export function useDashboard(optionIds: number[] = []) {
   };
 
   return {
-    symbol, setSymbol, expiries, expiry, setExpiry, interval, setInterval: setInterval_, refreshSec, setRefreshSec,
+    symbol, setSymbol, expiries, expiry, setExpiry, interval, pickedInterval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
     summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp, flow,
     day, setDay, sessions, rangeDays, setRangeDays, isDaily, live, prevSession,
