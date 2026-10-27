@@ -21,7 +21,7 @@ import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
 import { ChartPanel, INDEX_NAME, strategyName } from './ChartPanel';
 import {
-  AccountCard, AutoSwitch, DayLevels, ManualPositions, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TodayTrades, TrendingOiCard,
+  AccountCard, AutoSwitch, DayLevels, ManualPositions, manualPnl, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TodayTrades, TrendingOiCard,
 } from './SignalPanels';
 import { StrategyBoard } from './StrategyBoard';
 import { useDashboard, type Dashboard } from './useDashboard';
@@ -169,8 +169,11 @@ export default function DashboardApp() {
   const left = minutesToExit(now);
   const vix = s?.context.find((c) => c?.vix != null)?.vix;
   const rows = s?.auto?.today ?? [];
-  const dayPnl = rows.reduce((t, r) => t + (r.status === 'closed' ? r.netPnl ?? 0 : r.pnl ?? 0), 0);
-  const openCount = (s?.auto?.open ?? []).length;
+  // the manual paper account counts too (owner 27-Oct-2026): its P&L before charges, at the live price
+  const manual = s?.paperPositions ?? [];
+  const dayPnl = rows.reduce((t, r) => t + (r.status === 'closed' ? r.netPnl ?? 0 : r.pnl ?? 0), 0)
+    + manual.reduce((t, p) => t + manualPnl(p, ltp[p.security_id]), 0);
+  const openCount = (s?.auto?.open ?? []).length + manual.filter((p) => p.open_qty !== 0).length;
   const status = dN.status.kind === 'error' ? dN.status : dB.status.kind === 'error' ? dB.status : dN.status;
   const anyLoading = dN.loading || dB.loading;
   const refresh = () => {

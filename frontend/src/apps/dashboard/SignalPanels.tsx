@@ -343,6 +343,12 @@ export function AccountCard({ account, auto, symbol, ltp, now, busy, onExit, chi
 }
 
 /** Positions bought by hand on the Paper Trading screen (main paper account): "Place stop + target together". */
+/** A manual position's P&L before charges: booked part + open qty at the live price (the feed's tick when there is one). */
+export function manualPnl(p: Position, live?: number): number {
+  const px = live ?? p.ltp;
+  return p.realized + (px != null ? (px - p.avg_buy) * p.open_qty : p.unrealized);
+}
+
 export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual }: {
   positions: Position[]; ltp: Record<number, number>; busy: boolean; onBracket: (id: number) => void; onExitManual: (id: number) => void;
 }) {
@@ -350,7 +356,7 @@ export function ManualPositions({ positions, ltp, busy, onBracket, onExitManual 
     <>
       {positions.map((p) => (
         <div key={p.security_id} className="db-trade">
-          <p className="db-trade-name">Manual · {p.name} · {p.open_qty} qty · avg {n2(p.avg_buy)} · live {n2(ltp[p.security_id] ?? p.ltp)}</p>
+          <p className="db-trade-name">Manual · {p.name} · {p.open_qty} qty · avg {n2(p.avg_buy)} · live {n2(ltp[p.security_id] ?? p.ltp)} · P&amp;L <b className="num">{n2(manualPnl(p, ltp[p.security_id]))}</b></p>
           <span className="db-actions">
             <button className="btn primary" disabled={busy} onClick={() => onBracket(p.security_id)}
               title="Stop at −15% (pending SL-M) and target at +20% (watched), as in Trend Rules">Place stop + target together</button>
