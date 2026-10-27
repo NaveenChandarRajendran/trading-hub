@@ -11,11 +11,16 @@ scalper_api.py - Power Scalper routes (/api/scalper/*). PAPER ONLY (scalper_serv
   GET  /api/scalper/reports?from=&to=            tiles + day-wise table
   GET  /api/scalper/day?date=                    round trips and fills of one day
   POST /api/scalper/summary?date=                (re)write scalper_daily_summary for a day
+  GET  /api/scalper/candles?securityId=          an option's 1-minute candles, today + previous session (Dhan history)
+  WS   /ws/scalper                               see scalper_service.py
 """
+import asyncio
 from datetime import date as Date
 
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+
+from dhan_client import DhanError, TokenExpired
 
 from paper_api import MAX_CAPITAL, MIN_CAPITAL, _day
 from paper_engine import KEEP, OrderError
@@ -120,6 +125,45 @@ def register(app, svc):
     @app.get("/api/scalper/day")
     def day(date: str = ""):
         return {"meta": svc.meta(), **svc.day_view(_day(date, "date") or svc.clock().date().isoformat())}
+
+    @app.get("/api/scalper/candles")
+    def candles(securityId: int):  # noqa: N803 (query name used by the page)
+        try:
+            inst, rows = svc.history(securityId)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except TokenExpired as e:
+            raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
+        except (DhanError, RuntimeError) as e:
+            raise HTTPException(502, str(e))
+        return {"meta": {**svc.meta(), "securityId": securityId, "name": inst.get("name"), "interval": 1},
+                "candles": rows}
+
+    @app.websocket("/ws/scalper")
+    async def ws_scalper(ws: WebSocket):
+        await ws.accept()
+        client = svc.add_client(asyncio.get_running_loop())
+
+        async def pump():
+            while True:
+                await ws.send_json(await client.queue.get())
+
+        sender = asyncio.create_task(pump())
+        try:
+            await ws.send_json(svc.snapshot())
+            while True:
+                msg = await ws.receive_json()
+                kind = msg.get("type")
+                if kind in ("subscribe", "unsubscribe"):
+                    try:
+                        svc.client_subscribe(client, msg.get("instruments") or [], add=kind == "subscribe")
+                    except (TypeError, ValueError):
+                        await ws.send_json({"type": "error", "data": {"message": "instruments must be [[segment, id]]"}})
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sender.cancel()
+            svc.remove_client(client)
 
     @app.post("/api/scalper/summary")
     def summary(date: str = ""):

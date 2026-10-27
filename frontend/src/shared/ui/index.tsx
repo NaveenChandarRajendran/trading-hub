@@ -27,7 +27,7 @@ export function EmptyState({ children }: { children: ReactNode }) {
 
 /** 2-5 mutually exclusive options (view, order type, interval). */
 export function Segmented<T extends string>({ options, value, onChange, label }: {
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; disabled?: boolean; title?: string }[];
   value: T;
   onChange: (v: T) => void;
   label?: string;
@@ -35,8 +35,8 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
   return (
     <div className="seg" role="radiogroup" aria-label={label}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={o.value === value}
-          className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} disabled={o.disabled}
+          title={o.title} className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
           {o.label}
         </button>
       ))}

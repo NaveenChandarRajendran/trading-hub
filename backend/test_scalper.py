@@ -23,7 +23,15 @@ def env():
     clock, feed = Clock(), FakeFeed()
     store = PaperJsonStore(tmp)
     paper = PaperService(store, feed, FakeInstruments(), clock=clock)
-    scalper = ScalperService(store, paper, paper.instruments, clock=clock)
+    calls = []
+
+    def intraday(symbol, frm, to, sid):  # Dhan /charts/intraday for one option (fake)
+        calls.append((symbol, frm, to, sid))
+        t0 = int(at("09:15").timestamp())
+        return {"timestamp": [t0, t0 + 60, int(at("16:00").timestamp())], "open": [100, 101, 1], "high": [102, 103, 1],
+                "low": [99, 100, 1], "close": [101, 102, 1], "volume": [650, 1300, 1]}
+    scalper = ScalperService(store, paper, paper.instruments, clock=clock, intraday=intraday)
+    scalper.calls = calls
     c = TestClient(create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=paper, scalper=scalper))
     yield c, paper, scalper, clock, feed, store
     shutil.rmtree(tmp, ignore_errors=True)
@@ -217,3 +225,50 @@ def test_next_day_opens_with_yesterdays_net(env):
     net = scalper.funds()["realized"] - scalper.funds()["charges"]
     scalper.tick_timer(at("09:20", "2026-10-22"))
     assert scalper.funds()["openingBalance"] == round(100000 + net, 2)
+
+
+# ---------- live data for the page (step 2) ----------
+def test_option_history_from_dhan_cached_and_unknown_404(env):
+    c, paper, scalper, clock, *_ = env
+    clock.now = at("10:00")
+    r = c.get(f"/api/scalper/candles?securityId={CE}").json()
+    assert r["meta"]["name"] == "NIFTY 27 OCT 25100 CALL" and len(r["candles"]) == 2  # 16:00 is outside the session
+    assert r["candles"][1] == {"time": int(at("09:16").timestamp()), "open": 101.0, "high": 103.0, "low": 100.0,
+                               "close": 102.0, "volume": 1300.0}
+    # previous session (20-Oct is a holiday) .. the day after today: Dhan's toDate is exclusive by date
+    assert scalper.calls == [("NIFTY", "2026-10-19 09:15:00", "2026-10-22 09:15:00", CE)]
+    c.get(f"/api/scalper/candles?securityId={CE}")
+    assert len(scalper.calls) == 1  # cached
+    assert c.get("/api/scalper/candles?securityId=1").status_code == 404
+
+
+def test_websocket_snapshot_ticks_candles_volume_and_events(env):
+    c, paper, scalper, clock, feed, _ = env
+    with c.websocket_connect("/ws/scalper") as ws:
+        snap = ws.receive_json()
+        assert snap["type"] == "snapshot" and snap["account"]["name"] == "Scalper" and snap["positions"] == []
+        ws.send_json({"type": "subscribe", "instruments": [["NSE_FNO", CE], ["IDX_I", 13]]})
+        for _ in range(200):
+            if ("NSE_FNO", CE) in feed.subs:
+                break
+            import time as _t
+            _t.sleep(0.005)
+        assert ("NSE_FNO", CE) in feed.subs and ("IDX_I", 13) in feed.subs  # shared feed, Full mode for the option
+        clock.now = at("09:30")
+        pkt = full(CE, 100, 99.95, 100)
+        pkt.update(high=104.5, low=96.0, open=98.0, volume=5000)
+        paper.on_packet(pkt)
+        tick = ws.receive_json()
+        assert tick["type"] == "tick" and (tick["data"]["ask"], tick["data"]["high"], tick["data"]["low"]) == (100, 104.5, 96.0)
+        candle = ws.receive_json()
+        assert candle["type"] == "candle" and candle["data"]["time"] == int(at("09:30").timestamp())
+        assert ws.receive_json()["type"] == "volume"
+        pkt["volume"] = 5650
+        paper.on_packet(pkt)
+        vols = [m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "volume"]
+        assert vols[0]["data"]["volume"] == 650  # this minute's traded volume, not the day's
+        c.post("/api/scalper/orders", json={"securityId": CE, "side": "BUY", "lots": 1})
+        kinds = [ws.receive_json()["type"] for _ in range(5)]
+        assert kinds == ["order", "order", "trade", "position", "funds"]  # placed, filled, fill, position, funds
+        ws.send_json({"type": "unsubscribe", "instruments": [["NSE_FNO", CE], ["IDX_I", 13]]})
+    assert ("NSE_FNO", CE) in feed.subs  # still held: the open Scalper position

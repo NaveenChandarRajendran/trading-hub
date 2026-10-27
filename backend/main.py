@@ -131,7 +131,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
 
     if scalper is True and paper:
         from scalper_service import ScalperService
-        scalper = ScalperService(paper.store, paper, paper.instruments, clock=paper.clock)
+        scalper = ScalperService(paper.store, paper, paper.instruments, clock=paper.clock,
+                                 intraday=lambda sym, frm, to, sid: tracker.client.intraday(sym, frm, to, option_id=sid))
     algo = None
     if paper and algo_mode in ("paper", "signals"):
         constituents = load_constituents()

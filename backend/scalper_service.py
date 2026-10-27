@@ -4,13 +4,23 @@ are filled by paper_engine against the live Dhan feed; nothing here can reach a 
 
 One PaperEngine per IST trading day for the active "Scalper" account (pt_accounts.name), like the algo's: every order
 is stored with source="scalper". Market data comes from the paper service's feed (a packet listener), so the Scalper
-shares the one feed connection; its open positions and pending orders stay subscribed (set_feed_keys). A timer runs
-the 15:15 square-off and writes scalper_daily_summary at 15:35 IST. Manual and Algo accounts are never touched.
+shares the one feed connection; what its pages show plus its open positions and pending orders stay subscribed
+(set_feed_keys, Full mode for options). A timer runs the 15:15 square-off and writes scalper_daily_summary at 15:35 IST.
+Manual and Algo accounts are never touched.
+
+WebSocket /ws/scalper (clients of this service only)
+  server -> client: {"type": "snapshot", "meta", "account", "funds", "positions", "orders"} once, then
+    "tick"   {segment, securityId, ltp, bid, ask, bidQty, askQty, oi, volume, close, open, high, low} (high / low: day)
+    "candle" {segment, securityId, interval: 1, time, open, high, low, close}: the current 1-minute candle
+    "volume" {segment, securityId, time, volume}: that minute's traded volume so far (options, index futures)
+    "order" | "trade" | "position" | "funds" | "status": Scalper account events
+  client -> server: {"type": "subscribe" | "unsubscribe", "instruments": [["NSE_FNO", 52175], ["IDX_I", 13]]}
 """
 import logging
 import threading
 from datetime import datetime, time, timedelta
 
+from candles import CandleBuilder, VolumeBuilder, parse_intraday, recent_sessions
 from dhan_feed import to_book
 from holidays import NSE_HOLIDAYS
 from paper_engine import BUY, KEEP, MARKET, OPEN_STATES, SELL, OrderError, PaperEngine
@@ -25,12 +35,36 @@ CAPITAL_PRESETS = (50_000, 100_000, 200_000, 500_000)
 SUMMARY_AT = time(15, 35)
 FNO = "NSE_FNO"
 SOURCE = "scalper"
+HISTORY_TTL_OPEN, HISTORY_TTL_CLOSED = 60, 600  # seconds an option's 1-minute history is reused
+
+
+class ScalperClient:
+    """One /ws/scalper connection: a bounded queue filled from the feed thread and the instruments it shows."""
+
+    def __init__(self, loop, size=2000):
+        import asyncio
+        self.loop, self.queue, self.subs = loop, asyncio.Queue(size), set()
+
+    def push(self, msg):
+        def put():
+            try:
+                self.queue.put_nowait(msg)
+            except Exception:  # full: a stuck tab must never block the feed
+                pass
+        self.loop.call_soon_threadsafe(put)
 
 
 class ScalperService:
-    def __init__(self, store, paper, instruments, clock=lambda: datetime.now(IST), holidays=NSE_HOLIDAYS):
+    def __init__(self, store, paper, instruments, clock=lambda: datetime.now(IST), holidays=NSE_HOLIDAYS, intraday=None):
+        """intraday(symbol, from, to, option_id) -> Dhan /charts/intraday payload (market data only), for option history."""
         self.store, self.paper, self.instruments, self.clock, self.holidays = store, paper, instruments, clock, holidays
+        self.intraday = intraday
         self.lock = threading.RLock()
+        self.clients = set()
+        self.candles, self.volumes = CandleBuilder(), VolumeBuilder()
+        self._history = {}  # security id -> (fetched at, 1-minute candles)
+        self._history_lock = threading.Lock()
+        self._feed_status = None
         self.account = store.active_account(ACCOUNT_NAME) or store.create_account(DEFAULT_CAPITAL, clock(),
                                                                                     name=ACCOUNT_NAME)
         self.engine, self.day = None, None
@@ -62,6 +96,10 @@ class ScalperService:
         with self.lock:
             self._ensure_day(now)
             self._publish(self.engine.on_time(now))
+            status = self.paper.feed_status()
+            if status != self._feed_status:
+                self._feed_status = status
+                self._broadcast({"type": "status", "data": self.meta()})
             if (self.engine.is_trading_day(now) and now.time() >= SUMMARY_AT and self._summary_day != now.date()):
                 self.write_summary(now.date().isoformat())
                 self._summary_day = now.date()
@@ -80,12 +118,81 @@ class ScalperService:
 
     # ---------- market data ----------
     def on_packet(self, pkt, now):
-        """Paper service listener (feed thread): every Full packet of an option updates the Scalper's book."""
-        if pkt.get("kind") != "full" or pkt.get("segment") != FNO:
+        """Paper service listener (feed thread): Full option packets update the Scalper's book; every packet of an
+        instrument a page shows (or the account holds) goes out as a tick, the live 1-minute candle and its volume."""
+        kind, seg, sid = pkt.get("kind"), pkt.get("segment"), pkt.get("security_id")
+        if kind not in ("full", "ticker", "quote"):
             return
+        key = (seg, sid)
+        if kind == "full" and seg == FNO:
+            with self.lock:
+                self._ensure_day(now)
+                self._publish(self.engine.on_tick(sid, to_book(pkt), now))
+        watchers = [c for c in list(self.clients) if key in c.subs]
+        held = seg == FNO and sid in self.engine.positions
+        if not watchers and not held:
+            return
+        tick = {"segment": seg, "securityId": sid, "ltp": pkt["ltp"]}
+        for k in ("close", "open", "high", "low", "oi", "volume"):
+            if pkt.get(k) is not None:
+                tick[k] = pkt[k]
+        if kind == "full":
+            book = to_book(pkt)
+            tick.update(bid=book.best_bid, ask=book.best_ask, bidQty=book.bids[0][1] if book.bids else 0,
+                        askQty=book.asks[0][1] if book.asks else 0)
+        out = [{"type": "tick", "data": tick}]
+        candle = self.candles.on_tick(key, pkt["ltp"], now) if watchers else None
+        if candle:
+            out.append({"type": "candle", "data": {"segment": seg, "securityId": sid, "interval": 1, **candle}})
+        vol = self.volumes.on_volume(key, pkt.get("volume"), now) if watchers and seg == FNO and kind == "full" else None
+        if vol:
+            out.append({"type": "volume", "data": {"segment": seg, "securityId": sid, **vol}})
+        for c in (watchers or [c for c in list(self.clients)]):
+            for m in out:
+                c.push(m)
+
+    # ---------- websocket clients ----------
+    def add_client(self, loop):
+        c = ScalperClient(loop)
         with self.lock:
-            self._ensure_day(now)
-            self._publish(self.engine.on_tick(pkt["security_id"], to_book(pkt), now))
+            self.clients.add(c)
+        return c
+
+    def remove_client(self, c):
+        with self.lock:
+            self.clients.discard(c)
+            self._sync_feed()
+
+    def client_subscribe(self, c, instruments, add=True):
+        keys = {(str(seg), int(sid)) for seg, sid in instruments}
+        with self.lock:
+            c.subs = c.subs | keys if add else c.subs - keys
+            self._sync_feed()
+
+    def _broadcast(self, msg):
+        for c in list(self.clients):
+            c.push(msg)
+
+    def history(self, security_id):
+        """1-minute candles (with volume) of one option for today and the previous session, from Dhan's intraday
+        history (market data only), cached HISTORY_TTL_OPEN s in market hours. Raises LookupError for an unknown id."""
+        inst = self._instrument(security_id)
+        if inst is None:
+            raise LookupError(f"{security_id} is not a NIFTY / BANKNIFTY option in Dhan's instrument list")
+        if self.intraday is None:
+            raise RuntimeError("option history is not available (no Dhan client)")
+        now = self.clock()
+        ttl = HISTORY_TTL_OPEN if self.paper.market_open(now) else HISTORY_TTL_CLOSED
+        with self._history_lock:  # one Dhan call serves every tab asking at the same time
+            hit = self._history.get(security_id)
+            if hit and (now - hit[0]).total_seconds() < ttl:
+                return inst, hit[1]
+            sessions = recent_sessions(now.date(), holidays=self.holidays)
+            # Dhan's toDate is exclusive by date: ask up to the day after the last session (dashboard_api.py)
+            frm, to = f"{sessions[0]} 09:15:00", f"{sessions[-1] + timedelta(days=1)} 09:15:00"
+            candles = parse_intraday(self.intraday(inst["symbol"], frm, to, security_id))
+            self._history[security_id] = (now, candles)
+            return inst, candles
 
     def _held_keys(self):
         e = self.engine
@@ -94,9 +201,12 @@ class ScalperService:
         return {(FNO, sid) for sid in ids}
 
     def _sync_feed(self):
-        """Open positions and pending orders always stay subscribed (Full mode), whatever the pages show."""
+        """What the Scalper pages show, plus open positions and pending orders (always, whatever the pages show)."""
+        keys = self._held_keys()
+        for c in list(self.clients):
+            keys |= c.subs
         try:
-            self.paper.set_feed_keys(SOURCE, self._held_keys())
+            self.paper.set_feed_keys(SOURCE, keys)
         except Exception as e:
             log.warning("scalper feed keys: %s", e)
 
@@ -131,6 +241,7 @@ class ScalperService:
         self.last_error = ""
 
     def _notify(self, kind, data):
+        self._broadcast({"type": kind, "data": data})
         for fn in list(self.listeners):
             try:
                 fn(kind, data)
@@ -185,7 +296,7 @@ class ScalperService:
 
     def snapshot(self):
         with self.lock:
-            return {"meta": self.meta(), "account": self.account, "funds": self.funds(),
+            return {"type": "snapshot", "meta": self.meta(), "account": self.account, "funds": self.funds(),
                     "positions": self.positions(), "orders": self.orders()}
 
     # ---------- commands ----------
