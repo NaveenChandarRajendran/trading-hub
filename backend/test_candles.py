@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from candles import (CandleBuilder, VolumeBuilder, aggregate, bucket_start, epoch, merge_volume, parse_intraday,
                      recent_sessions)
 from dhan_client import DhanError, TokenExpired
-from main import create_app
+from authfake import create_app
 from store import IST, PaperJsonStore
 from test_paper_api import FUT, FakeFeed, FakeInstruments, full
 from paper_api import PaperService

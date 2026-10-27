@@ -1,6 +1,7 @@
 // src/apps/paper-trade/logic/feed.ts
 // WebSocket client for /ws/paper: reconnects with backoff, re-sends subscriptions after every reconnect, and
 // coalesces ticks so each instrument updates the UI at most once per TICK_FLUSH_MS (about 4 times a second).
+import { WS_LOGIN_CLOSE, signalLoggedOut } from '../../../shared/api';
 import { RECONNECT_DELAYS_MS, TICK_FLUSH_MS } from '../config/settings';
 import type { Funds, Meta, Order, Position, Tick, Trade } from './api';
 
@@ -108,8 +109,12 @@ export class PaperFeed {
         this.h.onMessage(m);
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       this.ws = null;
+      if (ev?.code === WS_LOGIN_CLOSE) {
+        this.closed = true; // session gone: the app shows the login page; no reconnect loop
+        signalLoggedOut();
+      }
       if (this.closed) return;
       this.h.onState('reconnecting');
       this.timer = setTimeout(() => this.connect(), reconnectDelay(this.attempt++));

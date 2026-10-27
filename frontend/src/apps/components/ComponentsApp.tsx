@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { API_BASE, apiFetch } from '../../shared/api';
 import data from './config/constituents.json';
 import { buildRows, demoIds, demoQuotes, summarize, type CompRow, type Constituent, type Quote } from './logic/components';
 import { createPrevCloseCache, fetchPrevClose, fillPrevCloses, istDate, type History, type PrevCloseCache } from './logic/prevClose';
@@ -12,7 +13,7 @@ type Key = (typeof INDEXES)[number]['key'];
 type Sort = 'weight' | 'change';
 type View = 'tiles' | 'table';
 
-const API = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000';
+const API = API_BASE;
 const nf = (d: number) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 const num = (n: number, d = 2) => nf(d).format(n);
 const sign = (n: number, d = 2) => `${n > 0 ? '+' : ''}${num(n, d)}`;
@@ -32,7 +33,7 @@ async function fetchQuotes(list: Constituent[]): Promise<Live> {
   const symbols = encodeURIComponent(list.map((c) => c.symbol).join(','));
   let res: Response;
   try {
-    res = await fetch(`${API}/api/quotes?symbols=${symbols}`);
+    res = await apiFetch(`${API}/api/quotes?symbols=${symbols}`);
   } catch {
     throw new Error('Cannot reach the backend. Start it with: python main.py');
   }
@@ -46,7 +47,7 @@ async function fetchQuotes(list: Constituent[]): Promise<Live> {
 
 /** Daily candles for one stock, via the Python backend. */
 async function fetchHistory(symbol: string): Promise<History> {
-  const res = await fetch(`${API}/api/history?symbol=${encodeURIComponent(symbol)}`);
+  const res = await apiFetch(`${API}/api/history?symbol=${encodeURIComponent(symbol)}`);
   if (!res.ok) {
     const j = await res.json().catch(() => null);
     throw new Error(j?.detail ?? `History for ${symbol}: HTTP ${res.status}`);

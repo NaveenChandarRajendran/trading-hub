@@ -6,7 +6,7 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-from main import create_app
+from authfake import create_app
 from paper_api import PaperService
 from paper_levels import nearest_zone, opening_order, shifts_near
 from store import PaperJsonStore

@@ -1,11 +1,16 @@
 """
-main.py - FastAPI server for the Trending OI page.
+main.py - FastAPI server of Trading Hub: serves the built UI and every API.
 
-Run (in this folder): python main.py
+Run (in this folder): python main.py      then open http://127.0.0.1:8000 and log in
 DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN and DATABASE_URL are read from backend/.env.local (variables already set win).
 Options:  --port 8000  --strikes 7  --track NIFTY,BANKNIFTY  --force  --host 127.0.0.1
+Users: python scripts/create_user.py --username naveen --name "Naveen" (no sign-up page).
+
+Login (auth.py, ADR 0008): every route below and both WebSockets need a session cookie (401 / close 4401 without one).
+Open without one: POST /api/auth/login and the UI page (GET /).
 
 Endpoints:
+    POST /api/auth/login | /api/auth/logout, GET /api/auth/me   (auth_api.py)
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
@@ -35,18 +40,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import algo_api
+import auth_api
 import scalper_api
 import algo_config
 import dashboard_api
 import dashboard_levels_api
 from algo_filters import load_constituents
 from algo_service import AlgoData, AlgoService
+from auth import Auth, AuthMiddleware, AuthPgStore
 from candles import parse_intraday, recent_sessions
 import paper_api
 from paper_levels import TrackerLevels
@@ -63,17 +70,25 @@ EXPIRY_CACHE_SECONDS = 3600
 QUOTE_CACHE_SECONDS = 2.0
 MAX_SYMBOLS = 100
 HISTORY_DAYS = 10
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UI_DIR = os.path.join(REPO, "frontend", "dist")
+UI_MISSING = ("<!doctype html><meta charset=utf-8><title>Trading Hub</title><body style='font-family:sans-serif;padding:2rem'>"
+              "<h1>Trading Hub</h1><p>The UI is not built yet. Run <code>npm run build</code> in <code>frontend/</code>, "
+              "then reload this page.</p>")
 
 
 class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None, scalper=None):
+def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None, scalper=None, *, auth,
+               ui_dir=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
     algo_mode: "paper" | "signals" | "off" runs the OI breakout algo (needs paper; None = not created, as in tests).
     scalper: True creates the Power Scalper service (needs paper), or pass a ScalperService (tests).
-    instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either)."""
+    instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either).
+    auth: auth.Auth (required): AuthMiddleware puts every route except the login call and the UI page behind a session.
+    ui_dir: folder with the built UI (frontend/dist); GET / serves its index.html."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
     quote_lock = threading.Lock()
@@ -200,10 +215,19 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             paper.stop()
         tracker.stop()
 
-    app = FastAPI(title="Trending OI", lifespan=lifespan)
-    # The React build can be opened from file:// (origin "null"), so allow every origin.
-    # Safe enough because the server listens on 127.0.0.1 only by default.
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    app = FastAPI(title="Trading Hub", lifespan=lifespan)
+    # The UI is served from this server (GET /) and Vite proxies /api and /ws in development, so every call is
+    # same-origin: no CORS, and the SameSite=Lax session cookie is always sent (ADR 0008).
+    app.add_middleware(AuthMiddleware, auth=auth)
+    auth_api.register(app, auth)
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    def ui():
+        page = os.path.join(ui_dir, "index.html") if ui_dir else None
+        if page and os.path.isfile(page):
+            return FileResponse(page, headers={"Cache-Control": "no-cache"})
+        return HTMLResponse(UI_MISSING, status_code=503)
 
     @app.get("/api/expiries")
     def expiries(symbol: str = "NIFTY"):
@@ -410,8 +434,10 @@ def main():
         paper_store, DhanFeed(client.client_id, client.token, token_ok=lambda: not client.token_expired),
         OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")), levels=TrackerLevels(tracker))
     logging.getLogger("main").info("OI breakout algo: ALGO_MODE=%s (paper orders only, never real orders)", algo_config.MODE)
-    uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE, scalper=True), host=a.host,
-                port=a.port, log_level="info")
+    auth = Auth(AuthPgStore(store))
+    logging.getLogger("main").info("Open http://%s:%s and log in (users: scripts/create_user.py)", a.host, a.port)
+    uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE, scalper=True, auth=auth,
+                           ui_dir=UI_DIR), host=a.host, port=a.port, log_level="info")
 
 
 if __name__ == "__main__":

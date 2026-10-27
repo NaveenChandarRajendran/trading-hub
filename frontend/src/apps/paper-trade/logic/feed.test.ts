@@ -44,6 +44,22 @@ class FakeSocket {
 }
 
 describe('PaperFeed', () => {
+  it('stops reconnecting and signals "logged out" when the server closes with 4401', () => {
+    vi.useFakeTimers();
+    const fired: string[] = [];
+    vi.stubGlobal('window', { dispatchEvent: (e: Event) => fired.push(e.type) });
+    const sockets: FakeSocket[] = [];
+    const feed = new PaperFeed('ws://x', { onMessage: () => {}, onTicks: () => {}, onState: () => {} },
+      () => { const s = new FakeSocket(); sockets.push(s); return s; }, (fn) => { fn(); return 1; });
+    feed.connect();
+    sockets[0].onclose?.({ code: 4401 } as CloseEvent);
+    vi.advanceTimersByTime(60000);
+    expect(sockets).toHaveLength(1);
+    expect(fired).toEqual(['th:logged-out']);
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   it('re-subscribes after a reconnect and sends only changes while open', () => {
     vi.useFakeTimers();
     const sockets: FakeSocket[] = [];

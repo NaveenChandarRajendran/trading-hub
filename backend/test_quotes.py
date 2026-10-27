@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from dhan_client import DhanError, TokenExpired, parse_ohlc
 from instruments import SecurityIds, parse_csv
-from main import create_app
+from authfake import create_app
 from tracker import Tracker
 
 CSV = """SEM_EXM_EXCH_ID,SEM_SEGMENT,SEM_SMST_SECURITY_ID,SEM_INSTRUMENT_NAME,SEM_EXPIRY_CODE,SEM_TRADING_SYMBOL,SEM_LOT_UNITS,SEM_CUSTOM_SYMBOL,SEM_EXPIRY_DATE,SEM_STRIKE_PRICE,SEM_OPTION_TYPE,SEM_TICK_SIZE,SEM_EXPIRY_FLAG,SEM_EXCH_INSTRUMENT_TYPE,SEM_SERIES,SM_SYMBOL_NAME

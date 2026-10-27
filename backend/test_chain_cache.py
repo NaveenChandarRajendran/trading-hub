@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from chain_cache import ChainCache
 from dhan_client import DhanError, TokenExpired, parse_chain
-from main import create_app
+from authfake import create_app
 from tracker import IST, Tracker
 
 # NIFTY 27-Oct-2026 chain captured 21-Oct-2026 after the close.

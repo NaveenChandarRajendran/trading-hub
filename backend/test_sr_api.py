@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from main import create_app
+from authfake import create_app
 from store import JsonStore
 from tracker import IST, Tracker
 

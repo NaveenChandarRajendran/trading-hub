@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from dhan_feed import FULL, TICKER
-from main import create_app
+from authfake import create_app
 from paper_api import PaperService
 from store import IST, PaperJsonStore
 from test_api import FakeClient

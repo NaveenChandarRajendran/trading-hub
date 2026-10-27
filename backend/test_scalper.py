@@ -7,7 +7,7 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-from main import create_app
+from authfake import create_app
 from paper_api import PaperService
 from scalper_reports import day_rows, round_trips, tiles
 from scalper_service import ACCOUNT_NAME, ScalperService

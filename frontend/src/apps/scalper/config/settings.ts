@@ -1,8 +1,8 @@
 // Power Scalper settings. PAPER ONLY: every order goes to the backend's paper engine ("Scalper" account).
-import { API_BASE } from '../../../shared/api';
+import { API_BASE, wsUrl } from '../../../shared/api';
 
 export const SCALPER_API = API_BASE;
-export const SCALPER_WS = API_BASE.replace(/^http/, 'ws') + '/ws/scalper';
+export const SCALPER_WS = wsUrl('/ws/scalper');
 export const SYMBOLS = [{ value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
 export const TIMEFRAMES = [{ value: '1', label: '1m' }, { value: '3', label: '3m' }, { value: '5', label: '5m' }] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number]['value'];

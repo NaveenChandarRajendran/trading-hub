@@ -1,6 +1,8 @@
 import { Suspense, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { apps, groupApps } from './apps/registry';
+import { initials } from './shared/auth/auth';
+import { useSession } from './shared/auth/AuthGate';
 import { loadClosed, saveClosed } from './shared/sidebarGroups';
 import { useTheme } from './shared/theme';
 
@@ -8,6 +10,7 @@ const sections = groupApps();
 
 export default function App() {
   const { mode, toggle } = useTheme();
+  const { user, logout } = useSession();
   const [collapsed, setCollapsed] = useState(false);
   const [closed, setClosed] = useState<string[]>(loadClosed);
   const { pathname } = useLocation();
@@ -56,6 +59,11 @@ export default function App() {
           <h1>{current?.name ?? 'Trading Hub'}</h1>
           <div className="spacer" />
           <button className="btn ghost" onClick={toggle}>{mode === 'dark' ? '☀ Light' : '☾ Dark'}</button>
+          <span className="auth-user" title={`Logged in as ${user.username}`}>
+            <span className="auth-avatar" aria-hidden>{initials(user.displayName)}</span>
+            {user.displayName}
+          </span>
+          <button className="btn ghost" onClick={() => void logout()}>Log out</button>
         </header>
         <main className="content">
           <Suspense fallback={<p className="muted">Loading…</p>}>

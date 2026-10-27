@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-23 (OI breakout algo on `feature/oi-breakout-algo`, built on `feature/sr-level-history`)_
+_Last updated: 2026-10-28 (users + login, step 1, on `feature/users-strategies`); before: 2026-10-23 (OI breakout algo on `feature/oi-breakout-algo`, built on `feature/sr-level-history`)_
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |
@@ -17,6 +17,16 @@ _Last updated: 2026-10-23 (OI breakout algo on `feature/oi-breakout-algo`, built
 | **OI Support & Resistance Live** (`oi-support-resistance-live`) | backend `/api/option-chain` (Dhan) | Refresh button only; each refresh = one snapshot |
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles; grid polish 2026-10-21 (see below) |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
+
+## Users and login (branch `feature/users-strategies`, ADR 0008, `docs/users-and-strategies.md`)
+Step 1 of 6 done (28-Oct-2026), not merged yet. The backend serves the UI at **http://127.0.0.1:8000**; everything is
+behind a login (default deny in `auth.AuthMiddleware`: 401 `{"login": true}` / WebSocket 4401; open: login + the UI
+page). Users only via `backend/scripts/create_user.py`; argon2id; 30-day sliding sessions (HttpOnly, SameSite=Lax);
+5 failed logins / 15 min per username and per IP. Frontend: `src/shared/auth/` (AuthGate, login page, top-bar user +
+Log out), relative API calls (`shared/api.ts` `apiFetch`, `wsUrl`), Vite proxy for `/api` and `/ws`. Double-clicked
+`dist/index.html` only shows how to start. Tables `th_users`, `th_sessions`, `th_login_attempts`. Tests:
+`backend/test_auth.py` (every route 401 / 4401, limits, expiry, logout, Postgres store, CLI), `shared/auth/auth.test.ts`,
+feed 4401 test. Next: step 2 (strategies, migration).
 
 ## Dashboard (branch `feature/dashboard`, ADR 0003)
 Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backend (`python main.py`) and open it.

@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 from dhan_client import DhanError, parse_chain
-from main import create_app
+from authfake import create_app
 from store import JsonStore
 from tracker import IST, Tracker
 

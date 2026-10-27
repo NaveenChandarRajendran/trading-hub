@@ -302,3 +302,34 @@ CREATE TABLE IF NOT EXISTS dashboard_fixed_levels (
     unfixed_at  timestamptz
 );
 CREATE UNIQUE INDEX IF NOT EXISTS dashboard_fixed_levels_one_active ON dashboard_fixed_levels ("index", expiry) WHERE active;
+
+-- ================================================================ users and login (auth.py, ADR 0008)
+-- Prefixed th_ because this database also holds another project's tables (it has its own "strategies" / "trades").
+CREATE TABLE IF NOT EXISTS th_users (
+    id             serial       PRIMARY KEY,
+    username       text         NOT NULL UNIQUE,      -- lower case
+    display_name   text         NOT NULL,
+    password_hash  text,                              -- argon2id; NULL = can't log in until scripts/create_user.py sets one
+    created_at     timestamptz  NOT NULL DEFAULT now(),
+    active         boolean      NOT NULL DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS th_sessions (
+    token_hash    text         PRIMARY KEY,           -- sha256 of the cookie's token (the token itself is never stored)
+    user_id       integer      NOT NULL REFERENCES th_users(id),
+    created_at    timestamptz  NOT NULL,
+    last_seen_at  timestamptz  NOT NULL,
+    expires_at    timestamptz  NOT NULL,              -- 30 days, extended when used
+    ip            text         NOT NULL DEFAULT '',
+    user_agent    text         NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS th_sessions_user ON th_sessions (user_id);
+
+CREATE TABLE IF NOT EXISTS th_login_attempts (        -- kept one day; 5 failures / 15 min per username and per IP
+    username  text         NOT NULL,
+    ip        text         NOT NULL,
+    at        timestamptz  NOT NULL,
+    ok        boolean      NOT NULL
+);
+CREATE INDEX IF NOT EXISTS th_login_attempts_user ON th_login_attempts (username, at);
+CREATE INDEX IF NOT EXISTS th_login_attempts_ip ON th_login_attempts (ip, at);

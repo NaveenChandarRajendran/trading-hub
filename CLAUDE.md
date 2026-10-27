@@ -18,12 +18,15 @@ Backend (`backend/`, flat modules, no package — run from inside the folder):
   - `--force` polls outside market hours — testing only.
 - Tests: `python -m pytest -q`; single test: `python -m pytest -q test_calc.py::test_name`
   - `test_pg_store.py` is skipped unless `TEST_DATABASE_URL` is set; it TRUNCATEs the `toi_` tables, so use a throwaway DB.
-- Health check: `GET http://127.0.0.1:8000/api/status` (shows `"storage": "postgres"` or json)
+- Open the app: http://127.0.0.1:8000 (the backend serves `frontend/dist`; run `npm run build` first) and log in.
+  Users: `python scripts/create_user.py --username naveen --name "Naveen"` (also `--reset-password`, `--deactivate`, `--list`).
+- Health check: `GET http://127.0.0.1:8000/api/status` (needs a login session; shows `"storage": "postgres"`)
 
 Frontend (`frontend/`):
 - `npm run dev` / `npm test` (vitest) / `npm run build` (`tsc --noEmit` + vite)
 - Single test file: `npx vitest run src/apps/option-strategy/logic/oiCalculation.test.ts`
-- Backend URL: `VITE_API_BASE` (default `http://127.0.0.1:8000`).
+- Dev server proxies `/api` and `/ws` to the backend (`VITE_BACKEND`, default `http://127.0.0.1:8000`); calls are
+  same-origin so the session cookie works. `VITE_API_BASE` only for special setups (default: same origin).
 - `node --env-file=.env.local dhan-test.mjs` checks the Dhan token/Data API subscription.
 
 ## Architecture
@@ -42,8 +45,9 @@ Data sources differ per app:
   that model, never the raw shape.
 - `trending-oi` and `components` (index components): call the FastAPI backend.
 
-`vite build` (with `vite-plugin-singlefile`, `base: './'`) emits ONE self-contained `dist/index.html`
-meant to open by double-click — keep the build compatible with that (no server-only features).
+`vite build` (with `vite-plugin-singlefile`, `base: './'`) emits ONE self-contained `dist/index.html`, served by the
+backend at `/` (ADR 0008). The whole app is behind a login (`src/shared/auth/AuthGate.tsx`); opened by double-click the
+file only says "Start the backend and open http://127.0.0.1:8000".
 
 ### Backend: Trending OI recorder + Dhan proxy (`backend/`)
 - `main.py` — `create_app(tracker, ...)` builds the FastAPI app (tests inject fakes through it);
@@ -65,6 +69,12 @@ meant to open by double-click — keep the build compatible with that (no server
   cached in `data/security_ids.json`.
 
 Known limits: minutes when the backend is down are not recorded (no backfill); Dhan tokens expire ~daily.
+
+### Login (ADR 0008)
+`auth.py` `AuthMiddleware` guards EVERY route and WebSocket (default deny; only `POST /api/auth/login` and the UI page
+are open): 401 `{"login": true}` / WebSocket close 4401. `create_app(..., auth=...)` is required; tests that aren't
+about login import `create_app` from `authfake.py`. Tables are prefixed `th_` (the shared database has another
+project's `strategies` / `trades`).
 
 ## Rules
 - Read `docs/02-current-state.md` before starting a task and update it after finishing (create it if missing).

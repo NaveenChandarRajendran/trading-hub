@@ -6,7 +6,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from main import create_app
+from authfake import create_app
 from store import PgStore
 from test_api import FakeClient, at
 from tracker import Tracker

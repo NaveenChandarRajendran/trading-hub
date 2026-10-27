@@ -8,7 +8,7 @@ import psycopg2
 import pytest
 from fastapi.testclient import TestClient
 
-from main import create_app
+from authfake import create_app
 from store import IST, PgStore
 from test_api import FakeClient
 from tracker import Tracker

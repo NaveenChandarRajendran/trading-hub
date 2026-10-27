@@ -1,8 +1,8 @@
 // Paper trading page settings. SIMULATION ONLY: every order goes to the backend's paper engine.
-import { API_BASE } from '../../../shared/api';
+import { API_BASE, wsUrl } from '../../../shared/api';
 
 export const PAPER_API = API_BASE;
-export const PAPER_WS = API_BASE.replace(/^http/, 'ws') + '/ws/paper';
+export const PAPER_WS = wsUrl('/ws/paper');
 export const CHAIN_ROW_PX = 33; // first guess of a chain row's height; the page measures the real one
 export const SPOT_ROW_PX = 20; // the spot line row (paper-trade.css .pt-spot-row td height)
 export const CHAIN_OVERSCAN = 5; // rows rendered and subscribed above and below the ones in view

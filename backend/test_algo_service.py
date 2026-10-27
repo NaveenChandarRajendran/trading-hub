@@ -352,7 +352,7 @@ def test_api_routes_and_kill_switch(env):
 
 
 def test_create_app_wires_the_algo_only_when_asked():
-    from main import create_app
+    from authfake import create_app
     from test_api import FakeClient
     from tracker import Tracker
     tmp = tempfile.mkdtemp()

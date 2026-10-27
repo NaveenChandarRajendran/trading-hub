@@ -1,4 +1,13 @@
-# Trending OI backend
+# Trading Hub backend
+
+**Start:** `python main.py` in this folder, then open **http://127.0.0.1:8000** and log in.
+The backend serves the built UI (`frontend/dist`, made by `npm run build` in `frontend/`) and every API; everything
+except the login needs a session (ADR 0008). Users (no sign-up page):
+
+    python scripts/create_user.py --username naveen --name "Naveen"     (asks for the password)
+    python scripts/create_user.py --username naveen --reset-password
+    python scripts/create_user.py --username naveen --deactivate
+    python scripts/create_user.py --list
 
 Polls Dhan's option chain once a minute and serves OI Pulse-style Trending OI rows to the React page.
 Every snapshot is saved in **Postgres**, so closing the backend, shutting the PC down or refreshing the page never loses rows.
@@ -18,7 +27,7 @@ Every snapshot is saved in **Postgres**, so closing the backend, shutting the PC
 
 Options: `--strikes 7` (7 each side of ATM = 15 strikes), `--track NIFTY,BANKNIFTY`, `--port 8000`.
 
-Checks in a browser: http://127.0.0.1:8000/api/status (shows `"storage": "postgres"`) and
+Checks in a browser (after logging in): http://127.0.0.1:8000/api/status (shows `"storage": "postgres"`) and
 http://127.0.0.1:8000/api/trending-oi?symbol=BANKNIFTY&interval=5
 
 Token expired (HTTP 401 / DH-901)? Send a new one without restarting:
