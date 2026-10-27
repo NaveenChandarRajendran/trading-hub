@@ -36,7 +36,6 @@ const LEVEL_ORDER = [['S', 0], ['S', 1], ['S', 2], ['R', 0], ['R', 1], ['R', 2]]
 const SYMS = ['NIFTY', 'BANKNIFTY'] as const;
 type Tab = 'both' | 'NIFTY' | 'BANKNIFTY';
 const TABS = [{ value: 'both', label: 'Both' }, { value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
-const STRATS: ChartStrategy[] = ['all', 'fourPillar', 'superTrend', 'dharaniV2', 'tradingHub'];
 const refreshLabel = (s: number) => (s < 60 ? `${s}s` : `${s / 60} min`);
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 const clock = (d: Date) => d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
@@ -66,18 +65,20 @@ function useClock() {
   return now;
 }
 
-/** Indicator toggles of the "All indicators" chart (remembered per browser). */
+/** Indicator toggles of the plain chart (remembered per browser). Owner 27-Oct-2026: the plain chart starts as candles
+ * only; a strategy brings its own indicators, levels and trades. */
+const PLAIN: IndicatorToggles = { rsi: false, ema: false, volume: false, supertrend: false, bollinger: false, vwap: false, delta: false };
 export function useToggles() {
   const [indicators, set] = useState<IndicatorToggles>(() => {
     try {
-      return { ...DEFAULT_INDICATORS, ...JSON.parse(read('indicators') ?? '{}') };
+      return { ...PLAIN, ...JSON.parse(read('plainIndicators') ?? '{}') };
     } catch {
-      return DEFAULT_INDICATORS;
+      return PLAIN;
     }
   });
   const toggle = (k: keyof IndicatorToggles) => set((p) => {
     const next = { ...p, [k]: !p[k] };
-    write('indicators', JSON.stringify(next));
+    write('plainIndicators', JSON.stringify(next));
     return next;
   });
   return { indicators, toggle };
@@ -137,11 +138,9 @@ export default function DashboardApp() {
     return v === 'NIFTY' || v === 'BANKNIFTY' ? v : 'both';
   });
   const setTab = (t: Tab) => { write('tab', t); setTabState(t); };
-  const [strategy, setStrategyState] = useState<ChartStrategy>(() => {
-    const v = read('strategy') as ChartStrategy | null;
-    return v && STRATS.includes(v) ? v : 'all';
-  });
-  const setStrategy = (k: ChartStrategy) => { write('strategy', k); setStrategyState(k); };
+  // always opens on the plain chart (owner 27-Oct-2026); picking a strategy on the board adds its indicators
+  const [strategy, setStrategy] = useState<ChartStrategy>('all');
+  const [showToggles, setShowToggles] = useState(false);
   const [openBox, setOpenBox] = useState<{ key: StrategyKey; symbol: string } | null>(null);
   const toggles = useToggles();
   const now = useClock();
@@ -255,15 +254,23 @@ export default function DashboardApp() {
         <h3 className="card-title">Chart · {strategyName(strategy)}</h3>
         <span className="db-head-end">
           {strategy === 'all' ? (
-            <span className="db-toggles" role="group" aria-label="Indicators">
-              {INDICATORS.map(([k, label]) => (
-                <button key={k} type="button" className={`db-toggle ${toggles.indicators[k] ? 'on' : ''}`} aria-pressed={toggles.indicators[k]}
-                  title={k === 'volume' || k === 'vwap' ? "Uses the near-month future's volume: an index has none" : undefined}
-                  onClick={() => toggles.toggle(k)}>{label}</button>
-              ))}
-            </span>
+            <>
+              {!showToggles && <span className="db-muted">Pick a strategy above to add its indicators, levels and trades</span>}
+              {showToggles && (
+                <span className="db-toggles" role="group" aria-label="Indicators">
+                  {INDICATORS.map(([k, label]) => (
+                    <button key={k} type="button" className={`db-toggle ${toggles.indicators[k] ? 'on' : ''}`} aria-pressed={toggles.indicators[k]}
+                      title={k === 'volume' || k === 'vwap' ? "Uses the near-month future's volume: an index has none" : undefined}
+                      onClick={() => toggles.toggle(k)}>{label}</button>
+                  ))}
+                </span>
+              )}
+              <button type="button" className="btn ghost" onClick={() => setShowToggles((v) => !v)} aria-expanded={showToggles}>
+                {showToggles ? 'Hide indicator list' : 'Add my own indicators'}
+              </button>
+            </>
           ) : (
-            <button type="button" className="btn ghost" onClick={() => setStrategy('all')}>Show all indicators</button>
+            <button type="button" className="btn" onClick={() => setStrategy('all')}>✕ Back to plain chart</button>
           )}
         </span>
       </div>

@@ -25,6 +25,10 @@ _Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy
   Wiring: `main.build_signals` (on_order hook, `svc.phone`, `svc.rows_today`), `sig_service._end_of_day`.
   Today page knows "Rebound Call" (slot `reboundCall`, journal strategy name "Rebound Call"); an unknown strategy name still
   gets its own row.
+- Charts & Signals charts (owner 27-Oct-2026: "the current one is confusing"): the page always opens on a **plain chart**
+  (candles only: no indicators, OI levels, pivot or trade marks; own toggles behind "Add my own indicators", saved as
+  `dashboard.plainIndicators`, all off by default). Clicking a strategy on the board adds only its indicators, levels and
+  trades; "✕ Back to plain chart" returns. The strategy choice is no longer remembered across reloads.
 - Charts & Signals: the Interval picker always shows (it hid when a strategy was picked; a strategy opens at its own
   candle size, "(rule)" marks it); the manual positions box and "Today's paper trades" table moved to Today (a link card
   with the day's P&L replaces them; Day P&L / Open trades in the strip link to Today); "Paper trading" header is now

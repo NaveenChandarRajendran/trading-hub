@@ -87,7 +87,7 @@ export type ChartStrategy = 'all' | StrategyKey;
 export interface ChartPreset { interval: number | null; indicators: IndicatorToggles; emaPeriod: number; bb: { period: number; mult: number }; note: string }
 const OFF: IndicatorToggles = { rsi: false, ema: false, volume: false, supertrend: false, bollinger: false, vwap: false, delta: false };
 export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
-  all: { interval: null, indicators: DEFAULT_INDICATORS, emaPeriod: 20, bb: { period: 20, mult: 2 }, note: 'All indicators, your own interval.' },
+  all: { interval: null, indicators: DEFAULT_INDICATORS, emaPeriod: 20, bb: { period: 20, mult: 2 }, note: 'Just the price. Pick a strategy above to add its indicators, OI levels and trades.' },
   fourPillar: { interval: 5, indicators: { ...OFF, ema: true, vwap: true, rsi: true, delta: true }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'EMA 20, VWAP, RSI 14, pivot and OI levels, cumulative delta. India VIX and PCR are on the strategy box.' },
   superTrend: { interval: 5, indicators: { ...OFF, supertrend: true, bollinger: true, rsi: true }, emaPeriod: 20, bb: { period: 20, mult: 2 },
