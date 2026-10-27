@@ -383,6 +383,12 @@ class SignalService:
                 self.run_rebound(symbol)
 
     def _track_near(self, symbol, results):
+        try:
+            self._track_near_inner(symbol, results)
+        except Exception:
+            log.exception("near-miss tracking failed")  # never let the phone summary stop a signal cycle
+
+    def _track_near_inner(self, symbol, results):
         """Keep each rule's closest call that did not trade (a skipped setup, as the shadow log counts it), for this
         hour and for the day: "came close, 4 of 5 on Nifty put (missing: PCR)" in the phone updates."""
         import journal
