@@ -17,11 +17,11 @@ def test_quote_rule_tick_rule_and_cumulative():
     b.on_full(sid, 100.5, 1300, 100.0, 101.0, at("10:00", 5))  # 300 at the ask 100.5 -> buy
     b.on_full(sid, 100.0, 1500, 99.5, 100.5, at("10:00", 9))  # 200 at the bid 100.0 -> sell
     b.on_full(sid, 100.2, 1600, 99.9, 100.6, at("10:00", 20))  # 100 between bid 99.5 / ask 100.5, up from 100 -> buy
-    b.on_full(sid, 100.2, 1650, 99.9, 100.6, at("10:00", 30))  # 50 between, unchanged -> same as last (buy)
+    b.on_full(sid, 100.2, 1650, 99.9, 100.6, at("10:00", 30))  # 50 between, unchanged -> not counted
     b.on_full(sid, 99.8, 1700, 99.7, 100.1, at("10:01", 2))  # 50 at/below bid 99.9 -> sell, next minute
     s = b.series(sid)
-    assert [(m["buy"], m["sell"], m["delta"]) for m in s] == [(450, 200, 250), (0, 50, -50)]
-    assert [m["cumulative"] for m in s] == [250, 200]
+    assert [(m["buy"], m["sell"], m["delta"]) for m in s] == [(400, 200, 200), (0, 50, -50)]
+    assert [m["cumulative"] for m in s] == [200, 150]
 
 
 def test_volume_reset_and_outside_session_are_ignored():
@@ -58,3 +58,16 @@ def test_an_earlier_day_is_read_back_from_its_file(tmp_path):
     assert svc.typed("NIFTY", 5, date(2026, 10, 23)) == {"10:00": 250}
     assert svc.days() == ["2026-10-26", "2026-10-23"] or svc.days() == ["2026-10-23"]
     assert svc.series("NIFTY", 5)[1] == []  # today: nothing yet
+
+
+def test_raw_packets_are_logged(tmp_path):
+    from orderflow import OrderFlowService, OrderFlowStore
+    svc = OrderFlowService(OrderFlowStore(str(tmp_path)), lambda s: None, clock=lambda: at("10:00"))
+
+    class Book:
+        best_bid, best_ask = 99.5, 100.5
+    svc.on_packet(7, {"ltp": 100.0, "ltq": 75, "volume": 1000}, Book())
+    svc.save()
+    lines = (tmp_path / "orderflow_raw_2026-10-23.csv").read_text().splitlines()
+    assert lines[0].startswith("time,") and lines[1].endswith(",7,100.0,75,1000,99.5,100.5")
+    assert svc.days() == ["2026-10-23"]
