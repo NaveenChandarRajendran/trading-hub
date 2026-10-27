@@ -1,24 +1,33 @@
 // Power Scalper: one-screen scalping workspace. PAPER ONLY: every order goes to the backend's paper engine
 // ("Scalper" account, its own capital and P&L). Index + CE + PE charts on one synced time axis, the Trade panel and
-// the account strip. Step 2: layout, charts and the bottom strip (tickets: step 3).
+// the account strip with the CE / PE tickets (one-click MARKET Buy / Sell) and the positions.
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { aggregate, type Candle } from '../../shared/chart/candles';
+import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { inr } from '../../shared/grid';
 import { Alert, Pill, Segmented, Status } from '../../shared/ui';
 import { longDate, pct, price, toneOf } from '../paper-trade/format';
+import { cacheQuotes } from '../paper-trade/logic/chain';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { BottomStrip } from './BottomStrip';
-import { DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe } from './config/settings';
+import {
+  CHAIN_CACHE_REFRESH_MS, DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe,
+} from './config/settings';
 import { api, type Chain, type ScalperTick } from './logic/api';
-import { alignSeries, atmLegs, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
+import { pickerItems } from './logic/picker';
+import { alignSeries, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
 import { ChartSync } from './logic/sync';
+import { checkTicket, followStrike, sideHeld, type Side } from './logic/ticket';
+import { PositionsBox } from './PositionsBox';
 import { Reports } from './Reports';
 import { ScalperChart } from './ScalperChart';
+import { Ticket } from './Ticket';
 import { useScalper, type Scalper } from './useScalper';
 import './scalper.css';
 
 type View = 'trade' | 'reports';
+const SIDES: Side[] = ['CE', 'PE'];
 const VIEWS = [{ value: 'trade', label: 'Trade' }, { value: 'reports', label: 'Reports' }] as const;
 const PANEL_TABS = [
   { value: 'trade', label: 'Trade' },
@@ -104,11 +113,16 @@ export default function ScalperApp() {
   const [tf, setTf] = useState<Timeframe>(() => { const v = load('tf'); return isTimeframe(v) ? v : DEFAULT_TIMEFRAME; });
   const [chain, setChain] = useState<Chain | null>(null);
   const [error, setError] = useState('');
-  const [legs, setLegs] = useState<{ strike: number; ce: Leg | null; pe: Leg | null } | null>(null);
+  const [strikes, setStrikes] = useState<Record<Side, number | null>>({ CE: null, PE: null });
+  const [follow, setFollow] = useState<Record<Side, boolean>>({ CE: true, PE: true });
+  const [lots, setLots] = useState<Record<Side, number>>({ CE: 1, PE: 1 });
+  const [cache, setCache] = useState<ChainResponse | null>(null);
+  const [busy, setBusy] = useState(false);
   const [futureKey, setFutureKey] = useState<InstrumentKey | null>(null);
   const [histErr, setHistErr] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const sync = useMemo(() => new ChartSync(), []);
+  const now = useNow();
 
   useEffect(() => save('view', view), [view]);
   useEffect(() => save('symbol', symbol), [symbol]);
@@ -122,7 +136,7 @@ export default function ScalperApp() {
   // strikes and security IDs of the expiry (Dhan's instrument list, every strike)
   useEffect(() => {
     const ctrl = new AbortController();
-    setLegs(null);
+    setStrikes({ CE: null, PE: null });
     api.chain(symbol, expiry, ctrl.signal)
       .then((c) => {
         setChain(c);
@@ -161,19 +175,51 @@ export default function ScalperApp() {
   const indexMinutes = minutesOf(sc, spotKey);
   const spot = (spotKey && sc.ticks.get(spotKey)?.ltp) ?? indexMinutes.at(-1)?.close ?? null;
 
-  // the starting strikes: ATM CE and PE once spot is known (the Trade tab changes them, step 3)
+  // strikes per side: the held instrument's strike first, else ATM; Follow ATM moves them while nothing is held
+  const ready = !!chain && chain.symbol === symbol;
+  const chainStrikes = useMemo(() => (ready ? chain!.rows.map((r) => r.strike) : []), [ready, chain]);
+  const positions = [...sc.positions.values()];
+  const orders = [...sc.orders.values()];
+  const held: Record<Side, boolean> = { CE: sideHeld('CE', symbol, positions, orders), PE: sideHeld('PE', symbol, positions, orders) };
+  const heldStrike = (side: Side) =>
+    positions.find((p) => p.open_qty > 0 && p.optionType === side && p.symbol === symbol && p.expiry === chain?.expiry)?.strike ?? null;
   useEffect(() => {
-    if (!legs && chain && chain.symbol === symbol && spot != null) setLegs(atmLegs(chain, spot));
-  }, [legs, chain, symbol, spot]);
+    if (!ready) return;
+    setStrikes((cur) => {
+      const next = { ...cur };
+      for (const side of SIDES) {
+        next[side] = cur[side] == null
+          ? heldStrike(side) ?? followStrike(chainStrikes, spot, null, true, false)
+          : followStrike(chainStrikes, spot, cur[side], follow[side], held[side]);
+      }
+      return next.CE === cur.CE && next.PE === cur.PE ? cur : next;
+    });
+  }, [ready, chainStrikes, spot, follow.CE, follow.PE, held.CE, held.PE]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ceKey = legs?.ce ? keyOf('NSE_FNO', legs.ce.securityId) : null;
-  const peKey = legs?.pe ? keyOf('NSE_FNO', legs.pe.securityId) : null;
+  const rowOf = (k: number | null) => (k == null || !ready ? undefined : chain!.rows.find((r) => r.strike === k));
+  const legs: Record<Side, Leg | null> = { CE: rowOf(strikes.CE)?.ce ?? null, PE: rowOf(strikes.PE)?.pe ?? null };
+  const ceKey = legs.CE ? keyOf('NSE_FNO', legs.CE.securityId) : null;
+  const peKey = legs.PE ? keyOf('NSE_FNO', legs.PE.securityId) : null;
+
+  // strike LTPs for the dropdowns: the shared option-chain cache, re-read every minute
+  useEffect(() => {
+    if (!ready) return;
+    const ctrl = new AbortController();
+    const read = () => fetchOptionChain(symbol, chain!.expiry, ctrl.signal).then(setCache, () => undefined);
+    void read();
+    const t = setInterval(read, CHAIN_CACHE_REFRESH_MS);
+    return () => {
+      ctrl.abort();
+      clearInterval(t);
+    };
+  }, [ready, symbol, chain?.expiry]); // eslint-disable-line react-hooks/exhaustive-deps
+  const quotes = useMemo(() => cacheQuotes(cache), [cache]);
 
   // option history (Dhan 1-minute candles for that security ID), re-read every minute
   useEffect(() => {
     const ctrl = new AbortController();
     const read = () => {
-      for (const [name, leg] of [['ce', legs?.ce], ['pe', legs?.pe]] as const) {
+      for (const [name, leg] of [['ce', legs.CE], ['pe', legs.PE]] as const) {
         if (!leg) continue;
         api.optionCandles(leg.securityId, ctrl.signal)
           .then((r) => {
@@ -213,8 +259,48 @@ export default function ScalperApp() {
   const prevClose = spotKey ? sc.ticks.get(spotKey)?.close || previousClose(indexMinutes) : null;
   const spotTick = spotKey ? { ...sc.ticks.get(spotKey), ltp: spot ?? 0, close: prevClose ?? undefined } as ScalperTick : undefined;
   const spotChg = spot != null && prevClose ? spot - prevClose : null;
-  const legName = (leg: Leg | null | undefined, side: 'CE' | 'PE') =>
-    leg && legs ? `${symbol} ${inr(0)(legs.strike)} ${side}${chain ? ` · ${longDate(chain.expiry)}` : ''}` : `${side}: waiting for spot`;
+  const legName = (side: Side) =>
+    legs[side] && strikes[side] != null ? `${symbol} ${inr(0)(strikes[side]!)} ${side}${chain ? ` · ${longDate(chain.expiry)}` : ''}` : `${side}: waiting for spot`;
+
+  // tickets: strike dropdowns, live quote, why Buy / Sell is off, one-click MARKET orders
+  const status = pageStatus(sc.conn, sc.meta, sc.lastTickAt ? now - sc.lastTickAt : Infinity, STALE_AFTER_MS);
+  const keyOfSide: Record<Side, InstrumentKey | null> = { CE: ceKey, PE: peKey };
+  const tickOf = (side: Side) => (keyOfSide[side] ? sc.ticks.get(keyOfSide[side]!) : undefined);
+  const pickers = useMemo(() => {
+    const out = {} as Record<Side, ReturnType<typeof pickerItems>>;
+    for (const side of SIDES) {
+      const leg = side === 'CE' ? 'ce' : 'pe';
+      out[side] = pickerItems(chainStrikes, spot, side, (k) => quotes.get(k)?.[leg]?.ltp);
+    }
+    return out;
+  }, [chainStrikes, spot != null ? Math.round(spot) : null, quotes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const checkOf = (side: Side) => {
+    const leg = legs[side];
+    const pos = leg ? sc.positions.get(leg.securityId) : undefined;
+    return checkTicket({
+      status: status.kind, acceptingOrders: !!sc.meta?.acceptingOrders, lots: lots[side], lotSize: chain?.lotSize ?? null,
+      ask: tickOf(side)?.ask, available: sc.funds?.available, openQty: pos?.open_qty ?? 0, hasInstrument: !!leg,
+    });
+  };
+  const place = async (side: Side, action: 'BUY' | 'SELL') => {
+    const leg = legs[side];
+    if (!leg || busy) return;
+    setBusy(true);
+    try {
+      const { order: o } = await api.place(leg.securityId, action, lots[side]);
+      setNotice(o.status === 'REJECTED'
+        ? { kind: 'error', text: `${action === 'BUY' ? 'Buy' : 'Sell'} ${o.name} rejected: ${o.reason}` }
+        : { kind: 'info', text: `${action === 'BUY' ? 'Bought' : 'Sold'} ${o.qty} ${o.name}${o.avg_price ? ` @ ${price(o.avg_price)}` : ''} (paper).` });
+    } catch (e) {
+      setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Order failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pickStrike = (side: Side, k: number) => {
+    setStrikes((s) => ({ ...s, [side]: k }));
+    if (k !== pickers[side].items[pickers[side].atmIndex ?? -1]?.strike) setFollow((f) => ({ ...f, [side]: false }));
+  };
 
   return (
     <div className={`ds sc ${view === 'reports' ? 'sc-reports' : ''}`}>
@@ -260,30 +346,25 @@ export default function ScalperApp() {
               <ChartCard className="sc-index" title={`${symbol} · ${tf}m`} tick={spotTick} bars={indexBars ?? []} note={histErr.index}>
                 <ScalperChart id="index" bars={indexBars ?? []} sync={sync} resetKey={`${symbol}|${tf}`} />
               </ChartCard>
-              <ChartCard title={legName(legs?.ce, 'CE')} tick={ceKey ? sc.ticks.get(ceKey) : undefined} bars={ceBars ?? []} note={histErr.ce}>
+              <ChartCard title={legName('CE')} tick={tickOf('CE')} bars={ceBars ?? []} note={histErr.ce}>
                 <ScalperChart id="ce" bars={ceBars ?? []} sync={sync} resetKey={`${ceKey}|${tf}`} />
               </ChartCard>
-              <ChartCard title={legName(legs?.pe, 'PE')} tick={peKey ? sc.ticks.get(peKey) : undefined} bars={peBars ?? []} note={histErr.pe}>
+              <ChartCard title={legName('PE')} tick={tickOf('PE')} bars={peBars ?? []} note={histErr.pe}>
                 <ScalperChart id="pe" bars={peBars ?? []} sync={sync} resetKey={`${peKey}|${tf}`} />
               </ChartCard>
             </div>
             <aside className="card sc-panel">
               <Segmented label="Panel" options={PANEL_TABS} value="trade" onChange={() => undefined} />
               <div className="sc-panel-body">
-                {[['CE', legs?.ce, ceKey], ['PE', legs?.pe, peKey]].map(([side, leg, key]) => {
-                  const t = key ? sc.ticks.get(key as InstrumentKey) : undefined;
-                  return (
-                    <div key={side as string} className="sc-leg">
-                      <div className="sc-leg-head"><Pill tone={side === 'CE' ? 'down' : 'up'}>{side as string}</Pill> {legName(leg as Leg | null, side as 'CE' | 'PE')}</div>
-                      <div className="sc-leg-quote num">
-                        <span>Bid <b>{price(t?.bid)}</b> × {t?.bidQty ?? '–'}</span>
-                        <span>Ask <b>{price(t?.ask)}</b> × {t?.askQty ?? '–'}</span>
-                        <span className="muted">Day {price(t?.low)} – {price(t?.high)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                <p className="muted sc-small">Buy / Sell tickets, strike lists and Follow ATM come in the next step.</p>
+                {SIDES.map((side) => (
+                  <Ticket key={side} side={side} title={chain ? `${symbol} ${longDate(chain.expiry)}` : symbol} strike={strikes[side]}
+                    picker={pickers[side]} onStrike={(k) => pickStrike(side, k)}
+                    follow={follow[side]} onFollow={(on) => setFollow((f) => ({ ...f, [side]: on }))}
+                    lots={lots[side]} onLots={(n) => setLots((l) => ({ ...l, [side]: n }))}
+                    tick={tickOf(side)} check={checkOf(side)} busy={busy}
+                    onBuy={() => place(side, 'BUY')} onSell={() => place(side, 'SELL')} />
+                ))}
+                <PositionsBox sc={sc} onNotice={(kind, text) => setNotice({ kind, text })} />
               </div>
             </aside>
           </div>

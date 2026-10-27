@@ -19,7 +19,14 @@ Dhan's order APIs.
    full height + ATM CE / PE charts on one time grid with synced scroll / zoom / crosshair, volume in its own pane,
    Trade panel with Phase 2 tabs disabled, Positions / Orders strip, Reports view with tiles, day-wise table, day
    trades, CSV and capital / fresh start). Shared: `src/shared/chart/candles.ts` (moved from the Dashboard).
-3. Trade tab tickets + full strike dropdowns + positions.
+3. **Done** — Trade tab: CE and PE tickets with a strike dropdown of every strike of the expiry (opens at the
+   selected strike / ATM, ATM and ITM marked, LTP per strike from the shared option-chain cache, type a strike to
+   jump, Enter / arrows / Esc), Follow ATM (default on; never switches while that side holds a position or pending
+   order; needs spot 10 % of a strike step past the midpoint, so no flipping), lots stepper (max 100), one-click
+   MARKET Buy / Sell (no confirmation), best bid / ask with quantities, day range bar, the reason when Buy / Sell is
+   off (market closed, stale, token, funds, nothing to sell). Picking a strike switches that side's chart; picking a
+   non-ATM strike turns Follow ATM off for that side. Positions box: open positions with live P&L (before charges),
+   Exit and Exit all.
 4. Chart position lines + draggable TP / SL.
 5. Hotkeys + states, both themes.
 Phase 2: Option Chain, Depth, OI Insights tabs.

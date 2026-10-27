@@ -24,6 +24,7 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
   const vol = useRef<ISeriesApi<'Histogram'> | null>(null);
   const closes = useRef(new Map<number, number>());
   const fitted = useRef('');
+  const fittedLen = useRef(0);
 
   useEffect(() => {
     const c = createChart(box.current!, chartOptions());
@@ -61,9 +62,11 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
     candles.current.setData(bars.map(ohlc));
     vol.current?.setData(bars.map(volumePoint));
     closes.current = new Map(bars.filter(isCandle).map((b) => [b.time, b.close]));
-    if (bars.length && fitted.current !== resetKey) {
+    // fit on a new instrument / timeframe, and once more when history arrives after a few live bars were fitted
+    if (bars.length && (fitted.current !== resetKey || (fittedLen.current < INITIAL_BARS && bars.length >= 2 * fittedLen.current + 10))) {
       chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - INITIAL_BARS), to: bars.length + 2 });
       fitted.current = resetKey;
+      fittedLen.current = bars.length;
     }
   }, [bars, resetKey]);
 

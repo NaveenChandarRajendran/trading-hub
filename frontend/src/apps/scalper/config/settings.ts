@@ -12,4 +12,6 @@ export const CHART_FLUSH_MS = 250; // live candles redraw the charts at most 4 t
 export const ACCOUNT_REFRESH_MS = 60000;
 export const HISTORY_REFRESH_MS = 60000; // option / index history re-read (fills minutes the feed missed)
 export const REPORT_DAYS = 30; // default Reports range
+export const MAX_LOTS = 100; // ticket guard against fat-finger orders
+export const CHAIN_CACHE_REFRESH_MS = 60000; // strike LTPs in the dropdowns: shared option-chain cache
 export const STORAGE_PREFIX = 'scalper.';

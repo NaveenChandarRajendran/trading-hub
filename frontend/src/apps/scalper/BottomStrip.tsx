@@ -49,7 +49,7 @@ export function BottomStrip({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'i
           <Segmented label="Positions" value={which} onChange={setWhich}
             options={[{ value: 'open', label: `Open ${open.length}` }, { value: 'closed', label: `Closed ${closed.length}` }]} />
         )}
-        <span className="sc-bottom-stat">Scalper P&amp;L today <b className={`num ${toneOf(pnl)}`}>{signedRupees(pnl)}</b></span>
+        <span className="sc-bottom-stat" title="Realized + open P&L minus today's charges">Scalper P&amp;L today (after charges) <b className={`num ${toneOf(pnl)}`}>{signedRupees(pnl)}</b></span>
         <span className="sc-bottom-stat">Funds <b className="num">{rupees(sc.funds?.available)}</b></span>
       </div>
       <div className="sc-table">
