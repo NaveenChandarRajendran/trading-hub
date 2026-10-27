@@ -5,9 +5,11 @@ Dext (Dhan's order-flow tool) has no export or API, and Dhan's data API has no a
 delta is estimated from the live feed's Full packets of the future:
     traded qty since the last packet = day volume now - day volume at the previous packet
     side: price at or above the previous best ask -> buy; at or below the previous best bid -> sell;
-          in between -> tick rule (up from the last price -> buy, down -> sell, unchanged -> same side as the last trade)
+          in between -> tick rule (up from the last price -> buy, down -> sell, unchanged -> not counted)
+    (until 27-Oct-2026 "unchanged" took the last trade's side; that leaned to buying: Nifty +173K vs Dext ~+103K)
     per IST minute: buy, sell, delta = buy - sell; cumulative delta = running sum over the day.
 Minutes when the backend was not running are missing (no backfill). Several trades between two packets get one side.
+Every packet is also logged to data/orderflow_raw_YYYY-MM-DD.csv so the rule can be re-tested against Dext later.
 
 The estimate is NOT used by the rules until it matches the owner's Dext readings most of the time
 (autopaper.json orderFlow.useEstimatedDelta). The owner types Dext's per-candle delta for a few days; match = same sign.
@@ -50,8 +52,6 @@ class DeltaBuilder:
                 side = 1
             elif ltp < st["ltp"]:
                 side = -1
-            else:
-                side = st["side"]
         minute = epoch(bucket_start(now, 1))
         bars = self.minutes.setdefault(security_id, {})
         m = bars.setdefault(minute, {"time": minute, "buy": 0, "sell": 0, "close": ltp})
@@ -130,6 +130,7 @@ class OrderFlowService:
     def __init__(self, store, futures, clock=lambda: datetime.now(IST)):
         self.store, self.futures, self.clock = store, futures, clock  # futures: symbol -> near future dict or None
         self.builder = DeltaBuilder()
+        self._raw = []  # packets not yet appended to the raw csv
         self._day = None
         self._last_save = 0.0
         self.dext = {}
@@ -162,11 +163,33 @@ class OrderFlowService:
         bid = prev_book.best_bid if prev_book else None
         ask = prev_book.best_ask if prev_book else None
         now = self.clock()
+        if in_session(now):
+            self._raw.append(f"{now.timestamp():.3f},{security_id},{pkt.get('ltp')},{pkt.get('ltq')},{pkt.get('volume')},"
+                             f"{bid if bid is not None else ''},{ask if ask is not None else ''}\n")
+            if len(self._raw) >= 200:
+                self.flush_raw()
         if self.builder.on_full(security_id, pkt.get("ltp"), pkt.get("volume"), bid, ask, now) and now.timestamp() - self._last_save > 30:
             self._last_save = now.timestamp()
             self.save()
 
+    def flush_raw(self):
+        """Append buffered packets to data/orderflow_raw_<day>.csv (time, security id, ltp, ltq, day volume, prev bid, prev ask)."""
+        rows, self._raw = self._raw, []
+        if not rows or self._day is None:
+            return
+        path = os.path.join(self.store.data_dir, f"orderflow_raw_{self._day}.csv")
+        try:
+            os.makedirs(self.store.data_dir, exist_ok=True)
+            new = not os.path.exists(path)
+            with open(path, "a", encoding="utf-8") as f:
+                if new:
+                    f.write("time,security_id,ltp,ltq,volume,bid,ask\n")
+                f.writelines(rows)
+        except OSError:
+            pass
+
     def save(self):
+        self.flush_raw()
         futs = {str(f["securityId"]): {"symbol": sym, "name": f["name"]} for sym, f in self.future_ids().items()}
         data = {"minutes": {str(sid): list(m.values()) for sid, m in self.builder.minutes.items()}, "dext": self.dext,
                 "futures": futs}
@@ -207,7 +230,7 @@ class OrderFlowService:
             names = os.listdir(self.store.data_dir)
         except OSError:
             return []
-        return sorted((n[10:20] for n in names if n.startswith("orderflow_") and n.endswith(".json")), reverse=True)
+        return sorted((n[10:20] for n in names if n.startswith("orderflow_") and n.endswith(".json") and not n.startswith("orderflow_raw_")), reverse=True)
 
     def set_dext(self, symbol, interval, hhmm, value):
         self._ensure_day()
