@@ -78,9 +78,10 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
   beyond it by the buffer); no Range CE at a broken S1, no Range PE at a broken R1; max 1 range trade per level per day
   (`state["rangeTaken"]`); each open trade records its level and D never arms the other side at that level; a retest
   that closes on the wrong side of an armed level is logged. New log kind `level` (type `levels`).
-  Replay-only options in `algo_config.py` (live values leave the rules unchanged): `STOP_BUFFER`, `RANGE_TOI_WITH_MIN`,
-  `ARM_ON_STOP_CANDLE` (point-2 proposal, waiting for Naveen). `algo_replay.py --rules before-27oct,live,stop50,
-  range-toi20,arm-on-stop` compares them; `--export-scenario` writes `fixtures/scenarios/<day>.json`.
+  A break on the candle that stops the open trade still arms its setup (`ARM_ON_STOP_CANDLE`, on since 27-Oct).
+  Replay-only options in `algo_config.py`, off (Naveen, 27-Oct): `STOP_BUFFER`, `RANGE_TOI_WITH_MIN`.
+  `algo_replay.py --rules before-27oct,live,stop50,range-toi20` compares them; `--export-scenario` writes
+  `fixtures/scenarios/<day>.json`.
   Tests: `test_algo_levels.py` (rules), `test_algo_scenarios.py` (23 / 26 / 27-Oct as stored, one-setup-per-level
   check on every candle of every day, variant and rule set). The 27-Oct fixture was exported at 11:55 (partial day).
 - Reliability (24-Oct): feed watchdog in `dhan_feed.py` (polled recv, reconnect after 2 min without packets in market

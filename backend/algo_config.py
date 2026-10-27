@@ -45,12 +45,12 @@ MIN_RANGE_WIDTH = {"NIFTY": 100, "BANKNIFTY": 250}  # R1 - S1 for the range setu
 # R1 no Range PE: the level belongs to the breakdown / breakout setup.
 RANGE_BLOCK_BROKEN = True
 RANGE_TRADES_PER_LEVEL = 1  # range trades per level (R1, S1) per day; None = no limit
+ARM_ON_STOP_CANDLE = True  # a break on the candle that stops the open trade still arms its setup (Naveen, 27-Oct)
 
-# Replay-only options (27-Oct review): these live values keep the rules unchanged; algo_replay.RULE_SETS sets them for
-# comparisons. Change a live value only when Naveen decides.
+# Replay-only options (27-Oct review, kept off by Naveen): these live values keep the rules unchanged;
+# algo_replay.RULE_SETS sets them for comparisons. Change a live value only when Naveen decides.
 STOP_BUFFER = dict(BUFFER)  # spot stop distance beyond the level (review option c: BANKNIFTY 50)
 RANGE_TOI_WITH_MIN = None  # review option d: a range trade needs Trending OI >= this % in its direction
-ARM_ON_STOP_CANDLE = False  # proposal (point 2): a break on the candle that stops the open trade still arms its setup
 
 # filters on the break candle
 TOI_STRENGTH_MIN = 40.0  # Trending OI |strength %|, 5-minute rows

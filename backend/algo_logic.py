@@ -203,8 +203,8 @@ def track_levels(state, c, now, candle, base, out):
 
 
 def holding(state):
-    """The open trade that blocks a new break, or None. With cfg.ARM_ON_STOP_CANDLE (proposal, not live) a trade being
-    stopped out on this very candle does not block it."""
+    """The open trade that blocks a new break, or None. With cfg.ARM_ON_STOP_CANDLE a trade being stopped out on this
+    very candle does not block it: the broken level becomes a setup as usual."""
     o = state["open"]
     return None if o and cfg.ARM_ON_STOP_CANDLE and o.get("exiting") else o
 

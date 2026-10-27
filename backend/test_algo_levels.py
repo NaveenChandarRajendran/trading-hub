@@ -55,21 +55,24 @@ def test_a_close_beyond_the_buffer_breaks_a_level_and_a_close_back_beyond_it_rec
 
 
 def test_27_oct_pattern_range_ce_at_a_broken_s1_is_blocked_and_one_range_trade_per_level():
+    """Variant A with PE filters failing (RSI 55), as A on 27-Oct: the break arms nothing, so the range rule sees the
+    retest and must block it (B / C / D arm the Breakdown PE instead: test_algo_scenarios.py)."""
     s = state()
-    out = step(s, "09:35", 22720, 22725, 22695, 22710)  # trade 1: Range CE (S1 bounce)
+    no_pe = f(rsi=55)
+    out = step(s, "09:35", 22720, 22725, 22695, 22710, "A", no_pe)  # trade 1: Range CE (S1 bounce)
     assert [a["setup"] for a in out if a["type"] == "enter"] == ["Range CE (S1 bounce)"]
     assert s["open"]["level"] == "S1" and s["rangeTaken"] == {"R1": 0, "S1": 1}
-    out = step(s, "09:40", 22710, 22712, 22675, 22680)  # spot stop + S1 broken
+    out = step(s, "09:40", 22710, 22712, 22675, 22680, "A", no_pe)  # spot stop + S1 broken
     assert [a["type"] for a in out if a["type"] == "exit"] == ["exit"]
-    assert "Breakdown PE break ignored (position open)" in texts(out, "skip")[0]
-    step(s, "09:45", 22702, 22709, 22701, 22705)  # a candle above S1 (re-arms the touch), not reclaimed
-    out = step(s, "09:50", 22705, 22708, 22698, 22704)  # retest from below: no CE bounce
+    assert texts(out, "skip")[0].startswith("Breakdown PE filters failed")  # checked: the stop-out candle's break counts
+    step(s, "09:45", 22702, 22709, 22701, 22705, "A", no_pe)  # a candle above S1 (re-arms the touch), not reclaimed
+    out = step(s, "09:50", 22705, 22708, 22698, 22704, "A", no_pe)  # retest from below: no CE bounce
     assert texts(out, "skip") == ["Range CE at S1 blocked: S1 broken at 09:40 (closed below S1 - 10), not reclaimed: a "
                                   "retest from below belongs to the Breakdown PE setup. 09:50 candle O 22,705 H 22,708 "
                                   "L 22,698 C 22,704: low 22,698 touched S1 22,700, closed back above"]
     assert s["open"] is None and s["trades"] == 1
-    step(s, "09:55", 22704, 22716, 22703, 22715)  # reclaimed
-    out = step(s, "10:00", 22715, 22718, 22699, 22705)
+    step(s, "09:55", 22704, 22716, 22703, 22715, "A", no_pe)  # reclaimed
+    out = step(s, "10:00", 22715, 22718, 22699, 22705, "A", no_pe)
     assert texts(out, "skip") == ["Range CE at S1 blocked: 1 range trade at S1 already today (max 1 per level). 10:00 "
                                   "candle O 22,715 H 22,718 L 22,699 C 22,705: low 22,699 touched S1 22,700, closed back "
                                   "above"]
@@ -119,12 +122,13 @@ def test_range_toi_option_needs_trending_oi_with_the_trade(monkeypatch):
 
 
 @pytest.mark.parametrize("variant", ["A", "B", "C"])
-def test_proposal_arm_on_stop_candle(monkeypatch, variant):
+def test_a_break_on_the_candle_that_stops_the_trade_still_arms_its_setup(monkeypatch, variant):
+    monkeypatch.setattr(cfg, "ARM_ON_STOP_CANDLE", False)  # the rule before 27-Oct: ignored
     s = state()
     step(s, "09:35", 22720, 22725, 22695, 22710, variant)
     out = step(s, "09:40", 22710, 22712, 22675, 22680, variant)
-    assert "break ignored (position open)" in texts(out, "skip")[0]  # live rule
-    monkeypatch.setattr(cfg, "ARM_ON_STOP_CANDLE", True)
+    assert "break ignored (position open)" in texts(out, "skip")[0]
+    monkeypatch.setattr(cfg, "ARM_ON_STOP_CANDLE", True)  # live since 27-Oct
     s = state()
     step(s, "09:35", 22720, 22725, 22695, 22710, variant)
     out = step(s, "09:40", 22710, 22712, 22675, 22680, variant)

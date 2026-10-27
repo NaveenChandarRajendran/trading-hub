@@ -36,11 +36,11 @@ LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
 
 # Rule sets for comparisons (algo_config names -> values); "live" = algo_config as it is. Replay only, never live.
 RULE_SETS = {
-    "before-27oct": {"RANGE_BLOCK_BROKEN": False, "RANGE_TRADES_PER_LEVEL": None},  # before the broken-level rule
+    "before-27oct": {"RANGE_BLOCK_BROKEN": False, "RANGE_TRADES_PER_LEVEL": None,  # the rules before 27-Oct
+                     "ARM_ON_STOP_CANDLE": False},
     "live": {},
     "stop50": {"STOP_BUFFER": {**cfg.STOP_BUFFER, "BANKNIFTY": 50}},  # BANKNIFTY spot stop 50 points beyond the level
     "range-toi20": {"RANGE_TOI_WITH_MIN": 20.0},  # range needs Trending OI >= 20 % in its direction
-    "arm-on-stop": {"ARM_ON_STOP_CANDLE": True},  # proposal: a break on the stop-out candle still arms its setup
 }
 
 

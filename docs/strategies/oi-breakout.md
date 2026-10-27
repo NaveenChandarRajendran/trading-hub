@@ -2,7 +2,7 @@
 
 Status: approved by Naveen 23-Oct-2026 (first live paper day 23-Oct); broken-level rule and setup priority added
 27-Oct-2026. This file is the single written source of the rules: the code follows it, and every rule change updates it.
-Status line of each rule: **live** unless marked *replay option* or *proposal*. Code: `backend/algo_logic.py` (rules),
+Every rule here is **live** unless it is listed under "Replay options". Code: `backend/algo_logic.py` (rules),
 `backend/algo_service.py` (runner), every number in `backend/algo_config.py`. PAPER TRADING ONLY: orders go to the
 paper engine's "Algo" account (₹1,00,000); there is no code path to Dhan's order APIs.
 
@@ -72,7 +72,8 @@ Buffer: NIFTY 10, BANKNIFTY 25 points.
   not used for range.
 - Example, 27-Oct BANKNIFTY (S1 54,500): trade 1 Range CE at 09:40, stopped at 10:25 by a close at 54,428 (below
   54,475), which also broke S1. The 10:40 candle came back up to 54,517 and closed 54,507: before this rule it bought a
-  CE again (trade 2, stopped at 11:00); now it is blocked.
+  CE again (trade 2, stopped at 11:00). Now S1 belongs to the Breakdown PE armed at 10:25 (B, C, D), which checks the
+  retests as pullbacks; A (no setup: the filters failed at 10:25) logs "Range CE at S1 blocked: S1 broken at 10:25".
 
 ## Rule variants (`RULE_VARIANT` in algo_config.py, env `ALGO_VARIANT`; live **B** since 26-Oct-2026)
 The live variant places paper orders. The other three run as **shadows** on the same live candles and filter values:
@@ -92,22 +93,24 @@ the result is measured in index points. 23-Oct ran A live (before shadows existe
 - **Retest log** (B, C, D and A): a candle that comes back within the buffer of an armed setup's level but closes on
   the wrong side of it (CE: at or below R1, PE: at or above S1) is neither a pullback nor a cancel; it is logged as
   "Breakdown PE retest at 10:40 not a pullback: … (a pullback closes below S1)". Log only, no rule change.
-- **A break while a position is open** (A, B, C): ignored ("break ignored (position open)"), even when that candle's
-  close also stops the open trade. *Proposal, not live (27-Oct review, point 2):* arm the setup when the break comes on
-  the very candle that stops the open trade (`ARM_ON_STOP_CANDLE`), so the retests after it are checked as pullbacks.
-  Waiting for Naveen's decision.
+- **A break while a position is open** (A, B, C): ignored ("break ignored (position open)"). **Except** when the
+  same candle's close also stops the open trade (27-Oct-2026, `ARM_ON_STOP_CANDLE`): the trade is closing, so the
+  broken level becomes a breakout / breakdown setup as usual (B, C: armed; A: armed if the filters pass on that
+  candle), and the retests after it are checked as pullbacks. 27-Oct BANKNIFTY: the 10:25 close at 54,428 stopped
+  the Range CE and broke S1, so the Breakdown PE is armed at 10:25 (before this rule it was ignored).
 
 ## Replay options (not live; for comparisons over more days)
 Set only by `algo_replay.RULE_SETS` (`--rules` in `algo_replay.py`); the live values in `algo_config.py` stay as above.
 - `stop50`: BANKNIFTY spot stop 50 points beyond the level instead of 25 (the break / pullback buffer stays 25).
 - `range-toi20`: a range trade also needs Trending OI ≥ 20 % in its direction (Bullish for the CE, Bearish for the PE).
-- `arm-on-stop`: the point-2 proposal above.
-- `before-27oct`: the rules before the broken-level rule (no level state, no per-level limit), for before / after.
+- `before-27oct`: the rules before 27-Oct (no level state, no per-level limit, a break on the stop-out candle
+  ignored), for before / after comparisons.
+Both `stop50` and `range-toi20` stay off (Naveen, 27-Oct): decided after more days.
 
 ## Real-day regression tests
 `backend/test_algo_scenarios.py` replays stored days (`backend/fixtures/scenarios/<day>.json`: locked levels, candles,
 RSI and the filter values the live algo logged) and asserts what the system must do: 23-Oct (NIFTY 09:35 break skipped
-by A; B's 09:50 pullback), 26-Oct (no entries), 27-Oct (trade 1 taken, trade 2 blocked, the retest checked as a
+by A; B skips the 09:50 pullback on Trending OI Bullish 30.7 %), 26-Oct (no entries), 27-Oct (trade 1 taken, trade 2 blocked, the retest checked as a
 Breakdown PE pullback). Every rule change must keep them passing; a new day that shows a mistake gets its own test
 (`python algo_replay.py --date <day> --export-scenario`, then a test).
 
