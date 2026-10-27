@@ -3,7 +3,7 @@
 // candles, RSI 14 in its own pane with the rule zones (put 30-45, call 55-70). Colours come from the design tokens and
 // follow the light / dark switch without a reload; level lines are updated in place (LevelLines); indicators update
 // live with the last candle. The indicator maths is shared with the signal watcher (logic/indicators.ts).
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { wheelOnClick } from '../../shared/chartWheel';
 import {
   CandlestickSeries, ColorType, HistogramSeries, LineSeries, LineStyle, TickMarkType, createChart, createSeriesMarkers,
@@ -75,6 +75,25 @@ const readView = (k: string): { from: number; to: number } | null => {
     return null;
   }
 };
+// saved candle width (owner 27-Oct-2026: "a save option so the candle stretching is not done every time"): one per
+// index, used by every strategy, interval and reload, scrolled to the newest candle. Wins over the automatic view.
+const ZOOM_PREFIX = 'dashboard.zoom.';
+const readZoom = (k: string): number | null => {
+  try {
+    const v = Number(localStorage.getItem(ZOOM_PREFIX + k));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+};
+const writeZoom = (k: string, barSpacing: number | null) => {
+  try {
+    if (barSpacing) localStorage.setItem(ZOOM_PREFIX + k, String(barSpacing));
+    else localStorage.removeItem(ZOOM_PREFIX + k);
+  } catch {
+    /* storage blocked */
+  }
+};
 const writeView = (k: string, v: { from: number; to: number } | null) => {
   try {
     if (v) localStorage.setItem(VIEW_PREFIX + k, JSON.stringify(v));
@@ -114,7 +133,7 @@ function indicatorData(bars: Candle[], p: ChartParams) {
 type Data = ReturnType<typeof indicatorData>;
 type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, marks = [] }: {
+export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, zoomKey, marks = [] }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
@@ -124,6 +143,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   delta?: { time: number; cumulative: number }[]; // estimated cumulative delta at each candle's end (own pane under RSI)
   params?: ChartParams; // EMA and Bollinger settings of the selected strategy
   viewKey?: string; // zoom is saved under this key and restored when the chart comes back
+  zoomKey?: string; // the index: "Save zoom" keeps the candle width under this key
   marks?: TradeMark[];
 }) {
   const { mode } = useTheme();
@@ -148,6 +168,24 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   const viewRef = useRef(viewKey);
   viewRef.current = viewKey;
   const restoring = useRef(false);
+  const [savedZoom, setSavedZoom] = useState<number | null>(() => (zoomKey ? readZoom(zoomKey) : null));
+  const [zoomNote, setZoomNote] = useState('');
+  useEffect(() => setSavedZoom(zoomKey ? readZoom(zoomKey) : null), [zoomKey]);
+  const saveZoom = () => {
+    const ts = chart.current?.timeScale();
+    if (!ts || !zoomKey) return;
+    const spacing = ts.options().barSpacing;
+    writeZoom(zoomKey, spacing);
+    setSavedZoom(spacing);
+    setZoomNote('Zoom saved: charts of this index open like this from now on');
+    window.setTimeout(() => setZoomNote(''), 3000);
+  };
+  const clearZoom = () => {
+    if (!zoomKey) return;
+    writeZoom(zoomKey, null);
+    setSavedZoom(null);
+    chart.current?.timeScale().fitContent();
+  };
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   /** Whole indicator series (after history loads or an indicator is switched on). */
@@ -362,10 +400,14 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     }
     shown.current = { bars, key: resetKey };
     if (bars.length && fitted.current !== resetKey) {
+      const zoom = zoomKey ? readZoom(zoomKey) : null;
       const saved = viewKey ? readView(viewKey) : null;
       const ts = chart.current?.timeScale();
       restoring.current = true;
-      if (saved) ts?.setVisibleLogicalRange({ from: bars.length - 1 - saved.from, to: bars.length - 1 - saved.to });
+      if (zoom) {
+        ts?.applyOptions({ barSpacing: zoom });
+        ts?.scrollToRealTime();
+      } else if (saved) ts?.setVisibleLogicalRange({ from: bars.length - 1 - saved.from, to: bars.length - 1 - saved.to });
       else ts?.fitContent();
       restoring.current = false;
       fitted.current = resetKey;
@@ -408,7 +450,14 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   return (
     <div className="chart-wrap">
       <div className="db-chart" ref={box} />
-      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel · double-click to show the whole day</span>
+      {zoomKey && (
+        <span className="db-zoom">
+          {zoomNote ? <span className="db-zoom-note">{zoomNote}</span> : savedZoom && <span className="db-zoom-note">Saved zoom in use</span>}
+          <button type="button" className="btn" onClick={saveZoom} title="Keep this candle width for every chart of this index">💾 Save zoom</button>
+          {savedZoom && <button type="button" className="btn ghost" onClick={clearZoom} title="Forget the saved zoom and show the whole day">Clear</button>}
+        </span>
+      )}
+      <span className="chart-wheel-hint">Click the chart to zoom with the mouse wheel · double-click to show the whole day · 💾 Save zoom keeps it</span>
     </div>
   );
 }

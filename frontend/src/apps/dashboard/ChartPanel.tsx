@@ -96,7 +96,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
         <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
       ) : (
         <PriceChart bars={d.bars} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
-          resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`}
+          resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`} zoomKey={d.isDaily ? undefined : d.symbol}
           indicators={shown} params={params} marks={marks}
           volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
       )}

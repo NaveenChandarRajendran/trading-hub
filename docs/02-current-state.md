@@ -29,6 +29,8 @@ _Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy
   (candles only: no indicators, OI levels, pivot or trade marks; own toggles behind "Add my own indicators", saved as
   `dashboard.plainIndicators`, all off by default). Clicking a strategy on the board adds only its indicators, levels and
   trades; "✕ Back to plain chart" returns. The strategy choice is no longer remembered across reloads.
+  **💾 Save zoom** on each chart keeps its candle width per index (`dashboard.zoom.<SYMBOL>`), used for every strategy,
+  interval and reload, scrolled to the newest candle; it wins over the automatic per-view zoom; "Clear" forgets it.
 - Charts & Signals: the Interval picker always shows (it hid when a strategy was picked; a strategy opens at its own
   candle size, "(rule)" marks it); the manual positions box and "Today's paper trades" table moved to Today (a link card
   with the day's P&L replaces them; Day P&L / Open trades in the strip link to Today); "Paper trading" header is now
