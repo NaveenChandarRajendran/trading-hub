@@ -29,6 +29,10 @@ completed candle to CLOSE beyond the Bollinger band (call: >= upper, put: <= low
   message). No file = alerts off. Sends on a background thread; a failed send is logged and raised once a day as an app
   alert, never blocks the trader. `GET /api/notify/status`, `POST /api/notify/test` (Today page "Phone alerts ON · test").
   Wiring: `main.build_signals` (on_order hook, `svc.phone`, `svc.rows_today`), `sig_service._end_of_day`.
+  Hourly updates (owner 27-Oct-2026) at 10:15, 11:15, 12:15, 13:15, 14:15 (`sig_service._hourly`, `notify.hourly_text`):
+  market line, each rule's result so far (won/lost with exit reason, in a trade with live P&L, "came close N of M" from
+  `_track_near` = the hour's best skipped setup, or no setup), and the owner's own trades. The 15:31 day summary also has
+  the market line and, for a rule with no trade, the day's closest call.
   Today page knows "Rebound Call" (slot `reboundCall`, journal strategy name "Rebound Call"); an unknown strategy name still
   gets its own row.
 - Charts & Signals charts (owner 27-Oct-2026: "the current one is confusing"): the page always opens on a **plain chart**

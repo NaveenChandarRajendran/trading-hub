@@ -99,3 +99,62 @@ def test_day_summary_goes_to_the_phone_after_the_close(tmp_path):
     svc._end_of_day(now)
     svc._end_of_day(now)  # once a day
     assert len(sent) == 1 and sent[0].startswith("📋 Day summary 27 Oct · −₹286") and "🔴 Trend Rules: −₹286" in sent[0]
+
+
+ORDER = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Manual"]
+MARKET = [("Nifty", 22718.4, 22809.0), ("Bank Nifty", 54347.0, 54510.0)]
+
+
+def test_hourly_update_matches_the_owners_sample():
+    rows = [
+        {"id": "d2-1", "strategy": "Dharani Rules", "status": "closed", "netPnl": 901.6, "exitReason": "Target",
+         "instrument": "BANKNIFTY 54500 PUT"},
+        {"id": "th-1", "strategy": "Trend Rules", "status": "open", "netPnl": None, "instrument": "NIFTY 22800 CALL"},
+        {"id": "st-1", "strategy": "SuperTrend Rules", "status": "closed", "netPnl": -1513, "exitReason": "Stop loss",
+         "instrument": "NIFTY 22800 CALL"},
+        {"id": "manual-1", "strategy": "Manual", "status": "open", "netPnl": None, "instrument": "NIFTY 22700 PUT"},
+        {"id": "manual-2", "strategy": "Manual", "status": "open", "netPnl": None, "instrument": "BANKNIFTY 54400 PUT"},
+    ]
+    near = {"4 Pillar Rules": {"met": 4, "total": 5, "symbol": "NIFTY", "side": "PE", "time": "10:40", "missing": ["PCR"]}}
+    text = notify.hourly_text("11:15", rows, ORDER, MARKET, near, {"th-1": -286.0}, 612.0)
+    assert text.splitlines() == [
+        "⏰ 11:15 update · Today so far: −₹285",
+        "Market: Nifty 22,718 (−0.4%) · Bank Nifty 54,347 (−0.3%)",
+        "🟡 4 Pillar Rules: came close, 4 of 5 on Nifty put at 10:40 (missing: PCR)",
+        "🔴 SuperTrend Rules: lost −₹1,513 (Stop loss, NIFTY 22800 CALL)",
+        "🟢 Dharani Rules: won +₹902 (Target, BANKNIFTY 54500 PUT)",
+        "🔵 Trend Rules: in trade NIFTY 22800 CALL, −₹286 now",
+        "⚪ Rebound Call: no setup this hour",
+        "👤 My trades: 2 open, +₹612 now",
+    ]
+
+
+def test_day_summary_shows_market_and_closest_call():
+    near = {"4 Pillar Rules": {"met": 4, "total": 5, "symbol": "BANKNIFTY", "side": "CE", "time": "11:40", "missing": ["VWAP"]}}
+    rows = [{"strategy": "Trend Rules", "status": "closed", "netPnl": -286, "instrument": "X"}]
+    lines = notify.summary_text("27 Oct", rows, ORDER, MARKET, near).splitlines()
+    assert lines[1] == "Market: Nifty 22,718 (−0.4%) · Bank Nifty 54,347 (−0.3%)"
+    assert lines[2] == "⚪ 4 Pillar Rules: no trade (closest: 4 of 5 on Bank Nifty call at 11:40 (missing: VWAP))"
+
+
+def test_hourly_updates_once_an_hour_from_10_15_to_14_15(tmp_path):
+    from datetime import datetime
+
+    import sig_service
+    clock = {"now": datetime(2026, 10, 27, 10, 10, 35, tzinfo=sig_service.IST)}
+    svc = sig_service.SignalService({"logDir": str(tmp_path)}, None, None, clock=lambda: clock["now"])
+    sent = []
+    svc.phone = type("P", (), {"send": lambda self, t: sent.append(t)})()
+    svc.heartbeat = clock["now"]
+    rule = {"rule": "fourPillar", "go": False, "side": "PE", "blocked": [], "checks": [
+        {"id": "trigger", "label": "Trigger candle", "state": sig_service.PASS},
+        {"id": "pcr", "label": "PCR", "state": "fail"}]}
+    for hm, expect in (((10, 10), 0), ((10, 15), 1), ((10, 50), 1), ((11, 15), 2), ((14, 15), 3), ((15, 15), 3)):
+        clock["now"] = clock["now"].replace(hour=hm[0], minute=hm[1])
+        if hm == (10, 10):
+            svc._track_near("NIFTY", {"fourPillar": rule})
+        svc._hourly(clock["now"])
+        assert len(sent) == expect, hm
+    assert "🟡 4 Pillar Rules: came close, 1 of 2 on Nifty put at 10:10 (missing: PCR)" in sent[0]
+    assert "⚪ 4 Pillar Rules: no setup this hour" in sent[1]  # the hour's near miss is reported once
+    assert "4 Pillar Rules" in svc._near["all"]  # the day summary still knows it

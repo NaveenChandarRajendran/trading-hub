@@ -61,24 +61,106 @@ def exit_text(t, day_pnl=None):
     return line
 
 
-def summary_text(day, rows, order):
-    """Day summary from the journal's trade rows (all accounts, Manual too). order: strategy names in board order."""
+def market_line(market):
+    """market: [(name, spot, previous close)] -> "Market: Nifty 22,718 (−0.4%) · Bank Nifty 54,347 (−0.3%)"."""
+    parts = []
+    for name, spot, prev in market or ():
+        if not spot:
+            continue
+        pct = f" ({'+' if spot >= prev else '−'}{abs(spot / prev - 1) * 100:.1f}%)" if prev else ""
+        parts.append(f"{name} {spot:,.0f}{pct}")
+    return "Market: " + " · ".join(parts) if parts else None
+
+
+def near_text(n):
+    """A rule's closest call that did not trade: {"met", "total", "symbol", "side", "time", "missing"}."""
+    side = {"CE": "call", "PE": "put"}.get(n.get("side"), (n.get("side") or "").lower())
+    where = f" on {'Bank Nifty' if n.get('symbol') == 'BANKNIFTY' else 'Nifty'}{' ' + side if side else ''}"
+    missing = f" (missing: {', '.join(n['missing'])})" if n.get("missing") else ""
+    return f"{n['met']} of {n['total']}{where} at {n['time']}{missing}"
+
+
+def _won_lost(mine):
+    net = sum(r.get("netPnl") or 0 for r in mine)
+    won = sum(1 for r in mine if (r.get("netPnl") or 0) > 0)
+    return net, won, "🟢" if net > 0 else "🔴" if net < 0 else "⚪"
+
+
+def _names(rows, order):
+    return list(order) + sorted({r["strategy"] for r in rows} - set(order))  # a rule not in the list still shows
+
+
+def summary_text(day, rows, order, market=None, near=None):
+    """Day summary from the journal's trade rows (all accounts, Manual too). order: strategy names in board order.
+    market: see market_line. near: strategy name -> the day's closest call (near_text), shown for a rule with no trade."""
     closed = [r for r in rows if r["status"] == "closed"]
     still_open = [r for r in rows if r["status"] == "open"]
     total = sum(r.get("netPnl") or 0 for r in closed)
     lines = [f"📋 Day summary {day} · {rupees(total)}"]
-    names = list(order) + sorted({r["strategy"] for r in rows} - set(order))  # a rule not in the list still shows
-    for name in names:
+    if market_line(market):
+        lines.append(market_line(market))
+    for name in _names(rows, order):
         mine = [r for r in closed if r["strategy"] == name]
         if not mine:
-            lines.append(f"🔵 {name}: still in a trade" if any(r["strategy"] == name for r in still_open) else f"⚪ {name}: no trade")
+            if any(r["strategy"] == name for r in still_open):
+                lines.append(f"🔵 {name}: still in a trade")
+            else:
+                close = (near or {}).get(name)
+                lines.append(f"⚪ {name}: no trade" + (f" (closest: {near_text(close)})" if close else ""))
             continue
-        net = sum(r.get("netPnl") or 0 for r in mine)
-        won = sum(1 for r in mine if (r.get("netPnl") or 0) > 0)
-        mark = "🟢" if net > 0 else "🔴" if net < 0 else "⚪"
+        net, won, mark = _won_lost(mine)
         lines.append(f"{mark} {name}: {rupees(net)} ({len(mine)} trade{'s' if len(mine) != 1 else ''}, {won} won)")
     if still_open:
         lines.append(f"⚠ Still open: {', '.join(r['instrument'] or '?' for r in still_open)}")
+    return "\n".join(lines)
+
+
+def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=None):
+    """Hourly update (owner 27-Oct-2026: "a short summary every hour, then the consolidated one at 3.30").
+    rows: the day's journal rows. live: open trade id -> P&L now. manual_live: open P&L of the owner's own trades.
+    near: strategy name -> this hour's closest call that did not trade (near_text)."""
+    live = live or {}
+    closed = [r for r in rows if r["status"] == "closed"]
+    still_open = [r for r in rows if r["status"] == "open"]
+    open_rule = sum(live.get(r["id"]) or 0 for r in still_open if r["strategy"] != "Manual")
+    total = sum(r.get("netPnl") or 0 for r in closed) + open_rule + (manual_live or 0)
+    lines = [f"⏰ {at} update · Today so far: {rupees(total)}"]
+    if market_line(market):
+        lines.append(market_line(market))
+    for name in _names(rows, order):
+        mine = [r for r in closed if r["strategy"] == name]
+        held = [r for r in still_open if r["strategy"] == name]
+        if name == "Manual":
+            if not mine and not held:
+                lines.append("👤 My trades: none")
+                continue
+            bits = []
+            if held:
+                bits.append(f"{len(held)} open, {rupees(manual_live)} now" if manual_live is not None else f"{len(held)} open")
+            if mine:
+                net, won, _ = _won_lost(mine)
+                bits.append(f"booked {rupees(net)} ({len(mine)} closed, {won} won)")
+            lines.append("👤 My trades: " + "; ".join(bits))
+            continue
+        booked = ""
+        if mine:
+            net, won, mark = _won_lost(mine)
+            if len(mine) == 1:
+                r = mine[0]
+                booked = f"{'won' if net > 0 else 'lost' if net < 0 else 'flat'} {rupees(net)} ({r.get('exitReason') or 'exit'}, {r['instrument']})"
+            else:
+                booked = f"{rupees(net)} ({len(mine)} trades, {won} won)"
+        if held:
+            r = held[0]
+            pnl = live.get(r["id"])
+            text = f"🔵 {name}: in trade {r['instrument']}" + (f", {rupees(pnl)} now" if pnl is not None else "")
+            lines.append(text + (f"; earlier {booked}" if booked else ""))
+        elif mine:
+            lines.append(f"{mark} {name}: {booked}")
+        elif (near or {}).get(name):
+            lines.append(f"🟡 {name}: came close, {near_text(near[name])}")
+        else:
+            lines.append(f"⚪ {name}: no setup this hour")
     return "\n".join(lines)
 
 

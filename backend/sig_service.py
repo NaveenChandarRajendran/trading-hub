@@ -150,6 +150,8 @@ class SignalService:
         self._thread = None
         self.phone = None  # notify.Notifier (phone alerts), set by main.build_signals
         self.rows_today = lambda: []  # every trade of the day (journal rows, all accounts), for the phone summary
+        self._near = {"day": None, "hour": {}, "all": {}}  # closest calls that did not trade, for the phone updates
+        self._hours_sent = set()  # (date, hour) of the hourly phone updates already sent
 
     # ---------- alerts ----------
     def alert(self, kind, message):
@@ -232,6 +234,8 @@ class SignalService:
             rec = self.last.get(symbol)
             if rec and rec.get("results") is not None:
                 rec["results"][RB] = r
+        if not st["tradedToday"]:
+            self._track_near(symbol, {RB: r})
         action = ""
         if r["grade"] and not st["tradedToday"]:
             self._rebound_day[symbol] = today  # the day's first signal, taken or not
@@ -285,6 +289,7 @@ class SignalService:
                 rec = self.last.get(symbol)
                 if rec and rec.get("results") is not None:
                     rec["results"]["dharaniV2"], rec["v2"] = r, st
+            self._track_near(symbol, {"dharaniV2": r})
             action = ""
             if self.trader:
                 self.trader.on_candle_v2(symbol, st)
@@ -372,9 +377,64 @@ class SignalService:
                         setup = skipped_setup(r)
                         if setup and not st["positions"].get(key):
                             self.trader.add_skip(r, st, *setup)
+            self._track_near(symbol, {k: rec["results"].get(k) for k in ("tradingHub", "fourPillar", "superTrend")})
             self.write_snapshot(symbol, rec, "5min", action.strip("; "))
             if symbol in self.rebound_symbols():
                 self.run_rebound(symbol)
+
+    def _track_near(self, symbol, results):
+        """Keep each rule's closest call that did not trade (a skipped setup, as the shadow log counts it), for this
+        hour and for the day: "came close, 4 of 5 on Nifty put (missing: PCR)" in the phone updates."""
+        import journal
+        now = self.clock()
+        with self.lock:
+            if self._near["day"] != now.date():
+                self._near = {"day": now.date(), "hour": {}, "all": {}}
+            for key, r in results.items():
+                try:
+                    if not r or r.get("go") or skipped_setup(r) is None:
+                        continue
+                except Exception:
+                    continue
+                counted = [c for c in r["checks"] if not c.get("exempt")]
+                met, total = (r["score"], r["total"]) if r.get("total") else (sum(c["state"] == PASS for c in counted), len(counted))
+                n = {"met": met, "total": total, "symbol": symbol, "side": r.get("side"), "time": now.strftime("%H:%M"),
+                     "missing": [c["label"] for c in counted if c["state"] != PASS] or list(r.get("blocked") or [])}
+                name = journal.STRATEGY.get(key, key)
+                for bucket in (self._near["hour"], self._near["all"]):
+                    old = bucket.get(name)
+                    if old is None or met / max(total, 1) > old["met"] / max(old["total"], 1):
+                        bucket[name] = n
+
+    def _market(self):
+        out = []
+        for sym, name in (("NIFTY", "Nifty"), ("BANKNIFTY", "Bank Nifty")):
+            st = (self.last.get(sym) or {}).get("state") or {}
+            out.append((name, st.get("spot"), (st.get("prev") or {}).get("close")))
+        return out
+
+    def _hourly(self, now):
+        """Phone update at 10:15, 11:15, 12:15, 13:15 and 14:15 (owner 27-Oct-2026); the day summary follows at 15:31."""
+        slot = now.hour if now.minute >= 15 else now.hour - 1
+        if self.phone is None or not 10 <= slot <= 14 or (now.date(), slot) in self._hours_sent or not self._traded_today(now):
+            return
+        self._hours_sent.add((now.date(), slot))
+        import journal
+        import notify
+        try:
+            live = {}
+            if self.trader:
+                live = {t["id"]: t.get("pnl") for t in self.trader.status().get("open", [])}
+            manual_live = None
+            acc = self.trader.accounts.get("manual") if self.trader else None
+            if acc:
+                manual_live = round(sum(p.get("unrealized") or 0 for p in acc.paper.positions() if p["open_qty"] > 0), 2)
+            with self.lock:
+                near, self._near["hour"] = dict(self._near["hour"]), {}
+            self.phone.send(notify.hourly_text(f"{now:%H:%M}", self.rows_today(), journal.STRATEGIES, self._market(),
+                                               near, live, manual_live))
+        except Exception:
+            log.exception("hourly phone update failed")
 
     def _skip_reason(self, r):
         if r["blocked"] and r.get("grade"):
@@ -575,7 +635,8 @@ class SignalService:
                 import journal
                 import notify
                 try:
-                    self.phone.send(notify.summary_text(f"{now:%d %b}", self.rows_today(), journal.STRATEGIES))
+                    self.phone.send(notify.summary_text(f"{now:%d %b}", self.rows_today(), journal.STRATEGIES, self._market(),
+                                                        dict(self._near["all"]) if self._near["day"] == now.date() else {}))
                 except Exception:
                     log.exception("phone summary failed")
 
@@ -622,6 +683,7 @@ class SignalService:
                     if self.v2_symbols() and now.minute % D2_INTERVAL == 0:
                         self.run_v2()
                     crashes = 0
+                    self._hourly(now)
                 self._end_of_day(now)
                 if hm == (9, 0):
                     self.check_key_age()
