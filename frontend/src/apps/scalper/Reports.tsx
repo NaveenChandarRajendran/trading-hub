@@ -29,13 +29,13 @@ function Capital({ sc, onNotice }: { sc: Scalper; onNotice: Notify }) {
     }
   };
   const fresh = () => {
-    if (window.confirm('Start the Scalper account fresh? The current one is archived (its history is kept) and the reports start from zero.')) {
-      void run(() => api.reset(), 'New Scalper account started.');
+    if (window.confirm('Start a new capital period for this strategy? The old one’s history is kept in its P&L; these reports start from zero.')) {
+      void run(() => api.reset(), 'New capital period started.');
     }
   };
   return (
     <section className="card">
-      <div className="card-head"><h3 className="card-title">Scalper account</h3><span className="muted">Capital {rupees(capital, 0)}</span></div>
+      <div className="card-head"><h3 className="card-title">{sc.account?.strategy?.name ?? 'Strategy'}: capital</h3><span className="muted">Capital {rupees(capital, 0)}</span></div>
       <div className="toolbar">
         <div className="field">Capital
           <div className="sc-presets">
@@ -54,7 +54,7 @@ function Capital({ sc, onNotice }: { sc: Scalper; onNotice: Notify }) {
         </label>
         <div className="toolbar-end"><button className="btn" disabled={busy} onClick={fresh}>Fresh start</button></div>
       </div>
-      <p className="muted sc-small">Changing capital or starting fresh needs no open positions or pending orders. Manual and Algo accounts are not affected.</p>
+      <p className="muted sc-small">Capital of the strategy you trade into (shared with Paper Trading). Changing it or starting fresh needs no open positions or pending orders; your other strategies are not affected.</p>
     </section>
   );
 }

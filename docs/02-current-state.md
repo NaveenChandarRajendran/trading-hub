@@ -32,7 +32,10 @@ pt_trades / pt_positions / pt_order_levels / scalper_daily_summary / algo_events
 writes fill it from the account), `strategies.py` + `/api/strategies*` (owner-only, 404 for others; set / reset
 capital, archive need a flat book), `scripts/migrate_users_strategies.py` (backup, one transaction, idempotent,
 P&L check; rehearsed on a copy of the live tables, NOT run on the live DB yet). Tests: `test_strategies.py` (rules +
-isolation, JSON and Postgres), `test_migration.py`. Next: step 3 (engine, WebSocket, algo per strategy).
+isolation, JSON and Postgres), `test_migration.py`. Steps 3-4 done (28-Oct): one paper engine per strategy shared by Paper Trading and Power Scalper, owner-only
+WebSocket events, algo pages only for naveen, "Trading into" selector in both tools, basic Strategies page (cards,
+create, archive). Fresh start instead of a data migration (`strategies.bootstrap`; old trade data deleted 27-Oct after
+a backup). Next: strategy view (tabs, notes, edit, reset, exit all) and Compare.
 
 ## Dashboard (branch `feature/dashboard`, ADR 0003)
 Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backend (`python main.py`) and open it.

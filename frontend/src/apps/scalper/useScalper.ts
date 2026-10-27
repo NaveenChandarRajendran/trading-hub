@@ -2,10 +2,11 @@
 // and volume) plus the account over REST. Live candles are collected and applied at most every CHART_FLUSH_MS.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../shared/api';
+import { withStrategy } from '../../shared/strategy/api';
 import type { Candle, LiveCandle } from '../../shared/chart/candles';
 import { PaperFeed, keyOf, type ConnState, type InstrumentKey } from '../paper-trade/logic/feed';
 import { ACCOUNT_REFRESH_MS, CHART_FLUSH_MS, SCALPER_WS } from './config/settings';
-import { api, type Account, type Funds, type Meta, type Order, type Position, type ScalperTick } from './logic/api';
+import { api, scalperStrategy, type Account, type Funds, type Meta, type Order, type Position, type ScalperTick } from './logic/api';
 import { emptySeries, withHistory, withLiveCandle, withLiveVolume, type MinuteSeries } from './logic/series';
 
 export interface ScalperState {
@@ -61,7 +62,8 @@ export function useScalper() {
         return { ...p, series };
       });
     }, CHART_FLUSH_MS);
-    const feed = new PaperFeed(SCALPER_WS, {
+    const strategyId = scalperStrategy.id;
+    const feed = new PaperFeed(withStrategy(SCALPER_WS, strategyId), {
       onState: (conn) => setS((p) => ({ ...p, conn })),
       onTicks: (ticks) => setS((p) => ({ ...p, ticks: new Map([...p.ticks, ...ticks]), lastTickAt: Date.now() })),
       onMessage: (m) => {
@@ -73,6 +75,8 @@ export function useScalper() {
           live.current.push({ kind: 'volume', key: keyOf(m.data.segment, m.data.securityId), v: m.data });
           return;
         }
+        const owner = (m as { strategyId?: number | null }).strategyId;
+        if (owner != null && owner !== strategyId) return; // another of the user's strategies
         setS((p) => {
           switch (m.type) {
             case 'snapshot':

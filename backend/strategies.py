@@ -197,7 +197,7 @@ def bootstrap(pg, capital, now, log=print):
             cur.execute("INSERT INTO th_strategies (user_id, name, capital, kind, created_at, updated_at) "
                         "VALUES (%s, %s, %s, 'algo', %s, %s) RETURNING id", (uid, ALGO_NAME, capital, now, now))
             algo_sid = cur.fetchone()[0]
-            log(f"Created the algo's strategy “{ALGO_NAME}” for {OWNER[0]}")
+            log(f"Created the algo's strategy \"{ALGO_NAME}\" for {OWNER[0]}")
         else:
             algo_sid = row[0]
         cur.execute("SELECT id FROM pt_accounts WHERE strategy_id=%s AND archived_at IS NULL", (algo_sid,))

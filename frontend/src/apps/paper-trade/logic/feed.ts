@@ -8,8 +8,10 @@ import type { Funds, Meta, Order, Position, Tick, Trade } from './api';
 export type InstrumentKey = `${string}:${number}`; // "NSE_FNO:52175", "IDX_I:13"
 export const keyOf = (segment: string, securityId: number): InstrumentKey => `${segment}:${securityId}`;
 
+// Account events (funds, order, trade, position) carry the strategy they belong to; the backend sends only the
+// signed-in user's own, and a page keeps only those of the strategy it trades into.
 export type ServerMessage =
-  | { type: 'snapshot'; meta: Meta; funds: Funds; positions: Position[]; orders: Order[] }
+  | { type: 'snapshot'; strategyId: number | null; meta: Meta; funds: Funds; positions: Position[]; orders: Order[] }
   | { type: 'status'; data: Meta }
   | { type: 'funds'; data: Funds }
   | { type: 'order'; data: Order }

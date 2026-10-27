@@ -8,6 +8,10 @@ strategies_api.py - the signed-in user's strategies (strategies.py has the rules
     PUT   /api/strategies/{id}/capital {capital}     set the open period's capital (flat book)
     POST  /api/strategies/{id}/reset {capital?}      new capital period, history kept (flat book)
     POST  /api/strategies/{id}/archive | /unarchive
+    GET   /api/strategies/pick?tool=paper|scalper  {"strategyId"}: the tool's last pick, if still tradable, else the
+                                                 newest active manual strategy, else null
+    PUT   /api/strategies/pick {tool, strategyId}  remember a tool's pick (th_user_prefs; must be tradable)
+    GET   /api/strategies/summary?archived=false {"rows": [{id, booked, unbooked, total, open, lastDay}]} card numbers
 """
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -35,7 +39,16 @@ class ResetBody(BaseModel):
     capital: float | None = None
 
 
-def register(app, strategies):
+class PickBody(BaseModel):
+    tool: str
+    strategyId: int
+
+
+TOOLS = ("paper", "scalper")
+
+
+def register(app, strategies, live=None):
+    """live(strategy) -> (unbooked P&L, open positions) of today's engine (paper books, the algo's broker)."""
     def run(fn, *args, **kw):
         try:
             return {"strategy": public(fn(*args, **kw))}
@@ -43,6 +56,52 @@ def register(app, strategies):
             raise HTTPException(404, "Strategy not found.") from None
         except Refused as e:
             raise HTTPException(e.status, e.message) from None
+
+    def tool_of(tool):
+        if tool not in TOOLS:
+            raise HTTPException(400, f"tool must be one of {', '.join(TOOLS)}")
+        return f"trading_into.{tool}"
+
+    # registered before /api/strategies/{sid}, so "pick" / "summary" are never read as an id
+    @app.get("/api/strategies/pick")
+    def get_pick(request: Request, tool: str = ""):
+        user, key = request.state.user, tool_of(tool)
+        saved = strategies.store.user_pref(user.id, key)
+        for sid in ([saved] if saved else []):
+            try:
+                return {"strategyId": strategies.tradable(user, sid)["id"]}
+            except (NotFound, Refused):
+                pass
+        active = [s for s in strategies.list(user) if s["kind"] == "manual"]
+        return {"strategyId": active[0]["id"] if active else None}
+
+    @app.put("/api/strategies/pick")
+    def put_pick(body: PickBody, request: Request):
+        key = tool_of(body.tool)
+        try:
+            st = strategies.tradable(request.state.user, body.strategyId)
+        except NotFound:
+            raise HTTPException(404, "Strategy not found.") from None
+        except Refused as e:
+            raise HTTPException(e.status, e.message) from None
+        strategies.store.set_user_pref(request.state.user.id, key, st["id"])
+        return {"strategyId": st["id"]}
+
+    @app.get("/api/strategies/summary")
+    def summary(request: Request, archived: bool = False):
+        """Booked = realized - charges of every capital period so far; unbooked = today's open P&L; open = open
+        positions. Total = booked + unbooked."""
+        rows = []
+        accounts = strategies.store.accounts()
+        for st in strategies.list(request.state.user, archived):
+            accs = [a["id"] for a in accounts if a.get("strategy_id") == st["id"]]
+            days = [d for acc in accs for d in strategies.store.day_summary(acc, "2000-01-01", "2999-12-31")]
+            booked = round(sum(d["realized"] - d["charges"] for d in days), 2)
+            unbooked, open_ = live(st) if live and not st["archived_at"] else (0.0, 0)
+            rows.append({"id": st["id"], "booked": booked, "unbooked": round(unbooked, 2),
+                         "total": round(booked + unbooked, 2), "open": open_,
+                         "lastDay": max((d["date"] for d in days), default=None)})
+        return {"rows": rows}
 
     @app.get("/api/strategies")
     def list_strategies(request: Request, archived: bool = False):

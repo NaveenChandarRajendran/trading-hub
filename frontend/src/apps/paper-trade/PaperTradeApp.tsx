@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
+import { NoStrategy, TradingIntoSelect, useTradingInto, type TradingInto } from '../../shared/strategy/TradingInto';
 import { Alert, Pill, Segmented, Stat, Status } from '../../shared/ui';
 import { SYMBOLS } from '../option-strategy/config/expiries';
 import { STALE_AFTER_MS } from './config/settings';
 import { load, save } from './storage';
 import { longDate, rupees, signedRupees, toneOf } from './format';
-import { api, type Chain } from './logic/api';
+import { api, paperStrategy, type Chain } from './logic/api';
 import { unseenShifts } from './logic/levels';
 import { keyOf } from './logic/feed';
 import { OrderTicket, type TicketTarget } from './OrderTicket';
@@ -82,17 +83,25 @@ function Settings({ paper, onNotice }: { paper: Paper; onNotice: (k: 'info' | 'e
                 onClick={() => run(() => api.setCapital(Number(custom)), `Capital set to ${rupees(Number(custom), 0)}.`)}>Save</button>
             </span>
           </label>
-          <p className="muted pt-small">Changing capital needs no open positions or pending orders.</p>
+          <p className="muted pt-small">Capital of this strategy. Changing it needs no open positions or pending orders.</p>
           <button className="btn" disabled={busy}
-            onClick={() => confirm('Reset the paper account? The current one is archived (its history is kept) and a new one starts with the same capital.')
-              && run(() => api.reset(), 'New paper account started. The old one is archived.')}>Reset account</button>
+            onClick={() => confirm('Reset this strategy’s capital? A new capital period starts (the old one’s history is kept in its P&L).')
+              && run(() => api.reset(), 'New capital period started. The old one’s history is kept.')}>Reset capital</button>
         </div>
       )}
     </div>
   );
 }
 
+/** Every order from this page goes into the strategy picked in "Trading into"; switching it reloads the page. */
 export default function PaperTradeApp() {
+  const into = useTradingInto('paper');
+  if (!into.selected) return <div className="ds pt"><NoStrategy into={into} tool="Paper Trading" /></div>;
+  paperStrategy.id = into.selected.id; // before the page below makes its first request
+  return <PaperTradePage key={into.selected.id} into={into} />;
+}
+
+function PaperTradePage({ into }: { into: TradingInto }) {
   const paper = usePaper();
   const [view, setView] = useState<View>(() => (load('view') as View) || 'trade');
   const [symbol, setSymbol] = useState(() => load('symbol') || SYMBOLS[0].value);
@@ -155,6 +164,7 @@ export default function PaperTradeApp() {
     <div className="ds pt">
       <section className="card">
         <div className="toolbar">
+          <TradingIntoSelect into={into} />
           <label className="field">Index
             <select value={symbol} onChange={(e) => { setSymbol(e.target.value); setExpiry(''); }}>
               {SYMBOLS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}

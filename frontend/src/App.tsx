@@ -1,21 +1,31 @@
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { apps, groupApps } from './apps/registry';
 import { initials } from './shared/auth/auth';
 import { useSession } from './shared/auth/AuthGate';
 import { loadClosed, saveClosed } from './shared/sidebarGroups';
+import { strategyApi } from './shared/strategy/api';
 import { useTheme } from './shared/theme';
 
-const sections = groupApps();
+/** Apps only some users see: the algo's pages belong to the owner of its strategy ("OI Breakout Algo"). */
+const OWNER_ONLY = new Set(['algo']);
 
 export default function App() {
   const { mode, toggle } = useTheme();
   const { user, logout } = useSession();
+  const [ownsAlgo, setOwnsAlgo] = useState(false);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    strategyApi.list(false, ctrl.signal).then((l) => setOwnsAlgo(l.some((s) => s.kind === 'algo'))).catch(() => setOwnsAlgo(false));
+    return () => ctrl.abort();
+  }, [user.id]);
+  const visible = useMemo(() => apps.filter((a) => ownsAlgo || !OWNER_ONLY.has(a.id)), [ownsAlgo]);
+  const sections = useMemo(() => groupApps(visible), [visible]);
   const [collapsed, setCollapsed] = useState(false);
   const [closed, setClosed] = useState<string[]>(loadClosed);
   const { pathname } = useLocation();
   // Exact segment match: '/sensibull-oi-live' must not resolve to '/sensibull-oi'.
-  const current = apps.find((a) => pathname === a.path || pathname.startsWith(`${a.path}/`));
+  const current = visible.find((a) => pathname === a.path || pathname.startsWith(`${a.path}/`));
 
   const toggleSection = (id: string) => {
     const next = closed.includes(id) ? closed.filter((c) => c !== id) : [...closed, id];
@@ -69,7 +79,7 @@ export default function App() {
           <Suspense fallback={<p className="muted">Loading…</p>}>
             <Routes>
               <Route path="/" element={<Navigate to={apps[0].path} replace />} />
-              {apps.map((a) => (
+              {visible.map((a) => (
                 <Route key={a.id} path={a.path} element={<a.component />} />
               ))}
             </Routes>

@@ -6,6 +6,7 @@ import { ApiError } from '../../shared/api';
 import { aggregate, type Candle } from '../../shared/chart/candles';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { inr } from '../../shared/grid';
+import { NoStrategy, TradingIntoSelect, useTradingInto, type TradingInto } from '../../shared/strategy/TradingInto';
 import { Alert, Pill, Segmented, Status, Toasts, useToasts } from '../../shared/ui';
 import { longDate, pct, price, toneOf } from '../paper-trade/format';
 import { cacheQuotes } from '../paper-trade/logic/chain';
@@ -14,7 +15,7 @@ import { BottomStrip } from './BottomStrip';
 import {
   CHAIN_CACHE_REFRESH_MS, DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe,
 } from './config/settings';
-import { api, type Chain, type ScalperTick } from './logic/api';
+import { api, scalperStrategy, type Chain, type ScalperTick } from './logic/api';
 import { HOTKEYS, hotkeyAction } from './logic/hotkeys';
 import { pickerItems } from './logic/picker';
 import { alignSeries, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
@@ -106,7 +107,15 @@ function ChartCard({ title, className = '', tick, bars, children, note }: {
   );
 }
 
+/** Every order from this page goes into the strategy picked in "Trading into"; switching it reloads the page. */
 export default function ScalperApp() {
+  const into = useTradingInto('scalper');
+  if (!into.selected) return <div className="ds sc sc-reports"><NoStrategy into={into} tool="Power Scalper" /></div>;
+  scalperStrategy.id = into.selected.id; // before the page below makes its first request
+  return <ScalperPage key={into.selected.id} into={into} />;
+}
+
+function ScalperPage({ into }: { into: TradingInto }) {
   const sc = useScalper();
   const [view, setView] = useState<View>(() => (load('view') === 'reports' ? 'reports' : 'trade'));
   const [symbol, setSymbol] = useState(() => load('symbol') || SYMBOLS[0].value);
@@ -307,7 +316,7 @@ export default function ScalperApp() {
     },
     exitAll: () => {
       if (![...sc.positions.values()].some((p) => p.open_qty > 0)) {
-        setNotice({ kind: 'error', text: 'Hotkey Shift+X: no open Scalper positions.' });
+        setNotice({ kind: 'error', text: 'Hotkey Shift+X: no open positions in this strategy.' });
         return;
       }
       api.exitAll()
@@ -367,6 +376,7 @@ export default function ScalperApp() {
     <div className={`ds sc ${view === 'reports' ? 'sc-reports' : ''}`}>
       <section className="card sc-top">
         <div className="toolbar">
+          <TradingIntoSelect into={into} />
           <label className="field">Index
             <select value={symbol} onChange={(e) => { setSymbol(e.target.value); setExpiry(''); setChain(null); }}>
               {SYMBOLS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}

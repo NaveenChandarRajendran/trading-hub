@@ -3,29 +3,24 @@ import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Heatmap, Segmented, Stat } from '../../shared/ui';
 import { downloadCsv, hms, price, rupees, shortName, signedRupees, toneOf } from './format';
-import { api, type PnlAccount, type PnlResponse, type Trade } from './logic/api';
+import { api, type PnlResponse, type PnlScope, type Trade } from './logic/api';
 import { buildCalendar, dayLabel, fyLabel, fyOf, fyRange } from './logic/calendar';
 import { byMonth, summarize, toCsv } from './logic/pnl';
 import type { Paper } from './usePaper';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m: string) => `${MONTH_NAMES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
-const ACCOUNTS = [
-  { value: 'manual', label: 'Manual' }, { value: 'algo', label: 'Algo' }, { value: 'scalper', label: 'Scalper' },
-  { value: 'all', label: 'All' },
-] as const;
-const ACCOUNT_NOTE: Record<PnlAccount, string> = {
-  manual: ' Your manual trades.',
-  algo: ' Algo: the OI breakout algo’s paper account (live variant only).',
-  scalper: ' Scalper: the Power Scalper’s paper account.',
-  all: ' All: Manual, Algo and Scalper added up.',
+const SCOPES = [{ value: 'this', label: 'This strategy' }, { value: 'all', label: 'All my strategies' }] as const;
+const SCOPE_NOTE: Record<PnlScope, string> = {
+  this: ' This strategy, every capital period.',
+  all: ' All your strategies added up (the algo’s too).',
 };
 
 export function PnlView({ paper }: { paper: Paper }) {
   const today = paper.today;
   const current = fyOf(today);
   const [fy, setFy] = useState(current);
-  const [account, setAccount] = useState<PnlAccount>('manual');
+  const [account, setAccount] = useState<PnlScope>('this');
   const [data, setData] = useState<PnlResponse | null>(null);
   const [error, setError] = useState('');
   const [day, setDay] = useState<string | null>(null);
@@ -43,7 +38,7 @@ export function PnlView({ paper }: { paper: Paper }) {
         if (e.name !== 'AbortError') setError(e instanceof ApiError ? e.message : 'Could not load the P&L report.');
       });
     return () => ctrl.abort();
-  }, [fy, account, paper.tradeVersion, paper.meta?.accountId]);
+  }, [fy, account, paper.tradeVersion]);
 
   useEffect(() => {
     if (!day) return;
@@ -71,10 +66,10 @@ export function PnlView({ paper }: { paper: Paper }) {
               {[current, current - 1, current - 2].map((y) => <option key={y} value={y}>{fyLabel(y)}</option>)}
             </select>
           </label>
-          <div className="field">Account
-            <Segmented label="Account" options={ACCOUNTS} value={account} onChange={(v) => { setAccount(v); setDay(null); }} />
+          <div className="field">Show
+            <Segmented label="Show" options={SCOPES} value={account} onChange={(v) => { setAccount(v); setDay(null); }} />
           </div>
-          <span className="muted">Net = realized P&amp;L − charges, by IST trade date.{ACCOUNT_NOTE[account]}</span>
+          <span className="muted">Net = realized P&amp;L − charges, by IST trade date.{SCOPE_NOTE[account]}</span>
         </div>
         {error && <div className="pt-gap"><Alert kind="error">{error}</Alert></div>}
       </section>
@@ -131,12 +126,12 @@ export function PnlView({ paper }: { paper: Paper }) {
                 : !dayTrades.length ? <EmptyState>No trades on this day.</EmptyState> : (
                   <div className="pt-scroll">
                     <table className="t">
-                      <thead><tr><th>Time</th>{account === 'all' && <th>Account</th>}<th>Instrument</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th></tr></thead>
+                      <thead><tr><th>Time</th>{account === 'all' && <th>Strategy</th>}<th>Instrument</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th></tr></thead>
                       <tbody>
                         {dayTrades.map((t) => (
-                          <tr key={`${t.account ?? ''}${t.id}`}>
+                          <tr key={`${t.strategyId ?? ''}${t.id}`}>
                             <td>{hms(t.time)}</td>
-                            {account === 'all' && <td>{t.account}</td>}
+                            {account === 'all' && <td>{t.strategy}</td>}
                             <td title={t.name}>{shortName(t)}</td>
                             <td><span className={`pt-side ${t.side === 'BUY' ? 'buy' : 'sell'}`}>{t.side}</span></td>
                             <td>{t.qty}</td>

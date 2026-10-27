@@ -84,6 +84,19 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
+def strategy_live(paper, algo, st):
+    """(unbooked P&L, open positions) of a strategy today: its paper Book, or the algo's broker."""
+    if st["kind"] == "algo":
+        broker = algo.broker if algo else None
+        if broker is None or broker.engine is None:
+            return 0.0, 0
+        with algo.lock:
+            return broker.engine.unrealized(), sum(p.open_qty > 0 for p in broker.engine.positions.values())
+    book = paper.book(st)
+    with paper.lock:
+        return book.engine.unrealized(), sum(p.open_qty > 0 for p in book.engine.positions.values())
+
+
 def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None, scalper=None, *, auth,
                ui_dir=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
@@ -385,7 +398,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if paper:
         strategies = Strategies(paper.store, paper.clock, books=paper)
         paper_api.register(app, paper, strategies)
-        strategies_api.register(app, strategies)
+        strategies_api.register(app, strategies, live=lambda st: strategy_live(paper, algo, st))
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo

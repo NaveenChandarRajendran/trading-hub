@@ -1,8 +1,9 @@
 // Live paper trading state: one /ws/paper connection (snapshot + events + ticks) plus the account over REST.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../shared/api';
+import { withStrategy } from '../../shared/strategy/api';
 import { PAPER_WS } from './config/settings';
-import { api, type Account, type Funds, type Meta, type Order, type Position, type Tick } from './logic/api';
+import { api, paperStrategy, type Account, type Funds, type Meta, type Order, type Position, type Tick } from './logic/api';
 import { istToday } from './logic/calendar';
 import { PaperFeed, type ConnState, type InstrumentKey } from './logic/feed';
 
@@ -45,11 +46,14 @@ export function usePaper() {
     const ctrl = new AbortController();
     void loadAccount(ctrl.signal);
     const timer = setInterval(() => void loadAccount(), ACCOUNT_REFRESH_MS);
-    const feed = new PaperFeed(PAPER_WS, {
+    const strategyId = paperStrategy.id;
+    const feed = new PaperFeed(withStrategy(PAPER_WS, strategyId), {
       onState: (conn) => setS((p) => ({ ...p, conn })),
       onTicks: (ticks) => setS((p) => ({ ...p, ticks: new Map([...p.ticks, ...ticks]), lastTickAt: Date.now() })),
       onMessage: (m) =>
         setS((p) => {
+          const owner = (m as { strategyId?: number | null }).strategyId;
+          if (owner != null && owner !== strategyId) return p; // another of the user's strategies
           switch (m.type) {
             case 'snapshot':
               return {

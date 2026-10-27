@@ -1,5 +1,6 @@
 // Types + calls for the paper trading backend (backend/paper_api.py). Quantities are units (lots x lot size).
 import { requestJson } from '../../../shared/api';
+import { withStrategy } from '../../../shared/strategy/api';
 import type { EntryZone, LevelShift } from './levels';
 import { PAPER_API } from '../config/settings';
 
@@ -16,7 +17,8 @@ export interface Meta {
   lastTickAt: string | null;
   lastError: string;
   message: string;
-  accountId: number;
+  strategyId?: number; // the strategy this answer is about (account routes / snapshot)
+  strategy?: string;
 }
 
 export interface Funds {
@@ -92,7 +94,8 @@ export interface Trade extends Named {
   value: number;
   charges: Charges;
   time: string;
-  account?: string; // "Manual" | "Algo" | "Scalper", only with ?account=all
+  strategy?: string; // the strategy's name, only with ?strategy=all
+  strategyId?: number;
 }
 
 export interface ChargeRates {
@@ -172,28 +175,33 @@ export interface OrderReply {
 
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
+/** The strategy this page trades into (the "Trading into" selector); every account call carries it. */
+export const paperStrategy = { id: null as number | null };
+const s = (path: string) => withStrategy(path, paperStrategy.id);
+
 export const api = {
-  account: (signal?: AbortSignal) => requestJson<Account>(PAPER_API, '/api/paper/account', { signal }),
-  setCapital: (capital: number) => requestJson<Account>(PAPER_API, '/api/paper/account', { method: 'POST', body: { capital } }),
+  account: (signal?: AbortSignal) => requestJson<Account>(PAPER_API, s('/api/paper/account'), { signal }),
+  setCapital: (capital: number) => requestJson<Account>(PAPER_API, s('/api/paper/account'), { method: 'POST', body: { capital } }),
   reset: (capital?: number) =>
-    requestJson<Account>(PAPER_API, '/api/paper/account/reset', { method: 'POST', body: capital ? { capital } : {} }),
+    requestJson<Account>(PAPER_API, s('/api/paper/account/reset'), { method: 'POST', body: capital ? { capital } : {} }),
   chain: (symbol: string, expiry: string, signal?: AbortSignal) =>
     requestJson<Chain>(PAPER_API, `/api/paper/chain?${q({ symbol, expiry })}`, { signal }),
-  place: (body: OrderRequest) => requestJson<OrderReply>(PAPER_API, '/api/paper/orders', { method: 'POST', body }),
+  place: (body: OrderRequest) => requestJson<OrderReply>(PAPER_API, s('/api/paper/orders'), { method: 'POST', body }),
   modify: (id: string, body: { lots?: number; price?: number; triggerPrice?: number }) =>
-    requestJson<Order>(PAPER_API, `/api/paper/orders/${encodeURIComponent(id)}`, { method: 'PUT', body }),
-  cancel: (id: string) => requestJson<Order>(PAPER_API, `/api/paper/orders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    requestJson<Order>(PAPER_API, s(`/api/paper/orders/${encodeURIComponent(id)}`), { method: 'PUT', body }),
+  cancel: (id: string) => requestJson<Order>(PAPER_API, s(`/api/paper/orders/${encodeURIComponent(id)}`), { method: 'DELETE' }),
   orders: (date: string, signal?: AbortSignal) =>
-    requestJson<{ meta: Meta; rows: Order[] }>(PAPER_API, `/api/paper/orders?${q({ date })}`, { signal }),
-  trades: (date: string, signal?: AbortSignal, account: PnlAccount = 'manual') =>
-    requestJson<{ meta: Meta; rows: Trade[] }>(PAPER_API, `/api/paper/trades?${q({ date, account })}`, { signal }),
+    requestJson<{ meta: Meta; rows: Order[] }>(PAPER_API, s(`/api/paper/orders?${q({ date })}`), { signal }),
+  trades: (date: string, signal?: AbortSignal, scope: PnlScope = 'this') =>
+    requestJson<{ meta: Meta; rows: Trade[] }>(PAPER_API, scoped(`/api/paper/trades?${q({ date })}`, scope), { signal }),
   positions: (signal?: AbortSignal) =>
-    requestJson<{ meta: Meta; rows: Position[]; funds: Funds }>(PAPER_API, '/api/paper/positions', { signal }),
-  exit: (securityId: number) => requestJson(PAPER_API, `/api/paper/positions/${securityId}/exit`, { method: 'POST' }),
-  exitAll: () => requestJson(PAPER_API, '/api/paper/positions/exit-all', { method: 'POST' }),
-  pnl: (from: string, to: string, signal?: AbortSignal, account: PnlAccount = 'manual') =>
-    requestJson<PnlResponse>(PAPER_API, `/api/paper/pnl?${q({ from, to, account })}`, { signal }),
+    requestJson<{ meta: Meta; rows: Position[]; funds: Funds }>(PAPER_API, s('/api/paper/positions'), { signal }),
+  exit: (securityId: number) => requestJson(PAPER_API, s(`/api/paper/positions/${securityId}/exit`), { method: 'POST' }),
+  exitAll: () => requestJson(PAPER_API, s('/api/paper/positions/exit-all'), { method: 'POST' }),
+  pnl: (from: string, to: string, signal?: AbortSignal, scope: PnlScope = 'this') =>
+    requestJson<PnlResponse>(PAPER_API, scoped(`/api/paper/pnl?${q({ from, to })}`, scope), { signal }),
 };
 
-/** Whose P&L: the manual account (this page) or the OI breakout algo's "Algo" account (same pt_ tables). */
-export type PnlAccount = 'manual' | 'algo' | 'scalper' | 'all';
+/** Whose P&L: this strategy (every capital period of it) or all of the user's strategies added up. */
+export type PnlScope = 'this' | 'all';
+const scoped = (path: string, scope: PnlScope) => (scope === 'all' ? `${path}&strategy=all` : s(path));

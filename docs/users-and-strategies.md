@@ -8,8 +8,8 @@ Branch `feature/users-strategies` (from `naveen-dev`), ADR 0008. Built in steps;
 | 2 | Strategies + data model (fresh start instead of a data migration) | done 28-Oct |
 | 3 | Paper engine, WebSocket events and the algo per strategy | done 28-Oct |
 
-| 4 | "Trading into" selector in Paper Trading and Power Scalper | next |
-| 5 | Strategies home + strategy view | |
+| 4 | "Trading into" selector in Paper Trading and Power Scalper | done 28-Oct |
+| 5 | Strategies home (cards / list, create, archive) done 28-Oct; strategy view (tabs, notes, edit) next | part |
 | 6 | Compare | |
 
 ## Users (step 1)
@@ -87,3 +87,16 @@ Running it again changes nothing. Manual strategies are created by each user in 
   `/api/algo/*` answers only the strategy's owner (404 for anyone else).
 - Tests: `test_isolation.py` (every `?strategy=` route listed from the app: user B gets 404 on user A's strategies;
   WebSocket events never reach B; separate engines), `test_scalper.py`, `test_paper_api.py`, `test_algo_service.py`.
+
+## Trading into (step 4) and the Strategies page (step 5, first part)
+- Paper Trading and Power Scalper: "Trading into" in the toolbar lists your active manual strategies; every order
+  from that screen goes into it. The pick is kept per user per tool on the server (`GET|PUT /api/strategies/pick`).
+  Switching reloads the page for that strategy (requests and the live connection carry `?strategy=`; events of your
+  other strategies are ignored). No strategy yet: "Create your first strategy" (name + capital) right there.
+- Strategies (sidebar, under Dashboard): your strategies as cards or a list with Total / Unbooked / Booked P&L, open
+  positions and capital (`GET /api/strategies/summary`); sort by recent activity or P&L; New strategy; Archive /
+  Unarchive; the Archived filter. The algo's card links to the Algo page.
+- The Algo (paper) page is in the sidebar only for the owner of an algo strategy (naveen); the backend refuses
+  everyone else anyway.
+- Paper Trading's P&L view: "This strategy" (every capital period of it) or "All my strategies".
+- Not yet: the strategy view (Positions / Order book / P&L / Notes tabs, Edit, Reset capital, Exit all), Compare.

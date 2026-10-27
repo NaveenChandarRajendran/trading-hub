@@ -223,3 +223,38 @@ def test_bootstrap_on_a_fresh_database():
         assert len(store.accounts()) == 2  # nothing deleted
     finally:
         pg.close()
+
+
+# ---------- "Trading into" pick per tool, card numbers ----------
+def test_pick_is_remembered_per_user_per_tool_and_must_be_tradable(env):
+    a, b, store, clock = env
+    assert a.get("/api/strategies/pick?tool=paper").json() == {"strategyId": None}  # no strategy yet
+    one, two = create(a, "One"), create(a, "Two")
+    assert a.get("/api/strategies/pick?tool=paper").json()["strategyId"] in (one["id"], two["id"])  # newest active
+    assert a.put("/api/strategies/pick", json={"tool": "paper", "strategyId": one["id"]}).status_code == 200
+    assert a.put("/api/strategies/pick", json={"tool": "scalper", "strategyId": two["id"]}).status_code == 200
+    assert a.get("/api/strategies/pick?tool=paper").json()["strategyId"] == one["id"]
+    assert a.get("/api/strategies/pick?tool=scalper").json()["strategyId"] == two["id"]
+    mine = create(b, "Hers")
+    assert b.get("/api/strategies/pick?tool=paper").json()["strategyId"] == mine["id"]  # B's own, never A's
+    assert b.put("/api/strategies/pick", json={"tool": "paper", "strategyId": one["id"]}).status_code == 404
+    algo = store.create_strategy(1, "OI Breakout Algo", "", 100000, "algo", clock(), account_name="Algo")
+    assert a.put("/api/strategies/pick", json={"tool": "paper", "strategyId": algo["id"]}).status_code == 409
+    a.post(f"/api/strategies/{one['id']}/archive")  # an archived pick falls back to an active one
+    assert a.get("/api/strategies/pick?tool=paper").json()["strategyId"] == two["id"]
+    assert a.get("/api/strategies/pick?tool=nope").status_code == 400
+
+
+def test_summary_numbers_for_the_cards(env):
+    a, b, store, clock = env
+    st = create(a, "EMA")
+    acc = store.strategy(st["id"])["account_id"]
+    store.save_position(acc, DAY, {"security_id": 1, "lot_size": 65, "buy_qty": 65, "sell_qty": 65, "avg_buy": 100.0,
+                                   "avg_sell": 110.0, "realized": 650.0})
+    charges = {"brokerage": 20.0, "stt": 0.0, "transaction": 0.0, "sebi": 0.0, "stamp": 0.0, "gst": 0.0, "total": 20.0}
+    for i, side in enumerate(("BUY", "SELL")):
+        store.save_trade(acc, DAY, {"id": f"TR20261021-000{i + 1}", "order_id": f"PT20261021-000{i + 1}", "security_id": 1, "side": side, "qty": 65,
+                                    "price": 100.0, "value": 6500.0, "charges": charges, "time": clock().isoformat()})
+    rows = a.get("/api/strategies/summary").json()["rows"]
+    assert rows == [{"id": st["id"], "booked": 610.0, "unbooked": 0.0, "total": 610.0, "open": 0, "lastDay": DAY}]
+    assert b.get("/api/strategies/summary").json()["rows"] == []

@@ -30,6 +30,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./dashboard/DashboardApp')),
   },
   {
+    id: 'strategies',
+    group: 'home',
+    name: 'Strategies',
+    path: '/strategies',
+    icon: '◇',
+    component: lazy(() => import('./strategies/StrategiesApp')),
+  },
+  {
     id: 'option-strategy',
     group: 'manual',
     name: 'OI & OI Change',

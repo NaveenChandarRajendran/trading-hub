@@ -1,5 +1,6 @@
 // Power Scalper REST calls (backend/scalper_api.py) and their types. PAPER ONLY.
 import { requestJson } from '../../../shared/api';
+import { withStrategy } from '../../../shared/strategy/api';
 import type { Candle } from '../../../shared/chart/candles';
 import type { Chain, Funds, Meta, Order, Position as PaperPosition, Tick, Trade } from '../../paper-trade/logic/api';
 import { SCALPER_API } from '../config/settings';
@@ -22,7 +23,8 @@ export interface ScalperTick extends Tick {
 
 export interface Account {
   meta: Meta;
-  account: { id: number; capital: number; created_at: string; name: string };
+  account: { id: number; capital: number; created_at: string; name: string | null }; // the strategy's capital period
+  strategy: { id: number; name: string };
   funds: Funds;
   presets: number[];
 }
@@ -87,20 +89,24 @@ export interface IndexCandles {
 
 const q = (o: Record<string, string | number>) => new URLSearchParams(Object.entries(o).map(([k, v]) => [k, String(v)]));
 
+/** The strategy this page trades into (the "Trading into" selector); every account call carries it. */
+export const scalperStrategy = { id: null as number | null };
+const st = (path: string) => withStrategy(path, scalperStrategy.id);
+
 export const api = {
-  account: (signal?: AbortSignal) => requestJson<Account>(SCALPER_API, '/api/scalper/account', { signal }),
-  setCapital: (capital: number) => requestJson<Account>(SCALPER_API, '/api/scalper/account/capital', { method: 'PUT', body: { capital } }),
+  account: (signal?: AbortSignal) => requestJson<Account>(SCALPER_API, st('/api/scalper/account'), { signal }),
+  setCapital: (capital: number) => requestJson<Account>(SCALPER_API, st('/api/scalper/account/capital'), { method: 'PUT', body: { capital } }),
   reset: (capital?: number) =>
-    requestJson<Account>(SCALPER_API, '/api/scalper/account/reset', { method: 'POST', body: capital ? { capital } : {} }),
+    requestJson<Account>(SCALPER_API, st('/api/scalper/account/reset'), { method: 'POST', body: capital ? { capital } : {} }),
   place: (securityId: number, side: 'BUY' | 'SELL', lots: number) =>
-    requestJson<{ order: Order; funds: Funds }>(SCALPER_API, '/api/scalper/orders', { method: 'POST', body: { securityId, side, lots } }),
-  exit: (securityId: number) => requestJson<{ rows: Position[] }>(SCALPER_API, `/api/scalper/exit/${securityId}`, { method: 'POST' }),
-  exitAll: () => requestJson<{ rows: Position[] }>(SCALPER_API, '/api/scalper/exit-all', { method: 'POST' }),
+    requestJson<{ order: Order; funds: Funds }>(SCALPER_API, st('/api/scalper/orders'), { method: 'POST', body: { securityId, side, lots } }),
+  exit: (securityId: number) => requestJson<{ rows: Position[] }>(SCALPER_API, st(`/api/scalper/exit/${securityId}`), { method: 'POST' }),
+  exitAll: () => requestJson<{ rows: Position[] }>(SCALPER_API, st('/api/scalper/exit-all'), { method: 'POST' }),
   protection: (securityId: number, body: { target?: number | null; stop?: number | null }) =>
-    requestJson<{ position: Position; orders: Order[] }>(SCALPER_API, `/api/scalper/protection/${securityId}`, { method: 'PUT', body }),
+    requestJson<{ position: Position; orders: Order[] }>(SCALPER_API, st(`/api/scalper/protection/${securityId}`), { method: 'PUT', body }),
   reports: (from: string, to: string, signal?: AbortSignal) =>
-    requestJson<Reports>(SCALPER_API, `/api/scalper/reports?${q({ from, to })}`, { signal }),
-  day: (date: string, signal?: AbortSignal) => requestJson<DayView>(SCALPER_API, `/api/scalper/day?${q({ date })}`, { signal }),
+    requestJson<Reports>(SCALPER_API, st(`/api/scalper/reports?${q({ from, to })}`), { signal }),
+  day: (date: string, signal?: AbortSignal) => requestJson<DayView>(SCALPER_API, st(`/api/scalper/day?${q({ date })}`), { signal }),
   optionCandles: (securityId: number, signal?: AbortSignal) =>
     requestJson<{ candles: Candle[] }>(SCALPER_API, `/api/scalper/candles?${q({ securityId })}`, { signal }),
   indexCandles: (symbol: string, signal?: AbortSignal) =>

@@ -19,7 +19,7 @@ export const liveUnrealized = (sc: Scalper, p: Position) => {
   const ltp = liveLtp(sc, p);
   return ltp != null && p.open_qty ? (ltp - p.avg_buy) * p.open_qty : 0;
 };
-/** Today's Scalper P&L: realized - charges + live unrealized. */
+/** Today's P&L of the strategy: realized - charges + live unrealized. */
 export const dayPnl = (sc: Scalper) => {
   const f = sc.funds;
   if (!f) return null;
@@ -104,11 +104,11 @@ export function BottomStrip({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'i
           <Segmented label="Positions" value={which} onChange={(v) => { setWhich(v); setExpanded(true); }}
             options={[{ value: 'open', label: `Open ${open.length}` }, { value: 'closed', label: `Closed ${closed.length}` }]} />
         )}
-        <span className="sc-bottom-stat" title="Realized + open P&L minus today's charges">Scalper P&amp;L today (after charges) <b className={`num ${toneOf(pnl)}`}>{signedRupees(pnl)}</b></span>
+        <span className="sc-bottom-stat" title="Realized + open P&L minus today's charges">P&amp;L today (after charges) <b className={`num ${toneOf(pnl)}`}>{signedRupees(pnl)}</b></span>
         <span className="sc-bottom-stat">Funds <b className="num">{rupees(sc.funds?.available)}</b></span>
       </div>
       {expanded && <div className="sc-table">
-        {tab === 'positions' ? (!rows.length ? <EmptyState>{which === 'open' ? 'No open Scalper positions.' : 'No closed positions today.'}</EmptyState> : (
+        {tab === 'positions' ? (!rows.length ? <EmptyState>{which === 'open' ? 'No open positions in this strategy.' : 'No closed positions today.'}</EmptyState> : (
           <table className="t">
             <thead><tr><th>Instrument</th><th>Qty</th><th>Avg</th><th>LTP</th><th>P&amp;L</th><th>Target</th><th>Stop</th><th /></tr></thead>
             <tbody>

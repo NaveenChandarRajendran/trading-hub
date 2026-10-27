@@ -1,0 +1,7 @@
+/* Strategy selector + "no strategy yet" state of the tools, and the Strategies page. Layout only; tokens for the rest. */
+.ds .st-select { min-width: 180px; }
+.ds .st-empty { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 640px; }
+.ds .st-empty p { margin: 0; }
+.ds .st-picks { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ds .st-create { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); }
+.ds .st-create input { width: 200px; }

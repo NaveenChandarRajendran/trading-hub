@@ -28,7 +28,7 @@ export function PositionsBox({ sc, onNotice }: { sc: Scalper; onNotice: (kind: '
   return (
     <section className="sc-positions">
       <div className="sc-positions-head"><span className="card-title">Positions</span><span className="muted">{open.length} open</span></div>
-      {!open.length ? <EmptyState>No open Scalper positions.</EmptyState> : (
+      {!open.length ? <EmptyState>No open positions in this strategy.</EmptyState> : (
         <>
           {open.map((p) => (
             <div key={p.security_id} className="sc-pos-row">
