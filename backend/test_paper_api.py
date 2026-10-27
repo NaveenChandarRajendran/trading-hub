@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from dhan_feed import FULL, TICKER
-from authfake import create_app
+from authfake import StrategyClient, create_app
 from paper_api import PaperService
 from store import IST, PaperJsonStore
 from test_api import FakeClient
@@ -89,13 +89,21 @@ def full(sid, ltp, bid, ask, qty=1000):
             "depth": depth}
 
 
+SID = 1  # the signed-in test user's (authfake: user 1) manual strategy, made before the service starts
+
+
+def manual_strategy(store, clock, user_id=1, name="Manual"):
+    return store.create_strategy(user_id, name, "", 100000, "manual", clock())
+
+
 @pytest.fixture
 def env():
     tmp = tempfile.mkdtemp()
     clock, feed = Clock(), FakeFeed()
+    manual_strategy(PaperJsonStore(tmp), clock)
     svc = PaperService(PaperJsonStore(tmp), feed, FakeInstruments(), clock=clock)
     tracker = Tracker(FakeClient(), data_dir=tmp, clock=clock)
-    c = TestClient(create_app(tracker, paper=svc))
+    c = StrategyClient(create_app(tracker, paper=svc), SID)  # every request trades into the test user's strategy
     yield c, svc, clock, feed, tmp
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -238,11 +246,11 @@ def test_restart_restores_the_day(env):
 
     feed2 = FakeFeed()
     svc2 = PaperService(PaperJsonStore(tmp), feed2, FakeInstruments(), clock=clock)
-    assert svc2.funds() == svc.funds()
-    assert svc2.engine.orders[sl["id"]].status == "PENDING"
+    assert svc2.funds(svc2.books[SID]) == svc.funds(svc.books[SID])
+    assert svc2.books[SID].engine.orders[sl["id"]].status == "PENDING"
     assert feed2.subs[("NSE_FNO", CE)] == FULL  # pending order + open position re-subscribed
     svc2.on_packet(full(CE, 89, 88.9, 89.05))
-    assert svc2.engine.orders[sl["id"]].status == "FILLED"
+    assert svc2.books[SID].engine.orders[sl["id"]].status == "FILLED"
 
 
 def test_pnl_report_and_next_day_balance(env):
@@ -287,7 +295,7 @@ def test_store_failure_is_retried(env):
 # ---------- websocket ----------
 def test_websocket_snapshot_ticks_and_events(env):
     c, svc, clock, feed, _ = env
-    with c.websocket_connect("/ws/paper") as ws:
+    with c.websocket_connect(f"/ws/paper?strategy={SID}") as ws:
         snap = ws.receive_json()
         assert snap["type"] == "snapshot" and snap["funds"]["available"] == 100000
         ws.send_json({"type": "subscribe", "instruments": [["NSE_FNO", CE], ["IDX_I", 13]]})

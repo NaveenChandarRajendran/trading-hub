@@ -182,6 +182,14 @@ class AlgoService:
             if feed is not None:
                 feed.on_event = self._feed_event
 
+    def owner_id(self):
+        """The user owning the algo's strategy ("OI Breakout Algo"): only they see the algo pages. None before the
+        data migration (scripts/migrate_users_strategies.py), when nobody does."""
+        acc = self.broker.account if self.broker else self.store.active_account(cfg.ACCOUNT_NAME)
+        sid = acc.get("strategy_id") if acc else None
+        st = self.store.strategy(sid) if sid else None
+        return st["user_id"] if st else None
+
     # ------------------------------------------------------------ lifecycle
     def start(self):
         if self.mode == "off":

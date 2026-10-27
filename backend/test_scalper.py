@@ -1,20 +1,23 @@
-"""Power Scalper backend (scalper_service.py, scalper_api.py, scalper_reports.py): the separate "Scalper" paper account,
-one-click MARKET orders, the sell-only-closes rule, OCO protection, reports and the 15:35 summary, and proof that the
-Manual and Algo accounts are untouched. Fake feed / instruments from test_paper_api.py; 21-Oct-2026 is a trading day."""
+"""Power Scalper backend (scalper_service.py, scalper_api.py, scalper_reports.py) on strategies: orders go into the
+picked strategy (source "scalper") through the paper service's one engine per strategy, the sell-only-closes rule, OCO
+protection, reports and the 15:35 pt_daily_summary, and proof that another strategy is untouched. Fake feed /
+instruments from test_paper_api.py; 21-Oct-2026 is a trading day. The signed-in user (authfake) owns strategies
+#1 "Manual" and #2 "Scalper"; the Scalper client trades into #2 unless a test says otherwise."""
 import shutil
 import tempfile
 
 import pytest
-from fastapi.testclient import TestClient
 
-from authfake import create_app
+from authfake import StrategyClient, create_app
 from paper_api import PaperService
 from scalper_reports import day_rows, round_trips, tiles
-from scalper_service import ACCOUNT_NAME, ScalperService
+from scalper_service import ScalperService
 from store import PaperJsonStore
 from test_api import FakeClient
-from test_paper_api import CE, PE, Clock, FakeFeed, FakeInstruments, at, full
+from test_paper_api import CE, PE, Clock, FakeFeed, FakeInstruments, at, full, manual_strategy
 from tracker import Tracker
+
+MANUAL, SCALP = 1, 2
 
 
 @pytest.fixture
@@ -22,6 +25,8 @@ def env():
     tmp = tempfile.mkdtemp()
     clock, feed = Clock(), FakeFeed()
     store = PaperJsonStore(tmp)
+    manual_strategy(store, clock, name="Manual")
+    manual_strategy(store, clock, name="Scalper")
     paper = PaperService(store, feed, FakeInstruments(), clock=clock)
     calls = []
 
@@ -32,7 +37,9 @@ def env():
                 "low": [99, 100, 1], "close": [101, 102, 1], "volume": [650, 1300, 1]}
     scalper = ScalperService(store, paper, paper.instruments, clock=clock, intraday=intraday)
     scalper.calls = calls
-    c = TestClient(create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=paper, scalper=scalper))
+    app = create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=paper, scalper=scalper)
+    c = StrategyClient(app, SCALP)
+    c.app_ = app
     yield c, paper, scalper, clock, feed, store
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -48,20 +55,41 @@ def order(c, side, sid=CE, lots=1):
     return r.json()["order"]
 
 
+def acc_of(paper, sid):
+    return paper.books[sid].account["id"]
+
+
 # ---------- account and orders ----------
-def test_own_account_default_capital_1_lakh_and_source_scalper(env):
+def test_orders_go_into_the_picked_strategy_with_source_scalper(env):
     c, paper, scalper, clock, _, store = env
     acc = c.get("/api/scalper/account").json()
-    assert acc["account"]["name"] == ACCOUNT_NAME and acc["account"]["capital"] == 100000
-    assert acc["account"]["id"] != paper.account["id"] and acc["funds"]["available"] == 100000
-    assert acc["presets"] == [50000, 100000, 200000, 500000]
+    assert acc["strategy"]["name"] == "Scalper" and acc["account"]["capital"] == 100000
+    assert acc["funds"]["available"] == 100000 and acc["presets"] == [50000, 100000, 200000, 500000]
     tick(paper, clock, "09:30")
     o = order(c, "BUY")
     assert (o["status"], o["avg_price"], o["qty"], o["name"]) == ("FILLED", 100.0, 65, "NIFTY 27 OCT 25100 CALL")
-    stored = store.orders(scalper.account["id"], "2026-10-21")
+    stored = store.orders(acc_of(paper, SCALP), "2026-10-21")
     assert [s["source"] for s in stored] == ["scalper"]
-    assert store.orders(paper.account["id"], "2026-10-21") == []  # nothing in the manual account
-    assert paper.engine.positions == {} and c.get("/api/paper/positions").json()["rows"] == []
+    assert store.orders(acc_of(paper, MANUAL), "2026-10-21") == []  # nothing in the other strategy
+    assert c.get(f"/api/paper/positions?strategy={MANUAL}").json()["rows"] == []
+
+
+def test_one_engine_per_strategy_whichever_screen_trades(env):
+    """Paper Trading and Power Scalper on the same strategy share its funds and positions."""
+    c, paper, _, clock, *_ = env
+    tick(paper, clock, "09:30")
+    order(c, "BUY")  # Scalper screen, strategy #2
+    rows = c.get(f"/api/paper/positions?strategy={SCALP}").json()["rows"]  # Paper Trading screen, same strategy
+    assert rows[0]["open_qty"] == 65 and rows[0]["security_id"] == CE
+    r = c.post(f"/api/paper/orders?strategy={SCALP}", json={"securityId": CE, "side": "SELL", "lots": 1,
+                                                            "orderType": "MARKET"}).json()
+    assert r["status"] == "FILLED"
+    assert c.get("/api/scalper/positions").json()["rows"][0]["open_qty"] == 0
+    sources = [o["source"] for o in c.get("/api/scalper/orders").json()["rows"]]
+    assert sources == ["scalper", "manual"]
+    f2 = c.get("/api/scalper/account").json()["funds"]
+    f1 = c.get(f"/api/scalper/account?strategy={MANUAL}").json()["funds"]
+    assert f2["charges"] > 0 and f1["charges"] == 0 and f1["available"] == 100000  # separate funds
 
 
 def test_sell_only_closes_an_open_long(env):
@@ -92,7 +120,7 @@ def test_exit_and_exit_all(env):
 
 def test_buy_needs_funds_and_market_hours(env):
     c, paper, scalper, clock, *_ = env
-    c.put("/api/scalper/account/capital", json={"capital": 10000})
+    assert c.put("/api/scalper/account/capital", json={"capital": 10000}).status_code == 200
     tick(paper, clock, "09:30")
     o = order(c, "BUY", lots=2)  # 130 x 100 = 13,000 > 10,000
     assert o["status"] == "REJECTED" and "Insufficient funds" in o["reason"]
@@ -104,9 +132,23 @@ def test_held_instruments_stay_subscribed(env):
     c, paper, _, clock, feed, _ = env
     tick(paper, clock, "09:30")
     order(c, "BUY")
-    assert ("NSE_FNO", CE) in feed.subs  # no page asked for it: the open Scalper position keeps it
+    assert ("NSE_FNO", CE) in feed.subs  # no page asked for it: the open position keeps it
     c.post(f"/api/scalper/exit/{CE}")
     assert ("NSE_FNO", CE) not in paper._extra_subs.get("scalper", set())
+
+
+def test_orders_need_an_active_manual_strategy_of_your_own(env):
+    c, paper, _, clock, _, store = env
+    store.create_strategy(1, "OI Breakout Algo", "", 100000, "algo", clock(), account_name="Algo")
+    store.create_strategy(2, "Wife's", "", 100000, "manual", clock())
+    tick(paper, clock, "09:30")
+    body = {"securityId": CE, "side": "BUY", "lots": 1}
+    assert c.post("/api/scalper/orders?strategy=3", json=body).status_code == 409  # algo strategy
+    assert c.post("/api/scalper/orders?strategy=4", json=body).status_code == 404  # someone else's
+    assert c.post("/api/scalper/orders?strategy=99", json=body).status_code == 404
+    assert c.post("/api/scalper/orders?strategy=", json=body).status_code == 400
+    c.post(f"/api/strategies/{MANUAL}/archive")
+    assert c.post(f"/api/scalper/orders?strategy={MANUAL}", json=body).status_code == 409  # archived
 
 
 # ---------- OCO protection ----------
@@ -165,11 +207,12 @@ def test_reports_day_view_and_1535_summary(env):
     assert day["realized"] == 321.75 and rep["tiles"]["trades"] == 2 and rep["tiles"]["winRate"] == 50.0
     view = c.get("/api/scalper/day?date=2026-10-21").json()
     assert [t["pnl"] for t in view["trades"]] == [650.0, -328.25] and len(view["fills"]) == 4
-    scalper.tick_timer(at("15:34"))
-    assert store.scalper_summaries(scalper.account["id"], "2026-10-21", "2026-10-21") == []
-    scalper.tick_timer(at("15:35"))
-    [row] = store.scalper_summaries(scalper.account["id"], "2026-10-21", "2026-10-21")
-    assert (row["trades"], row["wins"], row["losses"], row["realized"], row["net"]) == (2, 1, 1, 321.75, day["net"])
+    paper.tick_timer(at("15:34"))
+    assert store.daily_summaries([SCALP], "2026-10-21", "2026-10-21") == []
+    paper.tick_timer(at("15:35"))
+    [row] = store.daily_summaries([SCALP, MANUAL], "2026-10-21", "2026-10-21")  # only strategies with fills
+    assert (row["strategy_id"], row["trades"], row["wins"], row["losses"], row["realized"], row["net"]) == \
+        (SCALP, 2, 1, 1, 321.75, day["net"])
 
 
 def test_reset_starts_fresh_and_keeps_history(env):
@@ -178,42 +221,44 @@ def test_reset_starts_fresh_and_keeps_history(env):
     order(c, "BUY")
     assert c.post("/api/scalper/account/reset", json={}).status_code == 409  # not flat
     c.post(f"/api/scalper/exit/{CE}")
-    old = scalper.account["id"]
+    old = acc_of(paper, SCALP)
     acc = c.post("/api/scalper/account/reset", json={"capital": 50000}).json()
-    assert acc["account"]["id"] != old and acc["account"]["capital"] == 50000 and acc["account"]["name"] == ACCOUNT_NAME
-    assert c.get("/api/scalper/reports?from=2026-10-21&to=2026-10-21").json()["days"] == []  # the new account
+    assert acc["account"]["id"] != old and acc["account"]["capital"] == 50000 and acc["strategy"]["name"] == "Scalper"
+    assert acc["funds"]["available"] == 50000
+    assert c.get("/api/scalper/reports?from=2026-10-21&to=2026-10-21").json()["days"] == []  # the new period
     assert len(store.trades(old, "2026-10-21")) == 2  # history kept
+    pnl = c.get(f"/api/paper/pnl?strategy={SCALP}&from=2026-10-21&to=2026-10-21").json()["rows"]
+    assert pnl[0]["trades"] == 2  # the strategy's P&L calendar still shows the old period's day
 
 
-# ---------- Manual and Algo untouched ----------
-def test_manual_and_algo_data_unchanged_by_scalper_trading(env):
+# ---------- another strategy untouched ----------
+def test_other_strategy_unchanged_by_scalper_trading(env):
     c, paper, scalper, clock, *_ = env
     tick(paper, clock, "09:30")
-    c.post("/api/paper/orders", json={"securityId": CE, "side": "BUY", "lots": 1, "orderType": "MARKET"})
+    m = f"strategy={MANUAL}"
+    c.post(f"/api/paper/orders?{m}", json={"securityId": CE, "side": "BUY", "lots": 1, "orderType": "MARKET"})
     tick(paper, clock, "09:35", ltp=104, bid=104, ask=104.05)
-    c.post("/api/paper/orders", json={"securityId": CE, "side": "SELL", "lots": 1, "orderType": "MARKET"})
+    c.post(f"/api/paper/orders?{m}", json={"securityId": CE, "side": "SELL", "lots": 1, "orderType": "MARKET"})
     q = "from=2026-10-01&to=2026-10-21"
-    before = {u: c.get(u).json()["rows"] for u in (f"/api/paper/pnl?{q}", f"/api/paper/pnl?{q}&account=manual",
-                                                   f"/api/paper/pnl?{q}&account=algo", "/api/paper/trades",
-                                                   "/api/paper/trades?account=algo", "/api/paper/orders",
-                                                   "/api/paper/positions")}
-    manual_funds = c.get("/api/paper/account").json()["funds"]
+    before = {u: c.get(u).json()["rows"] for u in (f"/api/paper/pnl?{q}&{m}", f"/api/paper/trades?{m}",
+                                                   f"/api/paper/orders?{m}", f"/api/paper/positions?{m}")}
+    manual_funds = c.get(f"/api/paper/account?{m}").json()["funds"]
     order(c, "BUY", lots=2)
     tick(paper, clock, "09:40", ltp=90, bid=90, ask=90.05)
     order(c, "SELL", lots=2)
     strip = lambda rows: [{k: v for k, v in r.items() if k != "ltp"} for r in rows]  # noqa: E731 (the market moved)
     for u, rows in before.items():
         assert strip(c.get(u).json()["rows"]) == strip(rows), u
-    assert c.get("/api/paper/account").json()["funds"] == manual_funds
-    scal = c.get(f"/api/paper/pnl?{q}&account=scalper").json()["rows"]
-    man = before[f"/api/paper/pnl?{q}"]
-    total = c.get(f"/api/paper/pnl?{q}&account=all").json()
-    assert total["meta"]["account"] == "All" and scal[0]["realized"] == -1826.5  # 130 x (90 - 104.05)
+    assert c.get(f"/api/paper/account?{m}").json()["funds"] == manual_funds
+    scal = c.get(f"/api/paper/pnl?{q}").json()["rows"]
+    man = before[f"/api/paper/pnl?{q}&{m}"]
+    total = c.get(f"/api/paper/pnl?{q}&strategy=all").json()
+    assert scal[0]["realized"] == -1826.5  # 130 x (90 - 104.05)
     assert total["rows"][0]["realized"] == round(man[0]["realized"] + scal[0]["realized"], 2)
     assert total["rows"][0]["trades"] == man[0]["trades"] + scal[0]["trades"]
-    fills = c.get("/api/paper/trades?account=all").json()["rows"]
-    assert sorted({f["account"] for f in fills}) == ["Manual", "Scalper"]
-    assert c.get("/api/paper/pnl?account=nope").status_code == 400
+    fills = c.get("/api/paper/trades?strategy=all").json()["rows"]
+    assert sorted({f["strategy"] for f in fills}) == ["Manual", "Scalper"]
+    assert c.get("/api/paper/pnl?strategy=nope").status_code == 404
 
 
 def test_next_day_opens_with_yesterdays_net(env):
@@ -222,12 +267,13 @@ def test_next_day_opens_with_yesterdays_net(env):
     order(c, "BUY")
     tick(paper, clock, "09:35", ltp=110, bid=110, ask=110.05)
     order(c, "SELL")
-    net = scalper.funds()["realized"] - scalper.funds()["charges"]
-    scalper.tick_timer(at("09:20", "2026-10-22"))
-    assert scalper.funds()["openingBalance"] == round(100000 + net, 2)
+    f = paper.funds(paper.books[SCALP])
+    net = f["realized"] - f["charges"]
+    paper.tick_timer(at("09:20", "2026-10-22"))
+    assert paper.funds(paper.books[SCALP])["openingBalance"] == round(100000 + net, 2)
 
 
-# ---------- live data for the page (step 2) ----------
+# ---------- live data for the page ----------
 def test_option_history_from_dhan_cached_and_unknown_404(env):
     c, paper, scalper, clock, *_ = env
     clock.now = at("10:00")
@@ -244,9 +290,9 @@ def test_option_history_from_dhan_cached_and_unknown_404(env):
 
 def test_websocket_snapshot_ticks_candles_volume_and_events(env):
     c, paper, scalper, clock, feed, _ = env
-    with c.websocket_connect("/ws/scalper") as ws:
+    with c.websocket_connect(f"/ws/scalper?strategy={SCALP}") as ws:
         snap = ws.receive_json()
-        assert snap["type"] == "snapshot" and snap["account"]["name"] == "Scalper" and snap["positions"] == []
+        assert snap["type"] == "snapshot" and snap["strategyId"] == SCALP and snap["positions"] == []
         ws.send_json({"type": "subscribe", "instruments": [["NSE_FNO", CE], ["IDX_I", 13]]})
         for _ in range(200):
             if ("NSE_FNO", CE) in feed.subs:
@@ -268,7 +314,11 @@ def test_websocket_snapshot_ticks_candles_volume_and_events(env):
         vols = [m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "volume"]
         assert vols[0]["data"]["volume"] == 650  # this minute's traded volume, not the day's
         c.post("/api/scalper/orders", json={"securityId": CE, "side": "BUY", "lots": 1})
-        kinds = [ws.receive_json()["type"] for _ in range(5)]
-        assert kinds == ["order", "order", "trade", "position", "funds"]  # placed, filled, fill, position, funds
+        msgs = [ws.receive_json() for _ in range(5)]
+        assert [m["type"] for m in msgs] == ["order", "order", "trade", "position", "funds"]
+        assert {m["strategyId"] for m in msgs} == {SCALP}
+        ws.send_json({"type": "strategy", "id": MANUAL})  # the selector switched: a new snapshot
+        snap = ws.receive_json()
+        assert snap["type"] == "snapshot" and snap["strategyId"] == MANUAL and snap["positions"] == []
         ws.send_json({"type": "unsubscribe", "instruments": [["NSE_FNO", CE], ["IDX_I", 13]]})
-    assert ("NSE_FNO", CE) in feed.subs  # still held: the open Scalper position
+    assert ("NSE_FNO", CE) in feed.subs  # still held: the open position

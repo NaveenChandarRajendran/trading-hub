@@ -26,7 +26,7 @@ from algo_reports import day_summaries, range_report, write_day_summaries  # noq
 from algo_service import AlgoService  # noqa: E402
 from paper_api import PaperService  # noqa: E402
 from store import IST, PaperPgStore, PgStore  # noqa: E402
-from test_algo_service import (GOOD_CE, Clock, Instruments, at, books, breakout_entry, ce, make_data,  # noqa: E402
+from test_algo_service import (GOOD_CE, Clock, Instruments, at, books, breakout_entry, ce, make_data, signed_in,  # noqa: E402
                                tick)
 from test_paper_api import FakeFeed  # noqa: E402
 
@@ -163,11 +163,15 @@ def test_day_view_loads_23_oct_from_postgres(db, tmp_path):
     logs = tmp_path / "logs"
     logs.mkdir()
     shutil.copy(LOG, logs / "algo-2026-10-23.log")
+    with pg._cursor() as cur:  # the algo's strategy owner (the signed-in test user), as after the data migration
+        cur.execute("TRUNCATE th_sessions, th_login_attempts, th_user_prefs, th_users RESTART IDENTITY CASCADE")
+        cur.execute("INSERT INTO th_users (username, display_name) VALUES ('naveen', 'Naveen')")
     import_legacy.run(pg, paper, str(tmp_path / "none"), str(logs), out=lambda *a: None)
     clock = Clock()
     clock.now = datetime(2026, 10, 26, 9, 0, tzinfo=IST)
+    paper.create_strategy(1, "OI Breakout Algo", "", 100000, "algo", clock(), account_name="Algo")
     algo = AlgoService(paper, None, Instruments(), make_data(), clock, mode="signals", log_dir=str(tmp_path / "other"))
-    app = FastAPI()
+    app = signed_in(FastAPI())
     algo_api.register(app, algo)
     c = TestClient(app)
     for q in ("2026-10-23", "23-10-2026"):

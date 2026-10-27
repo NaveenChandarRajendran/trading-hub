@@ -2,27 +2,36 @@
 paper_api.py - paper trading service + routes (/api/paper/*, /ws/paper). SIMULATION ONLY: orders are filled by
 paper_engine against the live Dhan feed; nothing here calls a Dhan order endpoint.
 
-PaperService owns one PaperEngine per IST trading day for the active account. Every engine event is written to the
-store (Postgres or data/paper.json) and pushed to the open /ws/paper connections. A timer runs the 15:15 square-off
-and the day roll-over, so stop-losses and the square-off work while the browser is closed (the backend must run).
+One Book per strategy (users and strategies, docs/users-and-strategies.md): the strategy's open capital period
+(pt_accounts row) and its PaperEngine for the IST trading day. Paper Trading and Power Scalper both trade through these
+books, so a strategy has ONE set of funds, positions, OCO legs and one 15:15 square-off whichever screen placed the
+order. Every engine event is written to the store and pushed only to the WebSocket connections of the strategy's
+owner; market data (ticks, candles, volume) is shared. A timer runs the 15:15 square-off, the day roll-over and the
+15:35 daily summary (pt_daily_summary) of every book, so stop-losses and the square-off work while the browser is
+closed (the backend must run). The algo trades into its own strategy through algo_service.AlgoBroker.
 
-WebSocket /ws/paper
-  server -> client: {"type": "status"|"funds"|"order"|"trade"|"position"|"tick"|"candle", "data": {...}}
+Every /api/paper route that touches an account takes ?strategy=<id> (the signed-in user's own; 404 otherwise).
+Orders need an active manual strategy.
+
+WebSocket /ws/paper?strategy=<id>   (strategy optional: the Dashboard only wants candles)
+  server -> client: {"type": "status"|"tick"|"candle"|"volume", "data": {...}}
+                    {"type": "funds"|"order"|"trade"|"position", "strategyId": 7, "data": {...}}  (owner only)
   "candle": the current 1-minute candle of a subscribed index (IDX_I), built from its ticks (candles.py), for the
   Dashboard chart: {"segment", "securityId", "interval": 1, "time", "open", "high", "low", "close"}
   "volume": the current minute's volume of a subscribed index future (the chart's volume bars):
   {"segment", "securityId", "time", "volume"}
-                    plus one {"type": "snapshot", ...} right after connecting
+                    plus {"type": "snapshot", "strategyId", ...} right after connecting and after a "strategy" message
   client -> server: {"type": "subscribe" | "unsubscribe", "instruments": [["NSE_FNO", 52175], ["IDX_I", 13]]}
+                    {"type": "strategy", "id": 7}   switch the strategy the snapshot is for
 The backend always keeps open positions and pending orders subscribed, whatever the clients ask for.
 """
 import asyncio
 import logging
 import threading
 from datetime import date as Date
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
-from fastapi import HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from candles import CandleBuilder, VolumeBuilder
@@ -30,8 +39,9 @@ from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
 from paper_charges import RATES as CHARGE_RATES
-from paper_engine import OPEN_STATES, OrderError, PaperEngine
+from paper_engine import KEEP, OPEN_STATES, OrderError, PaperEngine
 from paper_levels import opening_order, order_snapshot, shifts_near
+from scalper_reports import day_rows, round_trips, summary_row, tiles
 from store import IST
 
 log = logging.getLogger("paper")
@@ -42,12 +52,10 @@ MIN_CAPITAL, MAX_CAPITAL = 10_000, 10_00_00_000  # Rs 10k .. Rs 10 crore
 FNO = "NSE_FNO"
 IDX = "IDX_I"
 SESSION_CLOSE = (15, 30)
+SUMMARY_AT = time(15, 35)  # pt_daily_summary of every book with fills
 CLIENT_QUEUE = 2000  # messages buffered per WebSocket client; ticks are dropped first when it is full
-
-
 SHIFT_CHECK_SEC = 20  # how often open positions are checked for new S/R level shifts
-# P&L / trades account filter -> pt_accounts.name (None = the manual account); "all" = the three together
-ACCOUNTS = {"manual": None, "algo": "Algo", "scalper": "Scalper"}
+ACCOUNT_EVENTS = ("order", "trade", "position", "funds")
 
 
 def now_ist():
@@ -55,10 +63,11 @@ def now_ist():
 
 
 class _Client:
-    def __init__(self, loop):
+    def __init__(self, loop, user_id=None, strategy_id=None):
         self.loop = loop
         self.queue = asyncio.Queue(CLIENT_QUEUE)
         self.subs = set()  # {(segment, security_id)}
+        self.user_id, self.strategy_id = user_id, strategy_id
 
     def push(self, msg):
         def put():
@@ -69,29 +78,107 @@ class _Client:
         self.loop.call_soon_threadsafe(put)
 
 
+class Book:
+    """One strategy's paper trading state for the IST day. Use only with PaperService.lock held."""
+
+    def __init__(self, strategy, account):
+        self.strategy_id, self.user_id, self.name = strategy["id"], strategy["user_id"], strategy["name"]
+        self.account = dict(account)
+        self.engine, self.day = None, None
+        self.order_levels = {}  # order id -> pt_order_levels row, today
+        self.shift_ids = {}  # security id -> level shift ids last sent, to push a position when a new shift appears
+        self.traded = set()  # instruments an order was tried on today (kept subscribed)
+        self.sources = {}  # order id -> "manual" | "scalper": which screen placed it
+        self.unsaved = []  # (kind, day, data) whose store write failed; retried on the next write
+        self.last_error = ""
+        self.summary_day = None
+
+    def busy(self):
+        e = self.engine
+        return any(p.open_qty > 0 for p in e.positions.values()) or any(o.status in OPEN_STATES for o in e.orders.values())
+
+    def held_ids(self):
+        e = self.engine
+        return ({sid for sid, p in e.positions.items() if p.open_qty > 0}
+                | {o.security_id for o in e.orders.values() if o.status in OPEN_STATES})
+
+
 class PaperService:
     def __init__(self, store, feed, instruments, clock=now_ist, holidays=NSE_HOLIDAYS, levels=None):
         self.store, self.feed, self.instruments, self.clock, self.holidays = store, feed, instruments, clock, holidays
         self.levels = levels  # paper_levels.TrackerLevels: S/R levels saved with each order (optional)
-        self._order_levels = {}  # order id -> pt_order_levels row, today
-        self._shift_ids = {}  # security id -> level shift ids last sent, to push a position when a new shift appears
+        self.calendar = PaperEngine(1.0, holidays=holidays)  # trading days / order hours only (no account)
         self._next_shift_check = None
-        self.listeners = []  # fn(pkt, now) for every market packet (the algo, algo_service.py)
+        self.listeners = []  # fn(pkt, now) for every market packet (the algo, the Scalper's pages)
+        self.event_listeners = []  # fn(book, kind, data) for every account event (the /ws/scalper clients)
         self._extra_subs = {}  # owner -> feed keys kept subscribed for it (the algo's indices and options)
         self.lock = threading.RLock()
         self.clients = set()
-        self.last_error = ""
-        self._unsaved = []  # (kind, day, data) whose store write failed; retried on the next write
+        self.books = {}  # strategy id -> Book
         self._feed_subs = set()
         self._feed_status = None
         self._timer = None
         self._stopping = threading.Event()
         self.candles = CandleBuilder()  # current 1-minute candle per subscribed index, for the Dashboard chart
         self.volumes = VolumeBuilder()  # current minute's volume per subscribed index future, same chart
-        self.account = store.active_account() or store.create_account(DEFAULT_CAPITAL, clock())
-        self.engine, self.day = None, None
         feed.on_packet = self.on_packet
-        self._ensure_day(clock())
+        with self.lock:  # every active manual strategy, so stops and the square-off run after a restart
+            for st in self.store.all_strategies():
+                if st["kind"] == "manual" and not st["archived_at"] and st["account_id"]:
+                    self._load(st)
+            self._sync_feed()
+
+    # ---------- books ----------
+    def _load(self, st):
+        acc = next(a for a in self.store.accounts() if a["id"] == st["account_id"])
+        book = self.books[st["id"]] = Book(st, acc)
+        self._ensure_day(book, self.clock())
+        return book
+
+    def book(self, strategy):
+        """The Book of a strategy dict (strategies.Strategies has checked the owner). Manual strategies only."""
+        with self.lock:
+            b = self.books.get(strategy["id"])
+            if b is None or b.account["id"] != strategy["account_id"]:
+                b = self._load(strategy)
+                self._sync_feed()
+            return b
+
+    def busy(self, strategy):
+        """Open position or pending order today (strategies.Strategies asks before capital changes / archive)."""
+        with self.lock:
+            b = self.books.get(strategy["id"])
+            if b is not None:
+                return b.busy()
+        day = self.clock().date().isoformat()
+        return bool(strategy["account_id"]) and self.store.book_open(strategy["account_id"], day)
+
+    def reload(self, strategy):
+        """After a capital change, reset or archive: the next use loads the strategy's open period again."""
+        with self.lock:
+            old = self.books.pop(strategy["id"], None)
+            if strategy["kind"] == "manual" and not strategy["archived_at"] and strategy["account_id"]:
+                b = self._load(strategy)
+                if old and old.engine:  # keep the last prices
+                    b.engine.books = dict(old.engine.books)
+                self._send(b, "funds", self.funds(b))
+            self._sync_feed()
+
+    def _ensure_day(self, book, now):
+        today = now.date()
+        if book.day == today:
+            return
+        acc, day = book.account["id"], today.isoformat()
+        opening = book.account["capital"] + self.store.net_before(acc, day)
+        engine = PaperEngine(max(opening, 0.01), holidays=self.holidays, day=today)
+        orders = self.store.orders(acc, day)
+        engine.restore(orders, self.store.trades(acc, day))
+        if book.engine:  # keep the last prices across a day change
+            engine.books = dict(book.engine.books)
+        book.engine, book.day = engine, today
+        book.sources = {o["id"]: o.get("source") or "manual" for o in orders}
+        book.order_levels = {r["order_id"]: r for r in self.store.order_levels(acc, day)}
+        book.shift_ids, book.traded = {}, set()
 
     # ---------- lifecycle ----------
     def start(self):
@@ -110,45 +197,38 @@ class PaperService:
             except Exception:
                 log.exception("paper timer failed")
 
-    def tick_timer(self):
-        """Every second: day roll-over, 15:15 square-off, feed status changes."""
-        now = self.clock()
+    def tick_timer(self, now=None):
+        """Every second: day roll-over, 15:15 square-off and the 15:35 summary of every book, feed status changes."""
+        now = now or self.clock()
         with self.lock:
-            self._ensure_day(now)
-            self._publish(self.engine.on_time(now))
-            if self._next_shift_check is None or now >= self._next_shift_check:
+            shifts = self._next_shift_check is None or now >= self._next_shift_check
+            if shifts:
                 self._next_shift_check = now + timedelta(seconds=SHIFT_CHECK_SEC)
-                self._push_new_shifts()
+            for b in list(self.books.values()):
+                self._ensure_day(b, now)
+                self._publish(b, b.engine.on_time(now))
+                if shifts:
+                    self._push_new_shifts(b)
+                if (self.calendar.is_trading_day(now) and now.time() >= SUMMARY_AT and b.summary_day != now.date()):
+                    b.summary_day = now.date()
+                    if b.engine.trades:
+                        self.write_summary(b, now.date().isoformat())
         status = self.feed_status()
         if status != self._feed_status:
             self._feed_status = status
             self._broadcast({"type": "status", "data": self.meta()})
 
-    def _ensure_day(self, now):
-        today = now.date()
-        if self.day == today:
-            return
-        acc, day = self.account["id"], today.isoformat()
-        opening = self.account["capital"] + self.store.net_before(acc, day)
-        engine = PaperEngine(max(opening, 0.01), holidays=self.holidays, day=today)
-        engine.restore(self.store.orders(acc, day), self.store.trades(acc, day))
-        self.engine, self.day = engine, today
-        self._order_levels = {r["order_id"]: r for r in self.store.order_levels(acc, day)}
-        self._shift_ids = {}
-        self._traded = set()  # instruments an order was tried on today
-        self._sync_feed()
-
     # ---------- state ----------
     def market_open(self, now=None):
         now = now or self.clock()
         t = (now.hour, now.minute)
-        return self.engine.is_trading_day(now) and (9, 15) <= t < SESSION_CLOSE
+        return self.calendar.is_trading_day(now) and (9, 15) <= t < SESSION_CLOSE
 
     def feed_status(self):
         s = self.feed.status
         return (s.get("connected"), s.get("tokenExpired"), s.get("lastError"))
 
-    def meta(self, message=""):
+    def meta(self, book=None, message=""):
         now = self.clock()
         fs = self.feed.status
         last = fs.get("lastPacketAt")
@@ -159,18 +239,20 @@ class PaperService:
                 message = "Market closed. Showing the last session."
             elif not fs.get("connected"):
                 message = "Live feed not connected; reconnecting."
-        return {"asOf": now.strftime("%Y-%m-%d %H:%M:%S"), "marketOpen": self.market_open(now),
-                "acceptingOrders": self.engine.accepting_orders(now), "tokenExpired": bool(fs.get("tokenExpired")),
-                "feedConnected": bool(fs.get("connected")),
-                "lastTickAt": datetime.fromtimestamp(last, IST).strftime("%H:%M:%S") if last else None,
-                "lastError": self.last_error or fs.get("lastError") or "", "message": message,
-                "accountId": self.account["id"]}
+        m = {"asOf": now.strftime("%Y-%m-%d %H:%M:%S"), "marketOpen": self.market_open(now),
+             "acceptingOrders": self.calendar.accepting_orders(now), "tokenExpired": bool(fs.get("tokenExpired")),
+             "feedConnected": bool(fs.get("connected")),
+             "lastTickAt": datetime.fromtimestamp(last, IST).strftime("%H:%M:%S") if last else None,
+             "lastError": (book.last_error if book else "") or fs.get("lastError") or "", "message": message}
+        if book:
+            m.update(strategyId=book.strategy_id, strategy=book.name)
+        return m
 
-    def funds(self):
-        f = self.engine.funds()
-        f["startingCapital"] = self.account["capital"]
+    def funds(self, book):
+        f = book.engine.funds()
+        f["startingCapital"] = book.account["capital"]
         f["openingBalance"] = f.pop("capital")
-        f["unrealized"] = self.engine.unrealized()
+        f["unrealized"] = book.engine.unrealized()
         f["dayPnl"] = round(f["realized"] - f["charges"] + f["unrealized"], 2)
         return f
 
@@ -186,21 +268,27 @@ class PaperService:
         return {**d, "name": inst.get("name", str(d["security_id"])), "symbol": inst.get("symbol"),
                 "optionType": inst.get("optionType"), "strike": inst.get("strike"), "expiry": inst.get("expiry")}
 
-    def positions(self):
+    def _position(self, book, sid, p):
+        t, s = book.engine.protection(sid)
+        pos = self._with_instrument({**p.to_dict(book.engine._ltp(sid)),
+                                     "target": t.price if t else None, "targetOrderId": t.id if t else None,
+                                     "stop": s.trigger_price if s else None, "stopOrderId": s.id if s else None})
+        return self._with_zone(book, pos)
+
+    def positions(self, book):
         with self.lock:
-            return [self._with_zone(self._with_instrument(p.to_dict(self.engine._ltp(sid))))
-                    for sid, p in self.engine.positions.items()]
+            return [self._position(book, sid, p) for sid, p in book.engine.positions.items()]
 
     # ---------- S/R levels at entry (paper_levels.py; information only, never exits) ----------
-    def _with_zone(self, pos):
+    def _with_zone(self, book, pos):
         """Adds entryZone (the level nearest spot when the opening BUY was placed) and levelShifts (levels within
         100 pts of it that moved since) to an open position. Call with self.lock held."""
         pos = {**pos, "entryZone": None, "levelShifts": []}
         if pos["open_qty"] <= 0:
-            self._shift_ids.pop(pos["security_id"], None)
+            book.shift_ids.pop(pos["security_id"], None)
             return pos
-        opener = opening_order([t.to_dict() for t in self.engine.trades], pos["security_id"])
-        lv = self._order_levels.get(opener)
+        opener = opening_order([t.to_dict() for t in book.engine.trades], pos["security_id"])
+        lv = book.order_levels.get(opener)
         if not lv or not lv["zone"]:
             return pos
         pos["entryZone"] = {**lv["zone"], "symbol": lv["symbol"], "expiry": lv["expiry"], "spot": lv["spot"],
@@ -211,22 +299,22 @@ class PaperService:
             log.warning("level history for %s %s: %s", lv["symbol"], lv["expiry"], e)
             changes = []
         pos["levelShifts"] = shifts_near(changes, lv["zone"], lv["levelsAt"])
-        self._shift_ids[pos["security_id"]] = [s["id"] for s in pos["levelShifts"]]
+        book.shift_ids[pos["security_id"]] = [s["id"] for s in pos["levelShifts"]]
         return pos
 
-    def _push_new_shifts(self):
+    def _push_new_shifts(self, book):
         """Levels are recorded every minute by the tracker: push a position again when its shifts changed."""
         if not self.levels:
             return
-        for sid, p in self.engine.positions.items():
+        for sid, p in book.engine.positions.items():
             if p.open_qty <= 0:
                 continue
-            before = self._shift_ids.get(sid)
-            pos = self._with_zone(self._with_instrument(p.to_dict(self.engine._ltp(sid))))
+            before = book.shift_ids.get(sid)
+            pos = self._position(book, sid, p)
             if before is not None and [s["id"] for s in pos["levelShifts"]] != before:
-                self._broadcast({"type": "position", "data": pos})
+                self._send(book, "position", pos)
 
-    def _save_order_levels(self, order, inst, now):
+    def _save_order_levels(self, book, order, inst, now):
         """Keeps the index's current S/R levels with the order. Never blocks the order."""
         if not self.levels or not order.get("id"):
             return
@@ -237,94 +325,145 @@ class PaperService:
             return
         if snap:
             row = order_snapshot(order["id"], snap, now.isoformat())
-            self._order_levels[order["id"]] = row
-            self._unsaved.append(("levels", self.day.isoformat(), row))
+            book.order_levels[order["id"]] = row
+            book.unsaved.append(("levels", book.day.isoformat(), row))
 
-    def orders(self, day=None):
+    def orders(self, book, day=None):
         with self.lock:
-            if day in (None, self.day.isoformat()):
-                rows = [o.to_dict() for o in sorted(self.engine.orders.values(), key=lambda o: o.created_at)]
+            if day in (None, book.day.isoformat()):
+                rows = [o.to_dict() for o in sorted(book.engine.orders.values(), key=lambda o: o.created_at)]
+                rows = [{**o, "source": book.sources.get(o["id"], "manual")} for o in rows]
             else:
-                rows = self.store.orders(self.account["id"], day)
+                rows = self.store.orders(book.account["id"], day)
         return [self._with_instrument(o) for o in rows]
 
-    def trades(self, day=None, account=None):
-        """Fills of a day: the manual account (today from the engine), or a named one ("Algo", "Scalper") from the
-        store; "all": every account's, each fill tagged with its account."""
-        if account == "all":
-            return [{**t, "account": label} for label, name in (("Manual", None), ("Algo", "Algo"), ("Scalper", "Scalper"))
-                    for t in self.trades(day, name)]
+    def trades(self, book, day=None):
+        """Fills of a day of the strategy's open capital period (today from the engine)."""
         with self.lock:
-            if account:
-                acc = self.store.active_account(account)
-                rows = self.store.trades(acc["id"], day or self.day.isoformat()) if acc else []
-            elif day in (None, self.day.isoformat()):
-                rows = [t.to_dict() for t in self.engine.trades]
+            if day in (None, book.day.isoformat()):
+                rows = [t.to_dict() for t in book.engine.trades]
             else:
-                rows = self.store.trades(self.account["id"], day)
+                rows = self.store.trades(book.account["id"], day)
         return [self._with_instrument(t) for t in rows]
 
-    def pnl(self, from_day, to_day, account=None):
-        """Day P&L of the manual account, or of a named one ("Algo", "Scalper": same pt_ tables); "all": the three
-        accounts added up per day."""
-        if account == "all":
-            days = {}
-            for name in ACCOUNTS.values():
-                for r in self.pnl(from_day, to_day, name):
-                    d = days.setdefault(r["date"], {"date": r["date"], "realized": 0.0, "charges": 0.0, "trades": 0})
-                    d["realized"], d["charges"] = d["realized"] + r["realized"], d["charges"] + r["charges"]
-                    d["trades"] += r["trades"]
-            rows = [{**d, "realized": round(d["realized"], 2), "charges": round(d["charges"], 2)}
-                    for _, d in sorted(days.items())]
-            for r in rows:
-                r["net"] = round(r["realized"] - r["charges"], 2)
-            return rows
-        with self.lock:
-            acc = self.account if not account else self.store.active_account(account)
-            if acc is None:
-                return []
-            rows = self.store.day_summary(acc["id"], from_day, to_day)
+    def pnl(self, account_ids, from_day, to_day):
+        """Day P&L of one or more capital periods (pt_accounts ids) added up per day: the P&L calendar's rows."""
+        days = {}
+        for acc in account_ids:
+            for r in self.store.day_summary(acc, from_day, to_day):
+                d = days.setdefault(r["date"], {"date": r["date"], "realized": 0.0, "charges": 0.0, "trades": 0})
+                d["realized"], d["charges"] = d["realized"] + r["realized"], d["charges"] + r["charges"]
+                d["trades"] += r["trades"]
+        rows = [{**d, "realized": round(d["realized"], 2), "charges": round(d["charges"], 2)}
+                for _, d in sorted(days.items())]
         for r in rows:
             r["net"] = round(r["realized"] - r["charges"], 2)
         return rows
 
+    # ---------- reports (round trips: scalper_reports.py) ----------
+    def _trips_by_day(self, book, from_day, to_day):
+        fills = [self._with_instrument(t) for t in self.store.trades_between(book.account["id"], from_day, to_day)]
+        by_day = {}
+        for t in fills:
+            by_day.setdefault(t["date"], []).append(t)
+        return {d: round_trips(rows) for d, rows in by_day.items()}
+
+    def reports(self, book, from_day, to_day):
+        """Tiles + day-wise table of a strategy's open capital period for a date range."""
+        trips = self._trips_by_day(book, from_day, to_day)
+        days = day_rows(self.store.day_summary(book.account["id"], from_day, to_day),
+                        {d: closed for d, (closed, _open) in trips.items()})
+        all_closed = [t for closed, _open in trips.values() for t in closed]
+        return {"tiles": tiles(days, all_closed), "days": days}
+
+    def day_view(self, book, day):
+        """One day: its round trips (closed and still open) and every fill."""
+        fills = [self._with_instrument(t) for t in self.store.trades_between(book.account["id"], day, day)]
+        closed, still_open = round_trips(fills)
+        row = next(iter(day_rows(self.store.day_summary(book.account["id"], day, day), {day: closed})), None)
+        return {"date": day, "day": row, "trades": closed, "open": still_open, "fills": fills}
+
+    def write_summary(self, book, day):
+        """pt_daily_summary row of a strategy for a day (15:35 IST, or on demand)."""
+        view = self.day_view(book, day)
+        row = {**summary_row(book.account["id"], day, view["day"], view["trades"]), "strategy_id": book.strategy_id}
+        try:
+            self.store.save_daily_summary(row)
+        except Exception as e:
+            book.last_error = f"Daily summary not saved: {e}"
+            log.warning("daily summary of strategy %s: %s", book.strategy_id, e)
+        return row
+
     # ---------- persistence + broadcast ----------
-    def _publish(self, events):
-        """Stores and broadcasts engine events. Call with self.lock held."""
+    def _publish(self, book, events, source=None):
+        """Stores and sends engine events (to the strategy's owner only). Call with self.lock held."""
         if not events:
             return
-        day = self.day.isoformat()
-        self._unsaved += [(ev.kind, day, ev.data) for ev in events]
-        self._flush()
+        day = book.day.isoformat()
+        for ev in events:
+            data = ev.data
+            if ev.kind == "order":
+                if data["id"] not in book.sources:
+                    book.sources[data["id"]] = source or "manual"
+                data = {**data, "source": book.sources[data["id"]]}
+            book.unsaved.append((ev.kind, day, data))
+        self._flush(book)
         for ev in events:
             data = self._with_instrument(ev.data)
-            self._broadcast({"type": ev.kind, "data": self._with_zone(data) if ev.kind == "position" else data})
-        self._broadcast({"type": "funds", "data": self.funds()})
+            if ev.kind == "position":
+                data = self._position(book, ev.data["security_id"], book.engine.positions[ev.data["security_id"]])
+            elif ev.kind == "order":
+                data = {**data, "source": book.sources.get(data["id"], "manual")}
+            self._send(book, ev.kind, data)
+        self._send(book, "funds", self.funds(book))
         self._sync_feed()
 
-    def _flush(self):
-        acc = self.account["id"]
+    def _flush(self, book):
+        acc = book.account["id"]
         save = {"order": self.store.save_order, "trade": self.store.save_trade, "position": self.store.save_position,
                 "levels": self.store.save_order_levels}
-        while self._unsaved:
-            kind, day, data = self._unsaved[0]
+        while book.unsaved:
+            kind, day, data = book.unsaved[0]
             try:
                 save[kind](acc, day, data)
             except Exception as e:
-                self.last_error = f"Database write failed, will retry: {e}"
+                book.last_error = f"Database write failed, will retry: {e}"
                 log.warning("paper store write failed: %s", e)
                 return
-            self._unsaved.pop(0)
-        self.last_error = ""
+            book.unsaved.pop(0)
+        book.last_error = ""
+
+    def _send(self, book, kind, data):
+        """An account event: only to the owner's connections (and the owner's Scalper pages via event_listeners)."""
+        msg = {"type": kind, "strategyId": book.strategy_id, "data": data}
+        for c in list(self.clients):
+            if c.user_id == book.user_id:
+                c.push(msg)
+        for fn in list(self.event_listeners):
+            try:
+                fn(book, kind, data)
+            except Exception:
+                log.exception("account event listener failed")
 
     def _broadcast(self, msg):
         for c in list(self.clients):
             c.push(msg)
 
+    def held_by(self, user_id):
+        """Instrument ids an owner's books hold (their ticks go to that owner's pages)."""
+        out = set()
+        with self.lock:
+            for b in list(self.books.values()):
+                if b.user_id == user_id and b.engine:
+                    out |= b.held_ids()
+        return out
+
     def _sync_feed(self):
-        """Feed subscriptions = what the clients show + open positions + pending orders."""
-        need = {(FNO, p.security_id) for p in self.engine.positions.values() if p.open_qty > 0} | self._traded
-        need |= {(FNO, o.security_id) for o in self.engine.orders.values() if o.status in OPEN_STATES}
+        """Feed subscriptions = what the clients show + every book's open positions, pending orders and tries."""
+        need = set()
+        for b in self.books.values():
+            if b.engine:
+                need |= {(FNO, sid) for sid in b.held_ids()} | b.traded
         for c in list(self.clients):
             need |= c.subs
         for keys in self._extra_subs.values():
@@ -353,6 +492,7 @@ class PaperService:
             return
         key, now = (pkt["segment"], pkt["security_id"]), self.clock()
         tick = {"segment": key[0], "securityId": key[1], "ltp": pkt["ltp"]}
+        held_users = set()
         if pkt["kind"] == "full":
             book = to_book(pkt)
             tick.update(bid=book.best_bid, ask=book.best_ask, bidQty=book.bids[0][1] if book.bids else 0,
@@ -360,11 +500,14 @@ class PaperService:
                         close=pkt["close"])
             if key[0] == FNO:
                 with self.lock:
-                    self._ensure_day(now)
-                    self._publish(self.engine.on_tick(key[1], book, now))
+                    for b in list(self.books.values()):
+                        self._ensure_day(b, now)
+                        self._publish(b, b.engine.on_tick(key[1], book, now))
+                        if key[1] in b.engine.positions:
+                            held_users.add(b.user_id)
         msg = {"type": "tick", "data": tick}
         for c in list(self.clients):
-            if key in c.subs or (key[0] == FNO and key[1] in self.engine.positions):
+            if key in c.subs or (key[0] == FNO and c.user_id in held_users):
                 c.push(msg)
         if key[0] == FNO and pkt["kind"] == "full" and key[1] in self.instruments.future_ids():
             vol = self.volumes.on_volume(key, pkt.get("volume"), now)
@@ -386,77 +529,59 @@ class PaperService:
             except Exception:
                 log.exception("packet listener failed")
 
-    # ---------- commands ----------
-    def place_order(self, security_id, side, lots, order_type, price=None, trigger_price=None):
+    # ---------- commands (book = the strategy's Book; strategies.Strategies.tradable checked owner + kind) ----------
+    def place_order(self, book, security_id, side, lots, order_type, price=None, trigger_price=None, source="manual"):
         inst = self._instrument(security_id)
         if inst is None:
             raise LookupError(f"{security_id} is not a NIFTY / BANKNIFTY option in Dhan's instrument list")
         now = self.clock()
         with self.lock:
-            self._ensure_day(now)
-            if (FNO, security_id) not in self._traded:  # keep it subscribed for the day, so the next try has a price
-                self._traded.add((FNO, security_id))
+            self._ensure_day(book, now)
+            if (FNO, security_id) not in book.traded:  # keep it subscribed for the day, so the next try has a price
+                book.traded.add((FNO, security_id))
                 self._sync_feed()
-            order, events = self.engine.place_order(security_id, side, lots, inst["lotSize"], order_type, now,
+            order, events = book.engine.place_order(security_id, side, lots, inst["lotSize"], order_type, now,
                                                     price=price, trigger_price=trigger_price)
-            self._save_order_levels(order.to_dict(), inst, now)  # before the events, so the position shows its zone
-            self._publish(events)
-            self._flush()
-            return self._with_instrument(order.to_dict())
+            book.sources[order.id] = source
+            self._save_order_levels(book, order.to_dict(), inst, now)  # before the events: the position shows its zone
+            self._publish(book, events, source)
+            self._flush(book)
+            return self._with_instrument({**order.to_dict(), "source": source})
 
-    def modify_order(self, order_id, **changes):
+    def modify_order(self, book, order_id, **changes):
         with self.lock:
-            self._known(order_id)
-            self._publish(self.engine.modify_order(order_id, self.clock(), **changes))
-            return self._with_instrument(self.engine.orders[order_id].to_dict())
+            self._known(book, order_id)
+            self._publish(book, book.engine.modify_order(order_id, self.clock(), **changes))
+            return self._with_instrument(book.engine.orders[order_id].to_dict())
 
-    def cancel_order(self, order_id):
+    def cancel_order(self, book, order_id):
         with self.lock:
-            self._known(order_id)
-            self._publish(self.engine.cancel_order(order_id, self.clock()))
-            return self._with_instrument(self.engine.orders[order_id].to_dict())
+            self._known(book, order_id)
+            self._publish(book, book.engine.cancel_order(order_id, self.clock()))
+            return self._with_instrument(book.engine.orders[order_id].to_dict())
 
-    def _known(self, order_id):
-        if order_id not in self.engine.orders:
+    @staticmethod
+    def _known(book, order_id):
+        if order_id not in book.engine.orders:
             raise LookupError(f"No order {order_id} today")
 
-    def exit_position(self, security_id):
+    def exit_position(self, book, security_id, source="manual"):
         with self.lock:
-            self._publish(self.engine.exit_position(security_id, self.clock()))
+            self._publish(book, book.engine.exit_position(security_id, self.clock()), source)
 
-    def exit_all(self):
+    def exit_all(self, book, source="manual"):
         with self.lock:
-            self._publish(self.engine.exit_all(self.clock()))
+            self._publish(book, book.engine.exit_all(self.clock()), source)
 
-    def _busy(self):
-        e = self.engine
-        return any(p.open_qty > 0 for p in e.positions.values()) or any(o.status in OPEN_STATES for o in e.orders.values())
-
-    def set_capital(self, capital):
+    def set_protection(self, book, security_id, target=KEEP, stop=KEEP, source="scalper"):
+        """Target / stop of an open position as an OCO pair (None cancels a leg, KEEP leaves it)."""
         with self.lock:
-            if self._busy():
-                raise OrderError("Exit open positions and cancel pending orders before changing capital.")
-            self.store.set_capital(self.account["id"], capital)
-            self.account["capital"] = float(capital)
-            self.day = None
-            self._ensure_day(self.clock())
-            self._broadcast({"type": "funds", "data": self.funds()})
-
-    def reset_account(self, capital=None):
-        with self.lock:
-            if self._busy():
-                raise OrderError("Exit open positions and cancel pending orders before resetting the account.")
-            now = self.clock()
-            self.store.archive_account(self.account["id"], now)
-            self.account = self.store.create_account(capital or self.account["capital"], now)
-            self.day = None
-            self._ensure_day(now)
-            self._broadcast({"type": "funds", "data": self.funds()})
-            return self.account
+            self._publish(book, book.engine.set_protection(security_id, self.clock(), target=target, stop=stop), source)
+            return next(p for p in self.positions(book) if p["security_id"] == security_id)
 
     # ---------- websocket clients ----------
-    def add_client(self, loop):
-        c = _Client(loop)
+    def add_client(self, loop, user_id=None, strategy_id=None):
+        c = _Client(loop, user_id, strategy_id)
         with self.lock:
             self.clients.add(c)
         return c
@@ -472,10 +597,12 @@ class PaperService:
             c.subs = c.subs | keys if add else c.subs - keys
             self._sync_feed()
 
-    def snapshot(self):
+    def snapshot(self, book=None):
         with self.lock:
-            return {"type": "snapshot", "meta": self.meta(), "funds": self.funds(), "positions": self.positions(),
-                    "orders": self.orders()}
+            if book is None:
+                return {"type": "snapshot", "strategyId": None, "meta": self.meta()}
+            return {"type": "snapshot", "strategyId": book.strategy_id, "meta": self.meta(book),
+                    "funds": self.funds(book), "positions": self.positions(book), "orders": self.orders(book)}
 
 
 # ======================================================================= routes
@@ -503,22 +630,6 @@ class ModifyBody(BaseModel):
     triggerPrice: float | None = None
 
 
-def _check_capital(capital):
-    if not MIN_CAPITAL <= capital <= MAX_CAPITAL:
-        raise HTTPException(400, f"capital must be between {MIN_CAPITAL:,} and {MAX_CAPITAL:,} rupees "
-                                 f"(presets: {', '.join(f'{p:,}' for p in CAPITAL_PRESETS)})")
-
-
-def _account(value):
-    """?account= of /pnl and /trades -> the pt_accounts name (None = manual), or "all"."""
-    v = (value or "manual").lower()
-    if v == "all":
-        return "all"
-    if v not in ACCOUNTS:
-        raise HTTPException(400, "account must be manual, algo, scalper or all")
-    return ACCOUNTS[v]
-
-
 def _day(value, name):
     if not value:
         return None
@@ -528,8 +639,35 @@ def _day(value, name):
         raise HTTPException(400, f"{name} must be YYYY-MM-DD")
 
 
-def register(app, svc):
+def resolve(strategies, request, value, trade=False, manual=True):
+    """?strategy=<id> -> the signed-in user's strategy dict. trade: must take orders (active, manual). manual: needs a
+    paper Book (the algo's strategy is shown by the algo pages). Someone else's strategy is 404, like a missing one."""
+    from strategies import NotFound, Refused
+    if not value:
+        raise HTTPException(400, "Pick a strategy (?strategy=<id>).")
+    try:
+        st = (strategies.tradable if trade else strategies.get)(request.state.user, value)
+    except NotFound:
+        raise HTTPException(404, "Strategy not found.") from None
+    except Refused as e:
+        raise HTTPException(e.status, e.message) from None
+    if manual and st["kind"] != "manual":
+        raise HTTPException(400, "The algo's strategy is shown in Algo (paper).")
+    return st
+
+
+def strategy_accounts(svc, strategies, request, value):
+    """?strategy=<id> | all -> pt_accounts ids (every capital period) of that strategy or of all the user's ones."""
+    if (value or "").lower() == "all":
+        ids = {s["id"] for s in strategies.store.strategies(request.state.user.id)}
+    else:
+        ids = {resolve(strategies, request, value, manual=False)["id"]}
+    return [a["id"] for a in svc.store.accounts() if a.get("strategy_id") in ids]
+
+
+def register(app, svc, strategies):
     """Adds the paper trading routes to the FastAPI app (called from main.create_app)."""
+    from strategies import NotFound, Refused, public
 
     def run(fn, *args, **kwargs):
         try:
@@ -541,71 +679,91 @@ def register(app, svc):
         except ValueError as e:
             raise HTTPException(400, str(e))
 
+    def book(request, strategy, trade=False):
+        return svc.book(resolve(strategies, request, strategy, trade))
+
+    def account_body(request, strategy):
+        st = resolve(strategies, request, strategy)
+        b = svc.book(st)
+        return {"meta": svc.meta(b), "strategy": public(st), "account": b.account, "funds": svc.funds(b),
+                "presets": list(CAPITAL_PRESETS), "chargeRates": CHARGE_RATES}
+
+    def capital(fn, request, strategy, *args):
+        try:
+            fn(request.state.user, strategy, *args)
+        except NotFound:
+            raise HTTPException(404, "Strategy not found.") from None
+        except Refused as e:
+            raise HTTPException(e.status, e.message) from None
+        return account_body(request, strategy)
+
     @app.get("/api/paper/account")
-    def get_account():
-        return {"meta": svc.meta(), "account": svc.account, "funds": svc.funds(), "presets": list(CAPITAL_PRESETS),
-                "chargeRates": CHARGE_RATES}
+    def get_account(request: Request, strategy: str = ""):
+        return account_body(request, strategy)
 
     @app.post("/api/paper/account")
-    def set_capital(body: CapitalBody):
-        _check_capital(body.capital)
-        run(svc.set_capital, body.capital)
-        return get_account()
+    def set_capital(body: CapitalBody, request: Request, strategy: str = ""):
+        resolve(strategies, request, strategy)
+        return capital(strategies.set_capital, request, strategy, body.capital)
 
     @app.post("/api/paper/account/reset")
-    def reset(body: ResetBody | None = None):
-        capital = body.capital if body else None
-        if capital is not None:
-            _check_capital(capital)
-        run(svc.reset_account, capital)
-        return get_account()
+    def reset(request: Request, strategy: str = "", body: ResetBody | None = None):
+        resolve(strategies, request, strategy)
+        return capital(strategies.reset, request, strategy, body.capital if body else None)
 
     @app.post("/api/paper/orders")
-    def place(body: OrderBody):
+    def place(body: OrderBody, request: Request, strategy: str = ""):
         if body.attach:
             raise HTTPException(400, "attached SL / target is not available yet")
-        o = run(svc.place_order, body.securityId, body.side.upper(), body.lots, body.orderType.upper(),
+        b = book(request, strategy, trade=True)
+        o = run(svc.place_order, b, body.securityId, body.side.upper(), body.lots, body.orderType.upper(),
                 price=body.price, trigger_price=body.triggerPrice)
         return {"id": o["id"], "status": o["status"], "qty": o["qty"], "reason": o["reason"], "order": o}
 
     @app.put("/api/paper/orders/{order_id}")
-    def modify(order_id: str, body: ModifyBody):
-        return run(svc.modify_order, order_id, lots=body.lots, price=body.price, trigger_price=body.triggerPrice)
+    def modify(order_id: str, body: ModifyBody, request: Request, strategy: str = ""):
+        return run(svc.modify_order, book(request, strategy, trade=True), order_id, lots=body.lots, price=body.price,
+                   trigger_price=body.triggerPrice)
 
     @app.delete("/api/paper/orders/{order_id}")
-    def cancel(order_id: str):
-        return run(svc.cancel_order, order_id)
+    def cancel(order_id: str, request: Request, strategy: str = ""):
+        return run(svc.cancel_order, book(request, strategy, trade=True), order_id)
 
     @app.get("/api/paper/orders")
-    def orders(date: str = ""):
-        return {"meta": svc.meta(), "rows": svc.orders(_day(date, "date"))}
+    def orders(request: Request, strategy: str = "", date: str = ""):
+        b = book(request, strategy)
+        return {"meta": svc.meta(b), "rows": svc.orders(b, _day(date, "date"))}
+
+    def positions_body(b):
+        return {"meta": svc.meta(b), "rows": svc.positions(b), "funds": svc.funds(b)}
 
     @app.get("/api/paper/positions")
-    def positions():
-        return {"meta": svc.meta(), "rows": svc.positions(), "funds": svc.funds()}
+    def positions(request: Request, strategy: str = ""):
+        return positions_body(book(request, strategy))
 
     @app.post("/api/paper/positions/exit-all")
-    def exit_all():
-        run(svc.exit_all)
-        return positions()
+    def exit_all(request: Request, strategy: str = ""):
+        b = book(request, strategy, trade=True)
+        run(svc.exit_all, b)
+        return positions_body(b)
 
     @app.post("/api/paper/positions/{security_id}/exit")
-    def exit_one(security_id: int):
-        run(svc.exit_position, security_id)
-        return positions()
+    def exit_one(security_id: int, request: Request, strategy: str = ""):
+        b = book(request, strategy, trade=True)
+        run(svc.exit_position, b, security_id)
+        return positions_body(b)
 
     @app.get("/api/paper/pnl")
-    def pnl(from_day: str = Query("", alias="from"), to: str = "", account: str = ""):  # "from" is a keyword
+    def pnl(request: Request, from_day: str = Query("", alias="from"), to: str = "", strategy: str = ""):
         today = svc.clock().date()
         to_day = _day(to, "to") or today.isoformat()
         start = _day(from_day, "from") or (Date.fromisoformat(to_day) - timedelta(days=365)).isoformat()
         if start > to_day:
             raise HTTPException(400, "from must not be after to")
         holidays = sorted(d for d in svc.holidays if start <= d <= to_day)
-        name = _account(account)
-        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays,
-                         "account": "All" if name == "all" else name or "Manual"},
-                "rows": svc.pnl(start, to_day, name)}
+        accounts = strategy_accounts(svc, strategies, request, strategy)
+        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays, "strategy": strategy or ""},
+                "rows": svc.pnl(accounts, start, to_day)}
 
     @app.get("/api/paper/chain")
     def chain(symbol: str = "NIFTY", expiry: str = ""):
@@ -629,13 +787,34 @@ def register(app, svc):
                 "rows": [{"strike": r["strike"], "ce": slim(r["ce"]), "pe": slim(r["pe"])} for r in rows]}
 
     @app.get("/api/paper/trades")
-    def trades(date: str = "", account: str = ""):
-        return {"meta": svc.meta(), "rows": svc.trades(_day(date, "date"), _account(account))}
+    def trades(request: Request, date: str = "", strategy: str = ""):
+        day = _day(date, "date") or svc.clock().date().isoformat()
+        if (strategy or "").lower() == "all":
+            rows = []
+            for st in strategies.store.strategies(request.state.user.id):
+                for acc in strategy_accounts(svc, strategies, request, str(st["id"])):
+                    rows += [{**svc._with_instrument(t), "strategyId": st["id"], "strategy": st["name"]}
+                             for t in svc.store.trades(acc, day)]
+            return {"meta": svc.meta(), "rows": rows}
+        st = resolve(strategies, request, strategy, manual=False)
+        rows = [svc._with_instrument(t) for acc in strategy_accounts(svc, strategies, request, str(st["id"]))
+                for t in svc.store.trades(acc, day)]
+        return {"meta": svc.meta(), "rows": rows}
 
     @app.websocket("/ws/paper")
     async def ws_paper(ws: WebSocket):
+        user = ws.state.user
+
+        def pick(value):
+            """A manual strategy of this user -> its Book; anything else -> None (prices only)."""
+            try:
+                st = strategies.get(user, value) if value else None
+            except (NotFound, Refused):
+                return None
+            return svc.book(st) if st and st["kind"] == "manual" else None
+        b = pick(ws.query_params.get("strategy"))
         await ws.accept()
-        client = svc.add_client(asyncio.get_running_loop())
+        client = svc.add_client(asyncio.get_running_loop(), user.id, b.strategy_id if b else None)
 
         async def pump():
             while True:
@@ -643,7 +822,7 @@ def register(app, svc):
 
         sender = asyncio.create_task(pump())
         try:
-            await ws.send_json(svc.snapshot())
+            await ws.send_json(svc.snapshot(b))
             while True:
                 msg = await ws.receive_json()
                 kind = msg.get("type")
@@ -652,6 +831,10 @@ def register(app, svc):
                         svc.client_subscribe(client, msg.get("instruments") or [], add=kind == "subscribe")
                     except (TypeError, ValueError):
                         await ws.send_json({"type": "error", "data": {"message": "instruments must be [[segment, id]]"}})
+                elif kind == "strategy":
+                    b = pick(str(msg.get("id") or ""))
+                    client.strategy_id = b.strategy_id if b else None
+                    await ws.send_json(svc.snapshot(b))
         except WebSocketDisconnect:
             pass
         finally:

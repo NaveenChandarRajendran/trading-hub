@@ -65,7 +65,7 @@ from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
 from envfile import load_env_file
 from store import IST, PaperPgStore, PgStore
-from strategies import Strategies
+from strategies import Strategies, bootstrap
 from tracker import Tracker
 
 ALLOWED_INTERVALS = (1, 3, 5, 10, 15, 30)
@@ -383,13 +383,14 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     sr_api.register(app, tracker, get_expiries)
     dashboard_levels_api.register(app, tracker.store, tracker.clock)
     if paper:
-        paper_api.register(app, paper)
-        strategies_api.register(app, Strategies(paper.store, paper.clock))
+        strategies = Strategies(paper.store, paper.clock, books=paper)
+        paper_api.register(app, paper, strategies)
+        strategies_api.register(app, strategies)
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo
     if scalper:
-        scalper_api.register(app, scalper)
+        scalper_api.register(app, scalper, strategies)
         app.state.scalper = scalper
     return app
 
@@ -431,6 +432,9 @@ def main():
     import uvicorn
 
     store, paper_store = open_stores()
+    if bootstrap(store, algo_config.CAPITAL, datetime.now(IST), log=logging.getLogger("main").info):
+        logging.getLogger("main").warning("User naveen has no password yet. In backend/: "
+                                          "python scripts/create_user.py --username naveen")
     client = DhanClient()
     tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force)
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]

@@ -76,12 +76,27 @@ def make_data(token=lambda: False):
                     intraday=lambda s: [], token_expired=token)
 
 
+def with_strategies(store, clock):
+    """User 1's manual strategy (#1) and the algo's strategy (#2, account 'Algo'), as after the data migration."""
+    store.create_strategy(1, "Manual", "", 100000, "manual", clock())
+    store.create_strategy(1, "OI Breakout Algo", "", cfg.CAPITAL, "algo", clock(), account_name=cfg.ACCOUNT_NAME)
+
+
+def signed_in(app, user=None):
+    """A bare FastAPI app with the test login in front (authfake: user 1 unless given)."""
+    from auth import AuthMiddleware
+    from authfake import SignedIn
+    app.add_middleware(AuthMiddleware, auth=SignedIn(user) if user else SignedIn())
+    return app
+
+
 @pytest.fixture
 def env():
     tmp = tempfile.mkdtemp()
     clock = Clock()
     clock.now = at("09:20")
     store = PaperJsonStore(tmp)
+    with_strategies(store, clock)
     paper = PaperService(store, FakeFeed(), Instruments(), clock=clock)
     algo = AlgoService(store, paper, Instruments(), make_data(), clock, mode="paper", log_dir=os.path.join(tmp, "logs"),
                         variant="A", shadows=())
@@ -153,7 +168,8 @@ def test_breakout_pullback_places_a_tagged_paper_order_in_the_algo_account(env):
     assert acc["name"] == "Algo" and acc["capital"] == cfg.CAPITAL
     orders = store.orders(acc["id"], DAY)
     assert [(o["side"], o["status"], o["source"], o["setup"]) for o in orders] == [("BUY", "FILLED", "algo", "Breakout CE")]
-    assert paper.account["id"] != acc["id"] and store.orders(paper.account["id"], DAY) == []  # manual account untouched
+    manual = paper.books[1].account
+    assert manual["id"] != acc["id"] and store.orders(manual["id"], DAY) == []  # manual strategy untouched
     entry = [e for e in store.algo_events(DAY) if e["kind"] == "entry"][0]
     assert "BUY NIFTY 27 OCT 22800 CALL @ 120.05" in entry["message"] and "Why: Breakout CE: break 10:00 candle" in entry["message"]
     assert kinds(algo)[-3:] == ["candle", "armed", "candle"] or "entry" in kinds(algo)
@@ -339,7 +355,7 @@ def test_api_routes_and_kill_switch(env):
     import algo_api
     algo, paper, clock, *_ = env
     breakout_entry(algo, paper, clock)
-    app = FastAPI()
+    app = signed_in(FastAPI())
     algo_api.register(app, algo)
     c = TestClient(app)
     assert c.get("/api/algo/status").json()["indices"][0]["state"] == "in trade"
@@ -358,6 +374,7 @@ def test_create_app_wires_the_algo_only_when_asked():
     tmp = tempfile.mkdtemp()
     try:
         clock = Clock()
+        with_strategies(PaperJsonStore(tmp), clock)
         paper = PaperService(PaperJsonStore(tmp), FakeFeed(), Instruments(), clock=clock)
         tr = Tracker(FakeClient(), data_dir=tmp, clock=clock)
         assert not any(r.path == "/api/algo/status" for r in create_app(tr, paper=paper).routes)
@@ -376,7 +393,7 @@ def test_past_day_log_and_trades_come_from_the_store_only(env):
     breakout_entry(algo, paper, clock)
     books(paper, clock, at("10:20"), {ce(22800): 190.0})
     tick(paper, clock, at("10:21"), 22991)
-    app = FastAPI()
+    app = signed_in(FastAPI())
     algo_api.register(app, algo)
     c = TestClient(app)
     clock.now = datetime(2026, 10, 26, 9, 0, tzinfo=IST)  # Monday: Friday is a past day now

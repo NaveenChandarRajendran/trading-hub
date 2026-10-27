@@ -30,6 +30,7 @@ CANDLE_COLS = ("candle_start", "open", "high", "low", "close", "minutes", "rsi",
 SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gross_pnl", "charges", "net_pnl")
 SCALPER_SUMMARY_COLS = ("trades", "wins", "losses", "fills", "realized", "charges", "net", "best_trade", "worst_trade")
 STRATEGY_EDITABLE = ("name", "description", "notes", "archived_at")
+DAILY_SUMMARY_KEYS = ("strategy_id", "account_id", "trade_date", *SCALPER_SUMMARY_COLS)
 OPEN_ORDER_STATES = ("PENDING", "TRIGGERED")
 
 
@@ -454,6 +455,20 @@ class PaperJsonStore:
     def strategies(self, user_id):
         return [self._strategy_out(st) for st in self.d.get("strategies", []) if st["user_id"] == user_id]
 
+    def all_strategies(self):
+        return [self._strategy_out(st) for st in self.d.get("strategies", [])]
+
+    def save_daily_summary(self, row):
+        t = self.d.setdefault("daily_summary", {})
+        t[f"{row['account_id']}|{row['trade_date']}"] = {k: row.get(k) for k in DAILY_SUMMARY_KEYS}
+        self._write()
+
+    def daily_summaries(self, strategy_ids, from_day, to_day):
+        ids = set(strategy_ids)
+        rows = [dict(r) for r in self.d.get("daily_summary", {}).values()
+                if r["strategy_id"] in ids and from_day <= r["trade_date"] <= to_day]
+        return sorted(rows, key=lambda r: (r["trade_date"], r["strategy_id"]))
+
     def strategy(self, sid):
         st = next((st for st in self.d.get("strategies", []) if st["id"] == sid), None)
         return self._strategy_out(st) if st else None
@@ -703,6 +718,28 @@ class PaperPgStore:
         with self.pg._cursor() as cur:
             cur.execute(self._STRATEGY_SQL + "WHERE s.user_id=%s ORDER BY s.id", (user_id,))
             return [self._strategy(r) for r in cur.fetchall()]
+
+    def all_strategies(self):
+        with self.pg._cursor() as cur:
+            cur.execute(self._STRATEGY_SQL + "ORDER BY s.id")
+            return [self._strategy(r) for r in cur.fetchall()]
+
+    def save_daily_summary(self, row):
+        cols = SCALPER_SUMMARY_COLS
+        with self.pg._cursor() as cur:
+            cur.execute(f"INSERT INTO pt_daily_summary (strategy_id, account_id, trade_date, {', '.join(cols)}, updated_at) "
+                        f"VALUES (%s, %s, %s, {', '.join(['%s'] * len(cols))}, now()) "
+                        "ON CONFLICT (account_id, trade_date) DO UPDATE SET "
+                        + ", ".join(f"{c}=EXCLUDED.{c}" for c in cols) + ", updated_at=now()",
+                        (row["strategy_id"], row["account_id"], row["trade_date"], *[row.get(c) for c in cols]))
+
+    def daily_summaries(self, strategy_ids, from_day, to_day):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT strategy_id, account_id, trade_date, {', '.join(SCALPER_SUMMARY_COLS)} FROM pt_daily_summary "
+                        "WHERE strategy_id = ANY(%s) AND trade_date BETWEEN %s AND %s ORDER BY trade_date, strategy_id",
+                        (list(strategy_ids), from_day, to_day))
+            return [{"strategy_id": r[0], "account_id": r[1], "trade_date": r[2].isoformat(),
+                     **dict(zip(SCALPER_SUMMARY_COLS, r[3:]))} for r in cur.fetchall()]
 
     def strategy(self, sid):
         with self.pg._cursor() as cur:

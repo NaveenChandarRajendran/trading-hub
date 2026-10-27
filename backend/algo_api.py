@@ -12,10 +12,11 @@ Everything is read from Postgres; dates are IST trading dates (2026-10-23 or 23-
     POST /api/algo/stop                         kill switch: no new entries (open positions keep their exits)
     POST /api/algo/stop-exit-all                kill switch + exit every open algo position at market
     POST /api/algo/resume                       allow new entries again
+Only the owner of the algo's strategy ("OI Breakout Algo", Naveen) gets these routes; anyone else gets 404.
 """
 import re
 
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request
 
 import algo_config as cfg
 from algo_reports import day_view, preset_range, range_report, recompute
@@ -47,6 +48,11 @@ def parse_index(value):
 
 
 def register(app, algo):
+    def owner_only(request: Request):
+        if algo.owner_id() != request.state.user.id:
+            raise HTTPException(404, "Not found.")
+    owner = [Depends(owner_only)]
+
     def db(fn, *a, **k):
         try:
             return fn(*a, **k)
@@ -57,20 +63,20 @@ def register(app, algo):
         except Exception as e:  # database unreachable
             raise HTTPException(503, f"Database unavailable: {e}")
 
-    @app.get("/api/algo/status")
+    @app.get("/api/algo/status", dependencies=owner)
     def status():
         return algo.status()
 
-    @app.get("/api/algo/events")
+    @app.get("/api/algo/events", dependencies=owner)
     def events(date: str = "", variant: str = ""):
         return db(algo.day_log, parse_date(date) or None, parse_variant(variant))
 
-    @app.get("/api/algo/day")
+    @app.get("/api/algo/day", dependencies=owner)
     def day(date: str = "", variant: str = ""):
         d = parse_date(date) or algo.clock().date().isoformat()
         return db(day_view, algo.store, d, parse_variant(variant))
 
-    @app.get("/api/algo/reports")
+    @app.get("/api/algo/reports", dependencies=owner)
     def reports(from_day: str = Query("", alias="from"), to: str = "", preset: str = "", index: str = "",
                 variant: str = ""):
         today = algo.clock().date()
@@ -84,24 +90,24 @@ def register(app, algo):
             raise HTTPException(400, "from must not be after to")
         return db(range_report, algo.store, start, end, parse_index(index), parse_variant(variant) or algo.variant)
 
-    @app.post("/api/algo/summary")
+    @app.post("/api/algo/summary", dependencies=owner)
     def summary(from_day: str = Query("", alias="from"), to: str = ""):
         today = algo.clock().date().isoformat()
         start = parse_date(from_day, "from") or today
         end = parse_date(to, "to") or start
         return {"from": start, "to": end, "days": db(recompute, algo.store, start, end)}
 
-    @app.post("/api/algo/stop")
+    @app.post("/api/algo/stop", dependencies=owner)
     def stop():
         algo.stop(exit_all=False)
         return algo.status()
 
-    @app.post("/api/algo/stop-exit-all")
+    @app.post("/api/algo/stop-exit-all", dependencies=owner)
     def stop_exit_all():
         algo.stop(exit_all=True)
         return algo.status()
 
-    @app.post("/api/algo/resume")
+    @app.post("/api/algo/resume", dependencies=owner)
     def resume():
         algo.resume()
         return algo.status()

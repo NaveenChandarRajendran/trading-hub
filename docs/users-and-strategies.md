@@ -5,9 +5,10 @@ Branch `feature/users-strategies` (from `naveen-dev`), ADR 0008. Built in steps;
 | Step | What | State |
 |---|---|---|
 | 1 | Users, sessions, login page, every route behind a session | done 28-Oct |
-| 2 | Strategies + data model + migration of the existing data (backup first) | done 28-Oct (not run on the live DB yet) |
-| 3 | Paper engine, WebSocket events and the algo per strategy | next |
-| 4 | "Trading into" selector in Paper Trading and Power Scalper | |
+| 2 | Strategies + data model (fresh start instead of a data migration) | done 28-Oct |
+| 3 | Paper engine, WebSocket events and the algo per strategy | done 28-Oct |
+
+| 4 | "Trading into" selector in Paper Trading and Power Scalper | next |
 | 5 | Strategies home + strategy view | |
 | 6 | Compare | |
 
@@ -60,25 +61,29 @@ pt_daily_summary   strategy_id, account_id, trade_date, trades, wins, losses, fi
 A user owns strategies; everything else reaches the user through `strategy_id`. All new tables are prefixed `th_`: the
 shared `algo_trading` database also holds another project's tables (it has its own `strategies` and `trades`).
 
-## Migrating the existing data (once, on the live database)
-Stop the backend, then in `backend/`:
+## First start (no data migration)
+Naveen chose a fresh start on 28-Oct-2026: the old paper / algo trade records were deleted on 27-Oct after a backup
+(`backend/backups/trading-hub-2026-10-27.sql`); market recordings (candles, chain snapshots, Trending OI, levels)
+were kept. On every start `strategies.bootstrap` makes sure that:
+- user `naveen` exists (no password until `python scripts/create_user.py --username naveen` sets one; the backend
+  log says so);
+- the algo's strategy "OI Breakout Algo" (kind `algo`, owner naveen) exists with its `Algo` paper account;
+- paper accounts without a strategy (made by the code before users existed) are removed when empty; one with orders
+  or fills stops the start, nothing deleted.
+Running it again changes nothing. Manual strategies are created by each user in the app.
 
-    python scripts/migrate_users_strategies.py --dry-run     backup + every check + counts, then rolls back
-    python scripts/migrate_users_strategies.py               backup, migrate (one transaction), counts before / after
-    python scripts/create_user.py --username naveen          set your password (the migration makes the user without one)
-
-It backs up first (`backups/trading-hub-<date>.sql`), maps the accounts to naveen's strategies (Paper Trading →
-"Manual (legacy)", Algo → "OI Breakout Algo" (algo), Scalper → "Scalper"), fills `strategy_id` everywhere, copies the
-Scalper daily summary, makes `strategy_id` NOT NULL and checks that each strategy's realized P&L, charges and fills
-equal the sum of its accounts' before; any mismatch rolls everything back. A second run changes nothing.
-Rehearsed 28-Oct on a copy of the live tables: 13 orders, 13 fills, 5 positions, 2,702 algo events, 18 algo states,
-18 algo summaries, 1 Scalper summary kept; Manual (legacy) realized ₹514.00 / charges ₹297.55 / 7 fills, OI Breakout
-Algo ₹411.75 / ₹343.81 / 6 fills; every account's P&L calendar identical before and after.
-**Run it on the live database only after step 3** (the code writes `strategy_id` everywhere from then on).
-
-## Security rules
-- Every route and WebSocket needs a session (`auth.AuthMiddleware`, default deny). Open: `POST /api/auth/login` and
-  the UI page `/`. Without a session: HTTP 401 `{"login": true}`, WebSocket close 4401; the UI shows the login page.
-- The Dhan token and DATABASE_URL never leave the server.
-- Cookie: `th_session`, HttpOnly, SameSite=Lax, Secure when the request came over HTTPS (behind nginx, pass
-  `X-Forwarded-Proto`; uvicorn trusts forwarded headers from 127.0.0.1).
+## One engine per strategy (step 3)
+- `paper_api.PaperService` keeps one `Book` per manual strategy (its open capital period + `PaperEngine`). Paper
+  Trading and Power Scalper both trade through it: one set of funds, positions, OCO legs and one 15:15 square-off per
+  strategy whichever screen placed the order (`pt_orders.source` says which: manual / scalper). Every active manual
+  strategy is loaded at start, so stops and the square-off run after a restart. 15:35: `pt_daily_summary` row of every
+  strategy with fills.
+- Routes take `?strategy=<id>` (`/api/paper/*`, `/api/scalper/*`); orders need an active manual strategy of your
+  own; someone else's is 404. `/api/paper/pnl|trades?strategy=all` = all of your own strategies.
+- WebSockets `/ws/paper?strategy=` and `/ws/scalper?strategy=`: order / trade / position / funds events carry
+  `strategyId` and go only to the owner's connections; ticks, candles and volume are shared. `{"type": "strategy",
+  "id"}` switches the snapshot.
+- The algo trades into "OI Breakout Algo" through its own engine (`AlgoBroker`), whoever is logged in.
+  `/api/algo/*` answers only the strategy's owner (404 for anyone else).
+- Tests: `test_isolation.py` (every `?strategy=` route listed from the app: user B gets 404 on user A's strategies;
+  WebSocket events never reach B; separate engines), `test_scalper.py`, `test_paper_api.py`, `test_algo_service.py`.

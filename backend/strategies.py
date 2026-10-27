@@ -45,8 +45,10 @@ def public(st):
 
 
 class Strategies:
-    def __init__(self, store, clock):
-        self.store, self.clock = store, clock
+    def __init__(self, store, clock, books=None):
+        """books: paper_api.PaperService (busy(strategy) from its live engines; reload(strategy) after a capital
+        change, reset or archive). Without it (tests of the rules alone) the store's view of today is used."""
+        self.store, self.clock, self.books = store, clock, books
 
     # ------------------------------------------------------------------ read
     def list(self, user, archived=False):
@@ -91,25 +93,25 @@ class Strategies:
 
     def set_capital(self, user, sid, capital):
         st = self._money_ok(user, sid)
-        return self.store.strategy_set_capital(st["id"], self._capital(capital), self.clock())
+        return self._reloaded(self.store.strategy_set_capital(st["id"], self._capital(capital), self.clock()))
 
     def reset(self, user, sid, capital=None):
         st = self._money_ok(user, sid)
-        return self.store.strategy_reset(st["id"], self._capital(st["capital"] if capital is None else capital),
-                                         self.clock())
+        return self._reloaded(self.store.strategy_reset(
+            st["id"], self._capital(st["capital"] if capital is None else capital), self.clock()))
 
     def archive(self, user, sid):
         st = self._writable(user, sid)
         if st["kind"] != "manual":
             raise Refused("The algo's strategy can't be archived.")
         self._flat(st, "archiving")
-        return self.store.update_strategy(st["id"], self.clock(), archived_at=self.clock())
+        return self._reloaded(self.store.update_strategy(st["id"], self.clock(), archived_at=self.clock()))
 
     def unarchive(self, user, sid):
         st = self.get(user, sid)
         if not st["archived_at"]:
             return st
-        return self.store.update_strategy(st["id"], self.clock(), archived_at=None)
+        return self._reloaded(self.store.update_strategy(st["id"], self.clock(), archived_at=None))
 
     # ------------------------------------------------------------------ checks
     def _writable(self, user, sid):
@@ -126,9 +128,18 @@ class Strategies:
         return st
 
     def _flat(self, st, doing):
-        day = self.clock().astimezone(IST).date().isoformat()
-        if st["account_id"] and self.store.book_open(st["account_id"], day):
+        if self.books is not None:
+            busy = self.books.busy(st)
+        else:
+            day = self.clock().astimezone(IST).date().isoformat()
+            busy = bool(st["account_id"]) and self.store.book_open(st["account_id"], day)
+        if busy:
             raise Refused(f"Exit open positions and cancel pending orders before {doing}.")
+
+    def _reloaded(self, st):
+        if self.books is not None:
+            self.books.reload(st)
+        return st
 
     @staticmethod
     def _name(name):
@@ -163,3 +174,54 @@ class Strategies:
             return fn()
         except DuplicateName:
             raise Refused(f"You already have a strategy named “{name}” (archived ones count too).") from None
+
+
+OWNER = ("naveen", "Naveen")  # owns the algo's strategy (docs/users-and-strategies.md)
+ALGO_NAME, ALGO_ACCOUNT = "OI Breakout Algo", "Algo"
+
+
+def bootstrap(pg, capital, now, log=print):
+    """First start on users and strategies (Postgres, main.py): user naveen (no password until
+    scripts/create_user.py sets one) and his algo strategy "OI Breakout Algo" on the 'Algo' paper account. Paper
+    accounts without a strategy left by the code before users existed are removed when empty; one with orders or
+    fills stops the start (nothing is deleted). Running it again changes nothing. Returns True when naveen has no
+    password yet."""
+    with pg._cursor() as cur:
+        cur.execute("INSERT INTO th_users (username, display_name) VALUES (%s, %s) ON CONFLICT (username) DO NOTHING",
+                    OWNER)
+        cur.execute("SELECT id, password_hash IS NULL FROM th_users WHERE username=%s", (OWNER[0],))
+        uid, no_password = cur.fetchone()
+        cur.execute("SELECT id FROM th_strategies WHERE kind='algo' ORDER BY id LIMIT 1")
+        row = cur.fetchone()
+        if row is None:
+            cur.execute("INSERT INTO th_strategies (user_id, name, capital, kind, created_at, updated_at) "
+                        "VALUES (%s, %s, %s, 'algo', %s, %s) RETURNING id", (uid, ALGO_NAME, capital, now, now))
+            algo_sid = cur.fetchone()[0]
+            log(f"Created the algo's strategy “{ALGO_NAME}” for {OWNER[0]}")
+        else:
+            algo_sid = row[0]
+        cur.execute("SELECT id FROM pt_accounts WHERE strategy_id=%s AND archived_at IS NULL", (algo_sid,))
+        if cur.fetchone() is None:
+            cur.execute("SELECT id FROM pt_accounts WHERE name=%s AND strategy_id IS NULL AND archived_at IS NULL "
+                        "ORDER BY id DESC LIMIT 1", (ALGO_ACCOUNT,))
+            acc = cur.fetchone()
+            if acc:
+                cur.execute("UPDATE pt_accounts SET strategy_id=%s WHERE id=%s", (algo_sid, acc[0]))
+            else:
+                cur.execute("INSERT INTO pt_accounts (capital, created_at, name, strategy_id) VALUES (%s, %s, %s, %s)",
+                            (capital, now, ALGO_ACCOUNT, algo_sid))
+        cur.execute("SELECT a.id, a.name, (SELECT count(*) FROM pt_orders o WHERE o.account_id = a.id) "
+                    "+ (SELECT count(*) FROM pt_trades t WHERE t.account_id = a.id) FROM pt_accounts a "
+                    "WHERE a.strategy_id IS NULL")
+        orphans = cur.fetchall()
+        used = [(i, n) for i, n, rows in orphans if rows]
+        if used:
+            raise SystemExit(f"Paper accounts {used} have orders but no strategy. Nothing was changed; "
+                             "see docs/users-and-strategies.md.")
+        for i, _n, _rows in orphans:
+            for t in ("pt_order_levels", "pt_positions", "scalper_daily_summary", "pt_daily_summary"):
+                cur.execute(f"DELETE FROM {t} WHERE account_id=%s", (i,))
+            cur.execute("DELETE FROM pt_accounts WHERE id=%s", (i,))
+        if orphans:
+            log(f"Removed {len(orphans)} empty paper account(s) from before users and strategies")
+    return no_password

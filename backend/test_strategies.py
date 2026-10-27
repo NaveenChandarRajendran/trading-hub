@@ -181,3 +181,45 @@ def test_the_owner_sees_their_strategy(env):
     assert b.get(f"/api/strategies/{mine['id']}").json()["strategy"]["name"] == "Wife's EMA"
     assert a.get(f"/api/strategies/{mine['id']}").status_code == 404
     assert [s["name"] for s in a.get("/api/strategies").json()["strategies"]] == []
+
+
+# ---------- first start (strategies.bootstrap, Postgres) ----------
+def test_bootstrap_on_a_fresh_database():
+    """Fresh start: user naveen (no password), "OI Breakout Algo" on the 'Algo' account, empty pre-users accounts
+    removed, an account with orders refused, and a second run changes nothing."""
+    if not DSN:
+        pytest.skip("set TEST_DATABASE_URL to run the Postgres bootstrap test")
+    from datetime import datetime
+
+    from store import IST
+    from strategies import bootstrap
+    pg = PgStore(DSN)
+    try:
+        with pg._cursor() as cur:
+            cur.execute("TRUNCATE th_sessions, th_login_attempts, th_user_prefs, th_users RESTART IDENTITY CASCADE")
+            cur.execute("TRUNCATE pt_accounts RESTART IDENTITY CASCADE")
+        store, now = PaperPgStore(pg), datetime(2026, 10, 28, 8, 0, tzinfo=IST)
+        store.create_account(100000, now)                    # what the old code made on its last start: empty
+        store.create_account(100000, now, "Scalper")
+        algo_acc = store.create_account(100000, now, "Algo")
+        log = []
+        assert bootstrap(pg, 100000, now, log.append) is True  # naveen has no password yet
+        with pg._cursor() as cur:
+            cur.execute("SELECT username, display_name, password_hash FROM th_users")
+            assert cur.fetchall() == [("naveen", "Naveen", None)]
+        [algo] = [s for s in store.all_strategies()]
+        assert (algo["name"], algo["kind"], algo["user_id"], algo["account_id"]) == ("OI Breakout Algo", "algo", 1,
+                                                                                     algo_acc["id"])
+        assert [a["id"] for a in store.accounts()] == [algo_acc["id"]]  # the empty ones are gone
+        before = (store.all_strategies(), store.accounts())
+        assert bootstrap(pg, 100000, now, log.append) is True and (store.all_strategies(), store.accounts()) == before
+        used = store.create_account(100000, now)
+        store.save_order(used["id"], "2026-10-28", {"id": "PT1", "security_id": 1, "side": "BUY", "order_type": "MARKET",
+                                                    "lots": 1, "lot_size": 65, "status": "FILLED", "created_at": now,
+                                                    "updated_at": now, "slippage_capped": False, "blocked": 0,
+                                                    "reason": ""})
+        with pytest.raises(SystemExit, match="have orders but no strategy"):
+            bootstrap(pg, 100000, now, log.append)
+        assert len(store.accounts()) == 2  # nothing deleted
+    finally:
+        pg.close()

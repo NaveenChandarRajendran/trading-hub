@@ -6,12 +6,12 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-from authfake import create_app
+from authfake import StrategyClient, create_app
 from paper_api import PaperService
 from paper_levels import nearest_zone, opening_order, shifts_near
 from store import PaperJsonStore
 from test_api import FakeClient
-from test_paper_api import CE, Clock, FakeFeed, FakeInstruments, at, buy, full, sell
+from test_paper_api import CE, SID, Clock, FakeFeed, FakeInstruments, at, buy, full, manual_strategy, sell
 from tracker import Tracker
 
 LEVELS = {"R1": 25200.0, "R2": 25300.0, "R3": 25400.0, "S1": 25000.0, "S2": 24900.0, "S3": 24800.0}
@@ -73,10 +73,11 @@ def env():
     tmp = tempfile.mkdtemp()
     clock, feed, levels = Clock(), FakeFeed(), FakeLevels()
     clock.now = at("10:15")
+    manual_strategy(PaperJsonStore(tmp), clock)
     svc = PaperService(PaperJsonStore(tmp), feed, FakeInstruments(), clock=clock, levels=levels)
-    c = TestClient(create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=svc))
+    c = StrategyClient(create_app(Tracker(FakeClient(), data_dir=tmp, clock=clock), paper=svc), SID)
     sent = []
-    svc._broadcast = sent.append
+    svc._send = lambda book, kind, data: sent.append({"type": kind, "data": data})
     yield c, svc, clock, levels, sent, tmp
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -141,4 +142,4 @@ def test_restart_keeps_the_entry_zone(env):
     svc.on_packet(full(CE, 100, 99.95, 100))
     buy(c)
     svc2 = PaperService(PaperJsonStore(tmp), FakeFeed(), FakeInstruments(), clock=clock, levels=levels)
-    assert svc2.positions()[0]["entryZone"]["slot"] == "S1"
+    assert svc2.positions(svc2.books[SID])[0]["entryZone"]["slot"] == "S1"
