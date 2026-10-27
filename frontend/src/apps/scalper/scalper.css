@@ -16,7 +16,21 @@
 .sc .sc-chart-title { font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .sc .sc-ltp { font-weight: 600; }
 .sc .sc-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sc .sc-chart { flex: 1 1 auto; min-height: 0; }
+.sc .sc-chart-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+.sc .sc-chart { flex: 1 1 auto; min-height: 0; min-width: 0; }
+
+/* position on an option chart: label on the entry line, TP / SL handles, grips on the TP / SL lines */
+.sc .sc-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.sc .sc-pos-label { position: absolute; left: var(--sp-2); transform: translateY(-50%); pointer-events: auto; display: inline-flex; align-items: center;
+  gap: var(--sp-2); padding: 2px var(--sp-2); font-size: var(--fs-xs); font-weight: 600; background: var(--surface); border: 1px solid var(--accent);
+  border-radius: var(--r-sm); box-shadow: var(--shadow-pop); }
+.sc .sc-handle, .sc .sc-grip, .sc .sc-x { font: inherit; font-size: var(--fs-xs); font-weight: 600; border-radius: var(--r-sm); cursor: grab; touch-action: none;
+  border: 1px solid currentColor; background: var(--surface); padding: 0 var(--sp-1); line-height: 16px; }
+.sc .sc-handle.up, .sc .sc-grip.up { color: var(--up); }
+.sc .sc-handle.down, .sc .sc-grip.down { color: var(--down); }
+.sc .sc-x { color: var(--text-2); cursor: pointer; border-color: var(--border); }
+.sc .sc-grip { position: absolute; transform: translateY(-50%); pointer-events: auto; }
+.sc .sc-handle:disabled, .sc .sc-grip:disabled, .sc .sc-x:disabled { color: var(--text-3); cursor: not-allowed; }
 
 .sc .sc-panel { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; overflow: auto; }
 .sc .sc-panel-body { display: flex; flex-direction: column; gap: var(--sp-3); }

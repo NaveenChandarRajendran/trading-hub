@@ -27,7 +27,14 @@ Dhan's order APIs.
    off (market closed, stale, token, funds, nothing to sell). Picking a strike switches that side's chart; picking a
    non-ATM strike turns Follow ATM off for that side. Positions box: open positions with live P&L (before charges),
    Exit and Exit all.
-4. Chart position lines + draggable TP / SL.
+4. **Built, live check pending** (orders only 09:15–15:15) — Chart position lines + draggable TP / SL
+   (`PositionOverlay.tsx`, `logic/drag.ts`): an open position on its CE / PE chart shows an entry line at the average
+   price with a label "65 · +13.00 INR", ✕ (exit at market) and TP / SL handles. Dragging a handle onto the chart
+   draws a line that follows the pointer (price rounded to 0.05, label with the price and the P&L there; chart scroll
+   / zoom paused, Esc cancels). Dropping it validates (long: TP above LTP, SL below LTP and below TP; invalid drops snap
+   back with a message) and places / moves the OCO leg (`PUT /api/scalper/protection`). Existing TP / SL lines have a
+   grip on the right to drag them (modify); dropping one back on the position label cancels it. Pixel ↔ price via
+   Lightweight Charts' `priceToCoordinate` / `coordinateToPrice`; no new library.
 5. Hotkeys + states, both themes.
 Phase 2: Option Chain, Depth, OI Insights tabs.
 

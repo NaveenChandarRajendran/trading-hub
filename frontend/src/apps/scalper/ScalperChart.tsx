@@ -1,21 +1,32 @@
 // One Power Scalper chart (Lightweight Charts): candles + a soft volume strip, colours from the design tokens. The
 // three charts share one time grid and a ChartSync, so scroll, zoom and crosshair move together. Bars arrive already
-// aligned (blank bars where the instrument did not trade).
-import { useEffect, useRef } from 'react';
+// aligned (blank bars where the instrument did not trade). An option chart can carry an open position's overlay
+// (entry line, draggable TP / SL, PositionOverlay.tsx).
+import { useEffect, useRef, useState } from 'react';
 import { CandlestickSeries, HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import { useTheme } from '../../shared/theme';
 import { candleColors, chartOptions, compactVolume, ohlc, pricePriceFormat, themeOptions, volumePoint } from './chartTheme';
 import { isCandle, type Bar } from './logic/series';
 import type { ChartSync, SyncableChart } from './logic/sync';
+import { PositionOverlay, type ChartPosition } from './PositionOverlay';
 
 const INITIAL_BARS = 90; // bars in view when a chart first loads (scroll back for more)
 const VOLUME_PANE_PX = 56;
 
-export function ScalperChart({ id, bars, sync, resetKey }: {
+export interface PositionProps {
+  pos: ChartPosition;
+  enabled: boolean;
+  onExit: () => void;
+  onProtect: (body: { target?: number | null; stop?: number | null }) => Promise<void>;
+  onError: (message: string) => void;
+}
+
+export function ScalperChart({ id, bars, sync, resetKey, position }: {
   id: string; // "index" | "ce" | "pe": the sync member id
   bars: Bar[]; // aligned to the shared grid
   sync: ChartSync;
   resetKey: string; // instrument + timeframe: re-fit the view when it changes
+  position?: PositionProps | null; // an open position on this chart's instrument
 }) {
   const { mode } = useTheme();
   const box = useRef<HTMLDivElement>(null);
@@ -25,6 +36,16 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
   const closes = useRef(new Map<number, number>());
   const fitted = useRef('');
   const fittedLen = useRef(0);
+  const [ready, setReady] = useState(false);
+  const [frame, setFrame] = useState(0); // re-reads overlay pixel positions after the view moves
+  const pending = useRef(0);
+  const bump = () => {
+    if (pending.current) return;
+    pending.current = requestAnimationFrame(() => {
+      pending.current = 0;
+      setFrame((f) => f + 1);
+    });
+  };
 
   useEffect(() => {
     const c = createChart(box.current!, chartOptions());
@@ -39,13 +60,22 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
     candles.current = s;
     vol.current = v;
     const leave = sync.add(id, c as unknown as SyncableChart, s, (t) => closes.current.get(t));
+    c.timeScale().subscribeVisibleLogicalRangeChange(bump);
+    c.subscribeCrosshairMove(bump);
+    const ro = new ResizeObserver(bump);
+    ro.observe(box.current!);
+    setReady(true);
     return () => {
+      ro.disconnect();
+      c.timeScale().unsubscribeVisibleLogicalRangeChange(bump);
+      c.unsubscribeCrosshairMove(bump);
       leave();
       c.remove();
       chart.current = candles.current = vol.current = null;
       fitted.current = '';
+      setReady(false);
     };
-  }, [id, sync]);
+  }, [id, sync]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // theme: recolour in place (a frame later, once data-theme has switched)
   useEffect(() => {
@@ -53,6 +83,7 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
       chart.current?.applyOptions(themeOptions());
       candles.current?.applyOptions(candleColors());
       vol.current?.setData(bars.map(volumePoint));
+      bump();
     });
     return () => cancelAnimationFrame(f);
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,7 +99,15 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
       fitted.current = resetKey;
       fittedLen.current = bars.length;
     }
-  }, [bars, resetKey]);
+    bump(); // the price scale may have moved
+  }, [bars, resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div className="sc-chart" ref={box} />;
+  return (
+    <div className="sc-chart-wrap">
+      <div className="sc-chart" ref={box} />
+      {ready && position && chart.current && candles.current && (
+        <PositionOverlay chart={chart.current} series={candles.current} frame={frame} {...position} />
+      )}
+    </div>
+  );
 }

@@ -21,7 +21,7 @@ import { ChartSync } from './logic/sync';
 import { checkTicket, followStrike, sideHeld, type Side } from './logic/ticket';
 import { PositionsBox } from './PositionsBox';
 import { Reports } from './Reports';
-import { ScalperChart } from './ScalperChart';
+import { ScalperChart, type PositionProps } from './ScalperChart';
 import { Ticket } from './Ticket';
 import { useScalper, type Scalper } from './useScalper';
 import './scalper.css';
@@ -297,6 +297,33 @@ export default function ScalperApp() {
       setBusy(false);
     }
   };
+  // an open position on a CE / PE chart: entry line, ✕ exit, draggable TP / SL (OCO in the paper engine)
+  const tradingOn = status.kind === 'live' && !!sc.meta?.acceptingOrders;
+  const chartPosition = (side: Side): PositionProps | null => {
+    const leg = legs[side];
+    const p = leg ? sc.positions.get(leg.securityId) : undefined;
+    if (!leg || !p || p.open_qty <= 0) return null;
+    return {
+      pos: { securityId: leg.securityId, qty: p.open_qty, avg: p.avg_buy, ltp: tickOf(side)?.ltp ?? p.ltp, target: p.target, stop: p.stop },
+      enabled: tradingOn,
+      onExit: () => {
+        api.exit(leg.securityId)
+          .then(() => setNotice({ kind: 'info', text: `Exit sent for ${p.name}.` }))
+          .catch((e) => setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Exit failed.' }));
+      },
+      onProtect: async (body) => {
+        try {
+          await api.protection(leg.securityId, body);
+          const what = 'target' in body ? 'Target' : 'Stop';
+          const v = 'target' in body ? body.target : body.stop;
+          setNotice({ kind: 'info', text: v == null ? `${what} cancelled for ${p.name}.` : `${what} ${price(v)} set for ${p.name} (OCO).` });
+        } catch (e) {
+          setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Could not set the target / stop.' });
+        }
+      },
+      onError: (message) => setNotice({ kind: 'error', text: message }),
+    };
+  };
   const pickStrike = (side: Side, k: number) => {
     setStrikes((s) => ({ ...s, [side]: k }));
     if (k !== pickers[side].items[pickers[side].atmIndex ?? -1]?.strike) setFollow((f) => ({ ...f, [side]: false }));
@@ -347,10 +374,10 @@ export default function ScalperApp() {
                 <ScalperChart id="index" bars={indexBars ?? []} sync={sync} resetKey={`${symbol}|${tf}`} />
               </ChartCard>
               <ChartCard title={legName('CE')} tick={tickOf('CE')} bars={ceBars ?? []} note={histErr.ce}>
-                <ScalperChart id="ce" bars={ceBars ?? []} sync={sync} resetKey={`${ceKey}|${tf}`} />
+                <ScalperChart id="ce" bars={ceBars ?? []} sync={sync} resetKey={`${ceKey}|${tf}`} position={chartPosition('CE')} />
               </ChartCard>
               <ChartCard title={legName('PE')} tick={tickOf('PE')} bars={peBars ?? []} note={histErr.pe}>
-                <ScalperChart id="pe" bars={peBars ?? []} sync={sync} resetKey={`${peKey}|${tf}`} />
+                <ScalperChart id="pe" bars={peBars ?? []} sync={sync} resetKey={`${peKey}|${tf}`} position={chartPosition('PE')} />
               </ChartCard>
             </div>
             <aside className="card sc-panel">

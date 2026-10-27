@@ -56,7 +56,7 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
-PAPER ONLY, in progress (steps 1-3 of 5 done, 27-Oct-2026). Backend: a third paper account "Scalper" (`scalper_service.py`,
+PAPER ONLY, in progress (steps 1-4 of 5 built, 27-Oct-2026; step 4 drag needs a market-hours check). Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills
 (`scalper_reports.py`: round trips, day rows, tiles), `scalper_daily_summary` at 15:35 IST. OCO target / stop in
 `paper_engine.set_protection` (`pt_orders.oco_group`; fixes "target rejected after a stop"). P&L calendar account

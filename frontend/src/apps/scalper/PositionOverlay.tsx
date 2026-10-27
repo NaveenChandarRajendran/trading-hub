@@ -1,0 +1,146 @@
+// An open position on its option chart: the entry line with a "65 · +13.00 INR" label (✕ exits at market), TP / SL
+// handles to drag onto the chart, and the TP / SL lines (price + P&L at that price), each draggable to move it or
+// back onto the label to cancel it. Drops place / modify / cancel the OCO pair (PUT /api/scalper/protection).
+// Positions come from the chart's own price <-> pixel conversion (Lightweight Charts), so they follow scroll / zoom.
+import { useEffect, useRef, useState } from 'react';
+import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi } from 'lightweight-charts';
+import { inr } from '../../shared/grid';
+import { cssVar } from './chartTheme';
+import { dropResult, lineLabel, pnlAt, roundTick, type Level } from './logic/drag';
+
+export interface ChartPosition {
+  securityId: number;
+  qty: number;
+  avg: number;
+  ltp: number | null;
+  target: number | null;
+  stop: number | null;
+}
+
+type Drag = { kind: Level; from: 'label' | 'line'; y: number; price: number | null };
+
+export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, onProtect, onError }: {
+  chart: IChartApi;
+  series: ISeriesApi<'Candlestick'>;
+  frame: number; // bumps when the view moves, so the labels re-read their pixel positions
+  pos: ChartPosition;
+  enabled: boolean; // market open, live prices: dragging / exit allowed
+  onExit: () => void;
+  onProtect: (body: { target?: number | null; stop?: number | null }) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const lines = useRef<{ entry?: IPriceLine; tp?: IPriceLine; sl?: IPriceLine; ghost?: IPriceLine }>({});
+  const latest = useRef({ pos, onProtect, onError }); // the drop uses the newest LTP / lines, not the ones at drag start
+  latest.current = { pos, onProtect, onError };
+  void frame;
+
+  // entry, TP and SL price lines (axis labels included); recoloured / moved in place
+  useEffect(() => {
+    const l = lines.current;
+    const spec = (price: number, color: string, title: string) =>
+      ({ price, color, title, lineWidth: 1 as const, lineStyle: LineStyle.Dashed, axisLabelVisible: true });
+    const put = (key: 'entry' | 'tp' | 'sl', price: number | null, color: string, title: string) => {
+      if (price == null) {
+        if (l[key]) series.removePriceLine(l[key]!);
+        l[key] = undefined;
+      } else if (l[key]) {
+        l[key]!.applyOptions(spec(price, color, title));
+      } else {
+        l[key] = series.createPriceLine(spec(price, color, title));
+      }
+    };
+    put('entry', pos.avg, cssVar('--accent'), '');
+    put('tp', drag?.kind === 'tp' && drag.from === 'line' ? null : pos.target, cssVar('--up'), pos.target != null ? lineLabel('tp', pos.target, pos.avg, pos.qty) : '');
+    put('sl', drag?.kind === 'sl' && drag.from === 'line' ? null : pos.stop, cssVar('--down'), pos.stop != null ? lineLabel('sl', pos.stop, pos.avg, pos.qty) : '');
+  }, [series, pos.avg, pos.qty, pos.target, pos.stop, drag?.kind, drag?.from]);
+
+  useEffect(() => () => {
+    for (const l of Object.values(lines.current)) if (l) series.removePriceLine(l);
+    lines.current = {};
+  }, [series]);
+
+  // the ghost line while dragging
+  useEffect(() => {
+    const l = lines.current;
+    if (!drag || drag.price == null) {
+      if (l.ghost) series.removePriceLine(l.ghost);
+      l.ghost = undefined;
+      return;
+    }
+    const price = roundTick(drag.price);
+    const opts = { price, color: cssVar(drag.kind === 'tp' ? '--up' : '--down'), lineWidth: 2 as const, lineStyle: LineStyle.Solid,
+      axisLabelVisible: true, title: lineLabel(drag.kind, price, pos.avg, pos.qty) };
+    if (l.ghost) l.ghost.applyOptions(opts);
+    else l.ghost = series.createPriceLine(opts);
+  }, [drag, series, pos.avg, pos.qty]);
+
+  // pointer drag on the window; chart scroll / zoom paused meanwhile; Esc cancels
+  useEffect(() => {
+    if (!drag) return;
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+    const yOf = (e: PointerEvent) => e.clientY - (root.current?.getBoundingClientRect().top ?? 0);
+    const move = (e: PointerEvent) => {
+      const y = yOf(e);
+      setDrag((d) => (d ? { ...d, y, price: series.coordinateToPrice(y) } : d));
+    };
+    const up = (e: PointerEvent) => {
+      const { pos: p, onProtect: protect, onError: fail } = latest.current;
+      const y = yOf(e);
+      const price = series.coordinateToPrice(y);
+      const labelY = series.priceToCoordinate(p.avg);
+      const existing = drag.kind === 'tp' ? p.target : p.stop;
+      const r = dropResult({ kind: drag.kind, price, y, labelY, existing, ltp: p.ltp, other: drag.kind === 'tp' ? p.stop : p.target });
+      setDrag(null);
+      if (r.action === 'invalid') fail(r.message);
+      else if (r.action === 'set' || r.action === 'cancel') void protect(r.body);
+    };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrag(null); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('keydown', key);
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+    };
+  }, [drag?.kind, drag?.from]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const start = (kind: Level, from: Drag['from']) => (e: React.PointerEvent) => {
+    if (!enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDrag({ kind, from, y: e.clientY - (root.current?.getBoundingClientRect().top ?? 0), price: null });
+  };
+
+  const labelY = series.priceToCoordinate(pos.avg);
+  const right = chart.priceScale('right').width();
+  const pnl = pos.ltp != null ? pnlAt(pos.ltp, pos.avg, pos.qty) : null;
+  const yOf = (p: number | null) => (p == null ? null : series.priceToCoordinate(p));
+  const tpY = drag?.kind === 'tp' && drag.from === 'line' ? null : yOf(pos.target);
+  const slY = drag?.kind === 'sl' && drag.from === 'line' ? null : yOf(pos.stop);
+
+  return (
+    <div className="sc-overlay" ref={root}>
+      {labelY != null && (
+        <div className="sc-pos-label" style={{ top: labelY }}>
+          <span className="num">{pos.qty}</span>
+          <span className={`num ${pnl == null ? '' : pnl > 0 ? 'up' : pnl < 0 ? 'down' : ''}`}>
+            {pnl == null ? '–' : `${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${inr(2)(Math.abs(pnl))} INR`}
+          </span>
+          <button type="button" className="sc-handle up" disabled={!enabled} title="Drag onto the chart to set a target" onPointerDown={start('tp', 'label')}>TP</button>
+          <button type="button" className="sc-handle down" disabled={!enabled} title="Drag onto the chart to set a stop" onPointerDown={start('sl', 'label')}>SL</button>
+          <button type="button" className="sc-x" disabled={!enabled} title="Exit at market" aria-label="Exit at market" onClick={onExit}>✕</button>
+        </div>
+      )}
+      {[['tp', tpY], ['sl', slY]].map(([kind, y]) => y != null && (
+        <button key={kind as string} type="button" className={`sc-grip ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: y as number, right: right + 4 }}
+          disabled={!enabled} title={`Drag to move · drop on the position label to cancel`} onPointerDown={start(kind as Level, 'line')}>
+          {kind === 'tp' ? 'TP' : 'SL'} ⋮
+        </button>
+      ))}
+    </div>
+  );
+}

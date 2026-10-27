@@ -1,0 +1,55 @@
+// Chart TP / SL dragging (pure): price rounding to the 0.05 tick, P&L at a price, validation for a long position,
+// and what a drop means (set / move, cancel when dropped back on the position label, or nothing).
+
+export type Level = 'tp' | 'sl';
+export const TICK = 0.05;
+export const LABEL_BAND_PX = 12; // dropping a line within this many pixels of the position label cancels it
+
+/** Nearest 0.05, as the paper engine requires (avoids 0.1 + 0.2 style float noise). */
+export const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) / 100;
+
+/** P&L of the open quantity if it were sold at `price` (before charges). */
+export const pnlAt = (price: number, avg: number, qty: number) => Math.round((price - avg) * qty * 100) / 100;
+
+/** Why a TP / SL at this price is not allowed for a long, or '' (the engine checks the same rules again). */
+export function validateLevel(kind: Level, price: number, ltp: number | null | undefined, other: number | null | undefined): string {
+  if (!(price > 0)) return 'Price must be above 0.';
+  if (ltp == null) return 'No live price yet.';
+  if (kind === 'tp' && price <= ltp) return `Target must be above LTP ${ltp.toFixed(2)}.`;
+  if (kind === 'sl' && price >= ltp) return `Stop must be below LTP ${ltp.toFixed(2)}.`;
+  if (kind === 'tp' && other != null && price <= other) return `Target must be above the stop ${other.toFixed(2)}.`;
+  if (kind === 'sl' && other != null && price >= other) return `Stop must be below the target ${other.toFixed(2)}.`;
+  return '';
+}
+
+export type DropResult =
+  | { action: 'set'; body: { target: number } | { stop: number } }
+  | { action: 'cancel'; body: { target: null } | { stop: null } }
+  | { action: 'none' }
+  | { action: 'invalid'; message: string };
+
+/**
+ * A drag ended at `y` (pixels) / `price`. Dropped on the position label: cancel an existing line (a new one just
+ * snaps back). Otherwise validate and set (new) or move (existing). Unchanged price: nothing.
+ */
+export function dropResult(a: {
+  kind: Level; price: number | null; y: number; labelY: number | null; existing: number | null; ltp: number | null | undefined;
+  other: number | null | undefined;
+}): DropResult {
+  const onLabel = a.labelY != null && Math.abs(a.y - a.labelY) <= LABEL_BAND_PX;
+  if (onLabel || a.price == null) {
+    if (onLabel && a.existing != null) return { action: 'cancel', body: a.kind === 'tp' ? { target: null } : { stop: null } };
+    return { action: 'none' };
+  }
+  const price = roundTick(a.price);
+  if (a.existing != null && price === a.existing) return { action: 'none' };
+  const message = validateLevel(a.kind, price, a.ltp, a.other);
+  if (message) return { action: 'invalid', message };
+  return { action: 'set', body: a.kind === 'tp' ? { target: price } : { stop: price } };
+}
+
+/** "TP 52.30 · +245.00" for a line's label. */
+export const lineLabel = (kind: Level, price: number, avg: number, qty: number) => {
+  const pnl = pnlAt(price, avg, qty);
+  return `${kind === 'tp' ? 'TP' : 'SL'} ${price.toFixed(2)} · ${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${Math.abs(pnl).toFixed(2)}`;
+};
