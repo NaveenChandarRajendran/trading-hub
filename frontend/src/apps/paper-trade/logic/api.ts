@@ -92,6 +92,7 @@ export interface Trade extends Named {
   value: number;
   charges: Charges;
   time: string;
+  account?: string; // "Manual" | "Algo" | "Scalper", only with ?account=all
 }
 
 export interface ChargeRates {
@@ -195,4 +196,4 @@ export const api = {
 };
 
 /** Whose P&L: the manual account (this page) or the OI breakout algo's "Algo" account (same pt_ tables). */
-export type PnlAccount = 'manual' | 'algo';
+export type PnlAccount = 'manual' | 'algo' | 'scalper' | 'all';

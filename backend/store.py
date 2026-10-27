@@ -28,6 +28,7 @@ LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
 CANDLE_COLS = ("candle_start", "open", "high", "low", "close", "minutes", "rsi", "toi_strength", "toi_sentiment",
                "oi_change", "oi_change_points", "components", "components_move")
 SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gross_pnl", "charges", "net_pnl")
+SCALPER_SUMMARY_COLS = ("trades", "wins", "losses", "fills", "realized", "charges", "net", "best_trade", "worst_trade")
 OC_LEG = ("oi", "prev_oi", "ltp", "prev_close", "volume", "iv")
 OC_COLS = ("strike", "spot") + tuple(f"ce_{k}" for k in OC_LEG) + tuple(f"pe_{k}" for k in OC_LEG)
 
@@ -554,14 +555,29 @@ class PaperJsonStore:
         rows = self.day_summary(acc, "0000-00-00", day)
         return round(sum(r["realized"] - r["charges"] for r in rows if r["date"] < day), 2)
 
+    def trades_between(self, acc, from_day, to_day):
+        days = self.d["trades"].get(str(acc), {})
+        return [{**t, "date": d} for d in sorted(days) if from_day <= d <= to_day
+                for t in sorted(days[d].values(), key=lambda t: t["time"])]
+
+    def scalper_save_summary(self, row):
+        t = self.d.setdefault("scalper_daily_summary", {})
+        t[f"{row['account_id']}|{row['trade_date']}"] = {k: row.get(k) for k in ("account_id", "trade_date", *SCALPER_SUMMARY_COLS)}
+        self._write()
+
+    def scalper_summaries(self, acc, from_day, to_day):
+        rows = [dict(r) for r in self.d.get("scalper_daily_summary", {}).values()
+                if r["account_id"] == acc and from_day <= r["trade_date"] <= to_day]
+        return sorted(rows, key=lambda r: r["trade_date"])
+
 
 class PaperPgStore:
     """Paper trading tables (pt_*) in Postgres, sharing PgStore's connection pool and schema.sql."""
     kind = "postgres"
     _ORDER_COLS = ("id", "security_id", "side", "order_type", "lots", "lot_size", "price", "trigger_price", "status",
                    "avg_price", "slippage_capped", "reason", "blocked", "created_at", "updated_at", "filled_at",
-                   "source", "setup", "variant")
-    _ORDER_DEFAULTS = {"source": "manual", "setup": "", "variant": ""}
+                   "source", "setup", "variant", "oco_group")
+    _ORDER_DEFAULTS = {"source": "manual", "setup": "", "variant": "", "oco_group": ""}
 
     def __init__(self, pg):
         self.pg = pg
@@ -801,3 +817,34 @@ class PaperPgStore:
     def net_before(self, acc, day):
         rows = self.day_summary(acc, "1900-01-01", day)
         return round(sum(r["realized"] - r["charges"] for r in rows if r["date"] < day), 2)
+
+    def trades_between(self, acc, from_day, to_day):
+        """Every fill of an account in a date range (same shape as trades(), plus "date"), oldest first."""
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT id, order_id, security_id, side, qty, price, value, brokerage, stt, transaction, sebi, "
+                        "stamp, gst, traded_at, trade_date FROM pt_trades WHERE account_id=%s AND trade_date BETWEEN "
+                        "%s AND %s ORDER BY traded_at, id", (acc, from_day, to_day))
+            out = []
+            for r in cur.fetchall():
+                charges = dict(zip(_CHARGE_FIELDS, r[7:13]))
+                charges["total"] = round(sum(charges.values()), 2)
+                out.append({"id": r[0], "order_id": r[1], "security_id": r[2], "side": r[3], "qty": r[4],
+                            "price": r[5], "value": r[6], "charges": charges,
+                            "time": r[13].astimezone(IST).isoformat(), "date": r[14].isoformat()})
+            return out
+
+    def scalper_save_summary(self, row):
+        cols = SCALPER_SUMMARY_COLS
+        with self.pg._cursor() as cur:
+            cur.execute(f"INSERT INTO scalper_daily_summary (account_id, trade_date, {', '.join(cols)}, updated_at) "
+                        f"VALUES (%s, %s, {', '.join(['%s'] * len(cols))}, now()) "
+                        "ON CONFLICT (account_id, trade_date) DO UPDATE SET "
+                        + ", ".join(f"{c}=EXCLUDED.{c}" for c in cols) + ", updated_at=now()",
+                        (row["account_id"], row["trade_date"], *[row.get(c) for c in cols]))
+
+    def scalper_summaries(self, acc, from_day, to_day):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT account_id, trade_date, {', '.join(SCALPER_SUMMARY_COLS)} FROM scalper_daily_summary "
+                        "WHERE account_id=%s AND trade_date BETWEEN %s AND %s ORDER BY trade_date", (acc, from_day, to_day))
+            return [{"account_id": r[0], "trade_date": r[1].isoformat(), **dict(zip(SCALPER_SUMMARY_COLS, r[2:]))}
+                    for r in cur.fetchall()]

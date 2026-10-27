@@ -46,6 +46,8 @@ CLIENT_QUEUE = 2000  # messages buffered per WebSocket client; ticks are dropped
 
 
 SHIFT_CHECK_SEC = 20  # how often open positions are checked for new S/R level shifts
+# P&L / trades account filter -> pt_accounts.name (None = the manual account); "all" = the three together
+ACCOUNTS = {"manual": None, "algo": "Algo", "scalper": "Scalper"}
 
 
 def now_ist():
@@ -247,7 +249,11 @@ class PaperService:
         return [self._with_instrument(o) for o in rows]
 
     def trades(self, day=None, account=None):
-        """Fills of a day: the manual account (today from the engine), or a named one ("Algo") from the store."""
+        """Fills of a day: the manual account (today from the engine), or a named one ("Algo", "Scalper") from the
+        store; "all": every account's, each fill tagged with its account."""
+        if account == "all":
+            return [{**t, "account": label} for label, name in (("Manual", None), ("Algo", "Algo"), ("Scalper", "Scalper"))
+                    for t in self.trades(day, name)]
         with self.lock:
             if account:
                 acc = self.store.active_account(account)
@@ -259,7 +265,20 @@ class PaperService:
         return [self._with_instrument(t) for t in rows]
 
     def pnl(self, from_day, to_day, account=None):
-        """Day P&L of the manual account, or of a named one ("Algo": the algo's paper account, same pt_ tables)."""
+        """Day P&L of the manual account, or of a named one ("Algo", "Scalper": same pt_ tables); "all": the three
+        accounts added up per day."""
+        if account == "all":
+            days = {}
+            for name in ACCOUNTS.values():
+                for r in self.pnl(from_day, to_day, name):
+                    d = days.setdefault(r["date"], {"date": r["date"], "realized": 0.0, "charges": 0.0, "trades": 0})
+                    d["realized"], d["charges"] = d["realized"] + r["realized"], d["charges"] + r["charges"]
+                    d["trades"] += r["trades"]
+            rows = [{**d, "realized": round(d["realized"], 2), "charges": round(d["charges"], 2)}
+                    for _, d in sorted(days.items())]
+            for r in rows:
+                r["net"] = round(r["realized"] - r["charges"], 2)
+            return rows
         with self.lock:
             acc = self.account if not account else self.store.active_account(account)
             if acc is None:
@@ -490,6 +509,16 @@ def _check_capital(capital):
                                  f"(presets: {', '.join(f'{p:,}' for p in CAPITAL_PRESETS)})")
 
 
+def _account(value):
+    """?account= of /pnl and /trades -> the pt_accounts name (None = manual), or "all"."""
+    v = (value or "manual").lower()
+    if v == "all":
+        return "all"
+    if v not in ACCOUNTS:
+        raise HTTPException(400, "account must be manual, algo, scalper or all")
+    return ACCOUNTS[v]
+
+
 def _day(value, name):
     if not value:
         return None
@@ -573,10 +602,9 @@ def register(app, svc):
         if start > to_day:
             raise HTTPException(400, "from must not be after to")
         holidays = sorted(d for d in svc.holidays if start <= d <= to_day)
-        if account and account.lower() not in ("algo", "manual"):
-            raise HTTPException(400, "account must be manual or algo")
-        name = "Algo" if account.lower() == "algo" else None
-        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays, "account": name or "Manual"},
+        name = _account(account)
+        return {"meta": {**svc.meta(), "from": start, "to": to_day, "holidays": holidays,
+                         "account": "All" if name == "all" else name or "Manual"},
                 "rows": svc.pnl(start, to_day, name)}
 
     @app.get("/api/paper/chain")
@@ -602,10 +630,7 @@ def register(app, svc):
 
     @app.get("/api/paper/trades")
     def trades(date: str = "", account: str = ""):
-        if account and account.lower() not in ("algo", "manual"):
-            raise HTTPException(400, "account must be manual or algo")
-        name = "Algo" if account.lower() == "algo" else None
-        return {"meta": svc.meta(), "rows": svc.trades(_day(date, "date"), name)}
+        return {"meta": svc.meta(), "rows": svc.trades(_day(date, "date"), _account(account))}
 
     @app.websocket("/ws/paper")
     async def ws_paper(ws: WebSocket):

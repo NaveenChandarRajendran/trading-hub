@@ -18,6 +18,10 @@ Rules (docs/features/paper-trade.md):
 - No partial fills apart from the depth walk.
 - A BUY blocks premium x qty + estimated charges. Available = capital + realized - charges - (avg x open qty of
   open positions) - funds blocked by pending BUYs.
+- OCO protection (set_protection): a target (LIMIT SELL) and a stop (SL-M SELL) for one position, sharing an
+  oco_group. The legs never count against each other or against other sells (a manual partial sell is always
+  allowed). After every fill on the instrument both legs are resized to the open quantity (buying more grows them);
+  when one leg fills, the other is cancelled; when the position closes, both are cancelled.
 """
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time
@@ -30,6 +34,7 @@ MARKET, LIMIT, SL, SLM = "MARKET", "LIMIT", "SL", "SL-M"
 ORDER_TYPES = (MARKET, LIMIT, SL, SLM)
 PENDING, TRIGGERED, FILLED, CANCELLED, REJECTED = "PENDING", "TRIGGERED", "FILLED", "CANCELLED", "REJECTED"
 OPEN_STATES = (PENDING, TRIGGERED)
+KEEP = object()  # set_protection: leave this leg as it is
 
 TICK_SIZE = 0.05
 SESSION_OPEN = time(9, 15)
@@ -100,6 +105,7 @@ class Order:
     slippage_capped: bool = False
     reason: str = ""
     blocked: float = 0.0  # funds held for a pending BUY
+    oco_group: str = ""  # target + stop of one position (set_protection); "" for every other order
 
     @property
     def qty(self):
@@ -254,8 +260,10 @@ class PaperEngine:
         self.squared_off_on = squared[0] if squared else None
 
     def _pending_sell_qty(self, security_id, exclude=None):
+        """Units already promised to pending SELLs. OCO legs don't count: they follow the open quantity."""
         return sum(o.qty for o in self.orders.values()
-                   if o.security_id == security_id and o.side == SELL and o.status in OPEN_STATES and o.id != exclude)
+                   if o.security_id == security_id and o.side == SELL and o.status in OPEN_STATES and o.id != exclude
+                   and not o.oco_group)
 
     # ---------- validation ----------
     @staticmethod
@@ -295,7 +303,7 @@ class PaperEngine:
             return "No live price for this instrument yet."
         if o.side == SELL:
             pos = self.positions.get(o.security_id)
-            can_sell = (pos.open_qty if pos else 0) - self._pending_sell_qty(o.security_id, exclude=o.id)
+            can_sell = (pos.open_qty if pos else 0) - (0 if o.oco_group else self._pending_sell_qty(o.security_id, o.id))
             if o.qty > can_sell:
                 return (f"Sell quantity {o.qty} exceeds the {max(can_sell, 0)} units you can sell. "
                         "Only open positions can be sold; short selling is not allowed.")
@@ -325,12 +333,13 @@ class PaperEngine:
         return r2(value + order_charges(BUY, value).total)
 
     # ---------- orders ----------
-    def place_order(self, security_id, side, lots, lot_size, order_type, now, price=None, trigger_price=None):
+    def place_order(self, security_id, side, lots, lot_size, order_type, now, price=None, trigger_price=None,
+                    oco_group=""):
         """Returns (order, events). Bad input raises ValueError; business rules give a REJECTED order."""
         price, trigger_price = self._check_shape(side, order_type, lots, lot_size, price, trigger_price)
         o = Order(id=self._next_id("PT"), security_id=security_id, side=side, order_type=order_type, lots=lots,
                   lot_size=lot_size, price=price, trigger_price=trigger_price, status=PENDING,
-                  created_at=now, updated_at=now)
+                  created_at=now, updated_at=now, oco_group=oco_group)
         self.orders[o.id] = o
         book = self.books.get(security_id)
         reason = self._business_reject(o, now, book)
@@ -391,7 +400,8 @@ class PaperEngine:
         events = []
         for o in sorted((o for o in self.orders.values() if o.security_id == security_id and o.status in OPEN_STATES),
                         key=lambda o: o.created_at):
-            events += self._evaluate(o, book, now)
+            if o.status in OPEN_STATES:  # an OCO fill earlier in this loop may have cancelled it
+                events += self._evaluate(o, book, now)
         return events
 
     def on_time(self, now):
@@ -440,7 +450,81 @@ class PaperEngine:
         t = Trade(self._next_id("TR"), o.id, o.security_id, o.side, o.qty, round(avg, 4), value, charges, now)
         self.trades.append(t)
         return [Event("order", o.to_dict()), Event("trade", t.to_dict()),
-                Event("position", pos.to_dict(self._ltp(o.security_id)))]
+                Event("position", pos.to_dict(self._ltp(o.security_id)))] + self._follow_oco(o, now)
+
+    # ---------- OCO protection ----------
+    def protection(self, security_id):
+        """(target order, stop order) of the open OCO pair of a position; either may be None."""
+        legs = [o for o in self.orders.values()
+                if o.security_id == security_id and o.oco_group and o.status in OPEN_STATES]
+        return (next((o for o in legs if o.order_type == LIMIT), None),
+                next((o for o in legs if o.order_type == SLM), None))
+
+    def _follow_oco(self, filled, now):
+        """After a fill: cancel the filled leg's partner, cancel both legs once the position is closed, and resize the
+        legs to the open quantity otherwise."""
+        pos = self.positions.get(filled.security_id)
+        open_qty = pos.open_qty if pos else 0
+        events = []
+        for leg in [o for o in self.orders.values() if o.security_id == filled.security_id and o.oco_group
+                    and o.status in OPEN_STATES]:
+            if filled.oco_group and leg.oco_group == filled.oco_group:
+                events.append(self._cancel(leg, now, f"Cancelled: the other leg of the OCO pair ({filled.id}) filled."))
+            elif open_qty <= 0:
+                events.append(self._cancel(leg, now, "Cancelled: the position is closed."))
+            elif leg.qty != open_qty:
+                leg.lots, leg.lot_size = ((open_qty // leg.lot_size, leg.lot_size) if open_qty % leg.lot_size == 0
+                                          else (open_qty, 1))
+                leg.updated_at = now
+                events.append(Event("order", leg.to_dict()))
+        return events
+
+    def set_protection(self, security_id, now, target=KEEP, stop=KEEP):
+        """Places, moves or cancels the OCO target (LIMIT SELL at `target`) and stop (SL-M SELL triggered at `stop`) of
+        an open long. A price sets or moves the leg, None cancels it, KEEP leaves it. Both legs cover the whole open
+        quantity. Raises OrderError (nothing changed) when the request can't be applied."""
+        pos = self.positions.get(security_id)
+        if pos is None or pos.open_qty <= 0:
+            raise OrderError("No open position to protect.")
+        if not self.accepting_orders(now):
+            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+        book = self.books.get(security_id)
+        if book is None:
+            raise OrderError("No live price for this instrument yet.")
+        cur_t, cur_s = self.protection(security_id)
+        new_t = (cur_t.price if cur_t else None) if target is KEEP else target
+        new_s = (cur_s.trigger_price if cur_s else None) if stop is KEEP else stop
+        for name, v in (("Target", new_t), ("Stop", new_s)):
+            if v is not None and (v <= 0 or not _on_tick_grid(v)):
+                raise OrderError(f"{name} must be above 0 and a multiple of {TICK_SIZE}.")
+        if target is not KEEP and new_t is not None and new_t <= book.ltp:
+            raise OrderError(f"Target {new_t:g} must be above LTP {book.ltp:g}.")
+        if stop is not KEEP and new_s is not None and new_s >= book.ltp:
+            raise OrderError(f"Stop {new_s:g} must be below LTP {book.ltp:g}.")
+        if new_t is not None and new_s is not None and new_s >= new_t:
+            raise OrderError(f"Stop {new_s:g} must be below the target {new_t:g}.")
+        if cur_s and cur_s.status == TRIGGERED and stop is not KEEP:
+            raise OrderError("The stop has already triggered; it can't be moved or cancelled now.")
+        group = (cur_t or cur_s).oco_group if (cur_t or cur_s) else f"OCO-{security_id}-{now:%H%M%S%f}"
+        lots, lot_size = ((pos.open_qty // pos.lot_size, pos.lot_size) if pos.open_qty % pos.lot_size == 0
+                          else (pos.open_qty, 1))
+        events = []
+        for cur, value, keep, order_type in ((cur_t, target, target is KEEP, LIMIT), (cur_s, stop, stop is KEEP, SLM)):
+            if keep:
+                continue
+            if value is None:
+                if cur:
+                    events.append(self._cancel(cur, now, "Cancelled by you."))
+            elif cur:
+                events += self.modify_order(cur.id, now, lots=lots if cur.lot_size == lot_size else None,
+                                            **({"price": value} if order_type == LIMIT else {"trigger_price": value}))
+            else:
+                kw = {"price": value} if order_type == LIMIT else {"trigger_price": value}
+                o, evs = self.place_order(security_id, SELL, lots, lot_size, order_type, now, oco_group=group, **kw)
+                if o.status == REJECTED:
+                    raise OrderError(o.reason)
+                events += evs
+        return events
 
     # ---------- exits ----------
     def exit_position(self, security_id, now):

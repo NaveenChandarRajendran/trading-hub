@@ -110,3 +110,36 @@ def test_order_levels_round_trip(store):
     assert store.order_levels(acc, "2026-10-21") == [row]
     assert row["zone"] == {"slot": "S1", "strike": 25000.0}
     assert store.order_levels(acc, "2026-10-22") == []
+
+
+def test_scalper_account_fills_between_dates_and_daily_summary(store):
+    """Power Scalper: a named account like "Algo", fills over a date range, and scalper_daily_summary upserts."""
+    manual = store.create_account(100_000, at("09:00"))
+    scalper = store.create_account(100_000, at("09:00"), name="Scalper")
+    assert store.active_account("Scalper")["id"] == scalper["id"] and store.active_account()["id"] == manual["id"]
+    trade_day(store, scalper["id"], "2026-10-21", 100, 110)
+    trade_day(store, scalper["id"], "2026-10-22", 100, 95)
+    trade_day(store, manual["id"], "2026-10-22", 100, 120)
+    fills = store.trades_between(scalper["id"], "2026-10-21", "2026-10-22")
+    assert [(f["date"], f["side"]) for f in fills] == [("2026-10-21", "BUY"), ("2026-10-21", "SELL"),
+                                                       ("2026-10-22", "BUY"), ("2026-10-22", "SELL")]
+    assert fills[0]["charges"]["total"] > 0 and store.trades_between(scalper["id"], "2026-10-23", "2026-10-23") == []
+    row = {"account_id": scalper["id"], "trade_date": "2026-10-21", "trades": 1, "wins": 1, "losses": 0, "fills": 2,
+           "realized": 650.0, "charges": 60.5, "net": 589.5, "best_trade": 589.5, "worst_trade": 589.5}
+    store.scalper_save_summary(row)
+    store.scalper_save_summary({**row, "net": 600.0})  # re-written: one row per account and day
+    assert store.scalper_summaries(scalper["id"], "2026-10-01", "2026-10-31") == [{**row, "net": 600.0}]
+    assert store.scalper_summaries(manual["id"], "2026-10-01", "2026-10-31") == []
+
+
+def test_oco_group_is_stored_with_the_order(store):
+    acc = store.create_account(100_000, at("09:00"))["id"]
+    e = PaperEngine(100_000, day=at("09:20").date())
+    e.on_tick(SID, Book(100, [(99.95, 500)], [(100, 500)]), at("09:20"))
+    save_events(store, acc, "2026-10-21", e.place_order(SID, BUY, 1, LOT, MARKET, at("09:30"))[1])
+    save_events(store, acc, "2026-10-21", e.set_protection(SID, at("09:31"), target=120.0, stop=90.0))
+    rows = [o for o in store.orders(acc, "2026-10-21") if o["oco_group"]]
+    assert len(rows) == 2 and rows[0]["oco_group"] == rows[1]["oco_group"]
+    r = PaperEngine(100_000)
+    r.restore(store.orders(acc, "2026-10-21"), store.trades(acc, "2026-10-21"))
+    assert [x.price or x.trigger_price for x in r.protection(SID)] == [120.0, 90.0]

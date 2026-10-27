@@ -134,6 +134,8 @@ ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS setup text NOT NULL DEFAULT '';
 
 -- Which variant placed an algo order (A-D; '' for manual orders).
 ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS variant text NOT NULL DEFAULT '';
+-- Target + stop of one position placed as an OCO pair (paper_engine.set_protection); '' for every other order.
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS oco_group text NOT NULL DEFAULT '';
 
 -- ================================================================ OI breakout algo (algo_service.py)
 -- Every date column is the IST trading date written by the app (never derived from UTC timestamps).
@@ -251,6 +253,24 @@ CREATE TABLE IF NOT EXISTS algo_daily_summary (
     PRIMARY KEY (trade_date, "index", variant)
 );
 CREATE INDEX IF NOT EXISTS algo_daily_summary_day_variant ON algo_daily_summary (trade_date, variant);
+
+-- Power Scalper (paper account 'Scalper'): one row per account per day, written at 15:35 IST (scalper_service.py).
+-- trades = round trips (flat -> flat) of one instrument; net = realized - charges (same as the P&L calendar).
+CREATE TABLE IF NOT EXISTS scalper_daily_summary (
+    account_id   integer          NOT NULL REFERENCES pt_accounts(id),
+    trade_date   date             NOT NULL,
+    trades       integer          NOT NULL,
+    wins         integer          NOT NULL,
+    losses       integer          NOT NULL,
+    fills        integer          NOT NULL,
+    realized     double precision NOT NULL,
+    charges      double precision NOT NULL,
+    net          double precision NOT NULL,
+    best_trade   double precision,             -- net of the best / worst round trip
+    worst_trade  double precision,
+    updated_at   timestamptz      NOT NULL,
+    PRIMARY KEY (account_id, trade_date)
+);
 
 -- Option-chain snapshots: one row per strike per tracked minute (chain_snapshots.py, ATM +/- 25 strikes), so replays
 -- can check the OI filters on past days.

@@ -10,7 +10,16 @@ import type { Paper } from './usePaper';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m: string) => `${MONTH_NAMES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
-const ACCOUNTS = [{ value: 'manual', label: 'Manual' }, { value: 'algo', label: 'Algo' }] as const;
+const ACCOUNTS = [
+  { value: 'manual', label: 'Manual' }, { value: 'algo', label: 'Algo' }, { value: 'scalper', label: 'Scalper' },
+  { value: 'all', label: 'All' },
+] as const;
+const ACCOUNT_NOTE: Record<PnlAccount, string> = {
+  manual: ' Your manual trades.',
+  algo: ' Algo: the OI breakout algo’s paper account (live variant only).',
+  scalper: ' Scalper: the Power Scalper’s paper account.',
+  all: ' All: Manual, Algo and Scalper added up.',
+};
 
 export function PnlView({ paper }: { paper: Paper }) {
   const today = paper.today;
@@ -65,8 +74,7 @@ export function PnlView({ paper }: { paper: Paper }) {
           <div className="field">Account
             <Segmented label="Account" options={ACCOUNTS} value={account} onChange={(v) => { setAccount(v); setDay(null); }} />
           </div>
-          <span className="muted">Net = realized P&amp;L − charges, by IST trade date.{account === 'algo'
-            ? ' Algo: the OI breakout algo’s paper account (live variant only).' : ' Your manual trades.'}</span>
+          <span className="muted">Net = realized P&amp;L − charges, by IST trade date.{ACCOUNT_NOTE[account]}</span>
         </div>
         {error && <div className="pt-gap"><Alert kind="error">{error}</Alert></div>}
       </section>
@@ -123,11 +131,12 @@ export function PnlView({ paper }: { paper: Paper }) {
                 : !dayTrades.length ? <EmptyState>No trades on this day.</EmptyState> : (
                   <div className="pt-scroll">
                     <table className="t">
-                      <thead><tr><th>Time</th><th>Instrument</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th></tr></thead>
+                      <thead><tr><th>Time</th>{account === 'all' && <th>Account</th>}<th>Instrument</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th></tr></thead>
                       <tbody>
                         {dayTrades.map((t) => (
-                          <tr key={t.id}>
+                          <tr key={`${t.account ?? ''}${t.id}`}>
                             <td>{hms(t.time)}</td>
+                            {account === 'all' && <td>{t.account}</td>}
                             <td title={t.name}>{shortName(t)}</td>
                             <td><span className={`pt-side ${t.side === 'BUY' ? 'buy' : 'sell'}`}>{t.side}</span></td>
                             <td>{t.qty}</td>

@@ -15,6 +15,7 @@ Endpoints:
     GET  /api/sr/history?symbol=NIFTY&expiry=&date=   (OI support / resistance level history, see sr_api.py)
     GET|PUT|DELETE /api/dashboard/fixed-levels?index=&expiry=   (Dashboard "Fix zones", see dashboard_levels_api.py)
     /api/algo/*                                  (OI breakout algo, paper only: status, events, day, reports; algo_api.py)
+    /api/scalper/*                               (Power Scalper, paper only: Scalper account, orders, OCO, reports)
     GET  /api/status
     POST /api/token   {"accessToken": "..."}   (replace an expired token without restarting)
     /api/paper/*, /ws/paper                     (paper trading, simulation only: see paper_api.py)
@@ -40,6 +41,7 @@ from pydantic import BaseModel
 from calc import build_rows, select_for_interval
 from chain_cache import FALLBACK_LOT_SIZE, chain_response
 import algo_api
+import scalper_api
 import algo_config
 import dashboard_api
 import dashboard_levels_api
@@ -67,9 +69,10 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None):
+def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None, scalper=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
     algo_mode: "paper" | "signals" | "off" runs the OI breakout algo (needs paper; None = not created, as in tests).
+    scalper: True creates the Power Scalper service (needs paper), or pass a ScalperService (tests).
     instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either)."""
     expiry_cache = {}  # symbol -> (time, [expiries])
     quote_cache = {}  # tuple(ids) -> (time, quotes)
@@ -126,6 +129,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             history_cache[key] = hit
         return hit
 
+    if scalper is True and paper:
+        from scalper_service import ScalperService
+        scalper = ScalperService(paper.store, paper, paper.instruments, clock=paper.clock)
     algo = None
     if paper and algo_mode in ("paper", "signals"):
         constituents = load_constituents()
@@ -182,7 +188,11 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         threading.Thread(target=start_default_tracking, daemon=True).start()
         if algo:
             algo.start()
+        if scalper:
+            scalper.start()
         yield
+        if scalper:
+            scalper.stop()
         if algo:
             algo.stop_thread()
         if paper:
@@ -349,6 +359,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo
+    if scalper:
+        scalper_api.register(app, scalper)
+        app.state.scalper = scalper
     return app
 
 
@@ -396,8 +409,8 @@ def main():
         paper_store, DhanFeed(client.client_id, client.token, token_ok=lambda: not client.token_expired),
         OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")), levels=TrackerLevels(tracker))
     logging.getLogger("main").info("OI breakout algo: ALGO_MODE=%s (paper orders only, never real orders)", algo_config.MODE)
-    uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE), host=a.host, port=a.port,
-                log_level="info")
+    uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE, scalper=True), host=a.host,
+                port=a.port, log_level="info")
 
 
 if __name__ == "__main__":
