@@ -36,6 +36,7 @@ from sig_indicators import IST
 from sig_market import build_state
 from sig_oi import trending_view, votes
 from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
+from sig_rebound import RULE as RB, SYMBOLS as RB_SYMBOLS, build_state_rebound, rebound_rule
 from sig_rules import EXPIRY_GATES, PASS, four_pillar_rule, supertrend_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
@@ -144,6 +145,7 @@ class SignalService:
         self._fails = Counter()  # data problem -> consecutive failures
         self._summary_day = None
         self._key_alert_day = None
+        self._rebound_day = {}  # symbol -> date of the day's first Rebound Call signal (one a day, as the backtest)
         self._stop = threading.Event()
         self._thread = None
 
@@ -176,6 +178,8 @@ class SignalService:
         v2, v2_problems = self._v2(symbol, now, max_age)
         if state:
             results["dharaniV2"] = dharani_v2_rule(v2) if v2 else None
+            if symbol in self.rebound_symbols():  # evaluated by the watcher only (run_rebound): keep its last result
+                results[RB] = ((self.last.get(symbol) or {}).get("results") or {}).get(RB)
         rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
                "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
@@ -200,6 +204,66 @@ class SignalService:
         except Exception as e:
             log.exception("dharani v2 state")
             return None, [f"{symbol} Dharani v2: {e}"]
+
+    def rebound_symbols(self):
+        return RB_SYMBOLS if self.cfg.get(RB, {}).get("enabled", False) else ()
+
+    def run_rebound(self, symbol):
+        """Rebound Call on the 5-minute candle that just closed (BANKNIFTY): entry when GO, shadow row otherwise."""
+        st, problems = None, []
+        for attempt in range(3):  # Dhan's last minute can trail: retry twice, 15 s apart
+            try:
+                st, problems = build_state_rebound(symbol, self.clock(), self.src, max_age=15)
+            except Exception as e:
+                log.exception("rebound state")
+                st, problems = None, [f"{symbol} Rebound Call: {e}"]
+            if st and st.get("complete"):
+                break
+            if attempt < 2:
+                time.sleep(15)
+        if not st:
+            return
+        today = self.clock().date()
+        st["tradedToday"] = self._rebound_day.get(symbol) == today
+        r = rebound_rule(st)
+        with self.lock:
+            rec = self.last.get(symbol)
+            if rec and rec.get("results") is not None:
+                rec["results"][RB] = r
+        action = ""
+        if r["grade"] and not st["tradedToday"]:
+            self._rebound_day[symbol] = today  # the day's first signal, taken or not
+        if self.trader:
+            if r["go"]:
+                why = self.trader.on_signal(r, st)
+                action = why or "not sent"
+                if why != "Entry sent" and not st["positions"].get(RB):
+                    self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+            elif not st["tradedToday"]:
+                self.skips[(RB, self._skip_reason(r))] += 1
+                setup = ("-", "; ".join(r["blocked"])) if r["grade"] else skipped_setup(r)  # green but blocked, or a near miss
+                if setup and not st["positions"].get(RB):
+                    self.trader.add_skip(r, st, *setup)
+        self.write_rebound_row(symbol, st, r, action, problems)
+
+    def write_rebound_row(self, symbol, st, r, action, problems):
+        path = os.path.join(self.cfg["logDir"], f"rebound_{self.clock().date().isoformat()}.csv")
+        ind = st["ind"]
+        row = {"time": self.clock().strftime("%H:%M:%S"), "index": symbol, "candle": st["signalTime"],
+               "close": st["bar"]["close"], "ema200": _r(ind["ema200"]), "atr": _r(ind["atr"]), "day_open": ind["dayOpen"],
+               "vwap": _r(ind["vwap"]), "avg_range_10d": _r(ind["avgRange"]), "score": f"{r['score']} of {r['total']}", "go": r["go"],
+               "checks": "; ".join(f"{c['id']}={c['state']} ({c['detail']})" for c in r["checks"]),
+               "blocked": "; ".join(r["blocked"]), "action": action, "problems": "; ".join(problems)}
+        try:
+            os.makedirs(self.cfg["logDir"], exist_ok=True)
+            new = not os.path.exists(path)
+            with open(path, "a", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(row))
+                if new:
+                    w.writeheader()
+                w.writerow(row)
+        except OSError as e:
+            log.warning("could not write %s: %s", path, e)
 
     def run_v2(self):
         """One 3-minute cycle: Dharani v2 exits and entries (NIFTY and BANKNIFTY by default)."""
@@ -307,6 +371,8 @@ class SignalService:
                         if setup and not st["positions"].get(key):
                             self.trader.add_skip(r, st, *setup)
             self.write_snapshot(symbol, rec, "5min", action.strip("; "))
+            if symbol in self.rebound_symbols():
+                self.run_rebound(symbol)
 
     def _skip_reason(self, r):
         if r["blocked"] and r.get("grade"):
@@ -478,7 +544,8 @@ class SignalService:
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
-                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Dharani Rules (app paper, Rs 1 lakh)")):
+                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Dharani Rules (app paper, Rs 1 lakh)"),
+                          (RB, "Rebound Call (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)
             lines.append(f"{name}: {len(ts)} trades, net Rs {net:,.2f}")
@@ -611,6 +678,10 @@ def skipped_setup(r):
                 or by.get("window", {}).get("state") != PASS:
             return None
         return "; ".join(off) or "-", "; ".join(r["blocked"]) or (f"All {r.get('total')} needed: " + ", ".join(off) + " missed")
+    if r["rule"] == RB:  # all but one of the three conditions met, inside the window
+        if r.get("score") != r.get("total", 0) - 1 or by.get("window", {}).get("state") != PASS:
+            return None
+        return "; ".join(off) or "-", "; ".join(r["blocked"]) or ("All 3 needed: " + ", ".join(off) + " missed")
     if r["rule"] in ("fourPillar", "superTrend", "megabull"):
         if by.get("trigger", {}).get("state") != PASS:
             return None

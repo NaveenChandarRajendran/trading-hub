@@ -38,12 +38,14 @@ D2 = "dharaniV2"
 FP, STR = "fourPillar", "superTrend"  # MegaBull rules, each on any index (owner, 25-Oct-2026)
 DH = "dharani"  # the app's own Rs 1 lakh paper account for the Dharani rule (strategy_books.StrategyBook)
 MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): manual trades and "stop + target"
-ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", MANUAL: "Paper Trading (manual)"}
+RB, RBK = "reboundCall", "rebound"  # Rebound Call rule (sig_rebound.py) and its own Rs 1 lakh book (owner, 27-Oct-2026)
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", RBK: "Rebound Call book", MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
 # SuperTrend Rules); the app's paper trading = one Rs 1 lakh account per strategy (Trend Rules, Dharani Rules). A rule is
 # also a "slot": one open position per slot per index. MB as a slot = trades saved before the 4 Pillar / SuperTrend split.
-RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB}
-APP = {TH, DH, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
+RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK}
+ACCOUNT_CFG = {RBK: RB}  # autopaper.json section per account when it is not the account key (default: the account key)
+APP = {TH, DH, RBK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
 def _entry_rsi(state, side):
@@ -435,6 +437,8 @@ class AutoTrader:
             return ""
         if slot == D2 and not self.cfg.get(D2, {}).get("enabled", True):
             return "Dharani v2 is off (config dharaniV2.enabled)"
+        if slot == RB and not self.cfg.get(RB, {}).get("enabled", False):
+            return "Rebound Call is off (config reboundCall.enabled)"
         why = self.block_reason(account, result["symbol"], slot=slot)
         if why:
             return why
@@ -458,7 +462,7 @@ class AutoTrader:
     def _enter(self, account, result, state):
         acc, symbol, side = self.accounts[account], result["symbol"], result["side"]
         slot = result["rule"]
-        cfg = self.cfg[account]
+        cfg = self.cfg[ACCOUNT_CFG.get(account, account)]
         try:
             exp = self._try(account, "expiry list", lambda: self._expiry(acc, symbol))
             ref = state["spot"]
@@ -580,7 +584,8 @@ class AutoTrader:
         except Exception as e:
             log.warning("shadow skip %s %s: no instrument: %s", symbol, side, e)
             inst = None
-        pct = self.cfg[RULE_ACCOUNT.get(result["rule"], TH)]
+        acc_key = RULE_ACCOUNT.get(result["rule"], TH)
+        pct = self.cfg[ACCOUNT_CFG.get(acc_key, acc_key)]
         with self.lock:
             self.state["shadows"].append({
                 "kind": "skip", "createdAt": now.isoformat(), "symbol": symbol, "side": side, "rule": rule,
