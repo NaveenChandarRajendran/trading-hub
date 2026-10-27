@@ -158,3 +158,19 @@ def test_hourly_updates_once_an_hour_from_10_15_to_14_15(tmp_path):
     assert "🟡 4 Pillar Rules: came close, 1 of 2 on Nifty put at 10:10 (missing: PCR)" in sent[0]
     assert "⚪ 4 Pillar Rules: no setup this hour" in sent[1]  # the hour's near miss is reported once
     assert "4 Pillar Rules" in svc._near["all"]  # the day summary still knows it
+
+
+def test_market_open_message_once_at_9_15(tmp_path):
+    from datetime import datetime
+
+    import sig_service
+    now = datetime(2026, 10, 28, 9, 15, 35, tzinfo=sig_service.IST)
+    svc = sig_service.SignalService({"logDir": str(tmp_path)}, None, None, clock=lambda: now)
+    sent = []
+    svc.phone = type("P", (), {"send": lambda self, t: sent.append(t)})()
+    svc._market_open_note(now.replace(hour=9, minute=10))
+    assert sent == []
+    svc._market_open_note(now)
+    svc._market_open_note(now.replace(minute=20))
+    assert len(sent) == 1 and sent[0].startswith("🔔 Market open · 28 Oct 9:15")
+    assert "Rebound Call" in sent[0] and "Manual" not in sent[0]

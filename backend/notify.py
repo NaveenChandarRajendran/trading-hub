@@ -115,6 +115,12 @@ def summary_text(day, rows, order, market=None, near=None):
     return "\n".join(lines)
 
 
+def open_text(day, order):
+    """9:15 message (owner 27-Oct-2026: "Please allow 9:15 as well")."""
+    rules = ", ".join(n for n in order if n != "Manual")
+    return f"🔔 Market open · {day} 9:15\nWatching: {rules}\nYou'll get a message on every entry and exit, and an update every hour from 10:15."
+
+
 def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=None):
     """Hourly update (owner 27-Oct-2026: "a short summary every hour, then the consolidated one at 3.30").
     rows: the day's journal rows. live: open trade id -> P&L now. manual_live: open P&L of the owner's own trades.

@@ -151,7 +151,8 @@ class SignalService:
         self.phone = None  # notify.Notifier (phone alerts), set by main.build_signals
         self.rows_today = lambda: []  # every trade of the day (journal rows, all accounts), for the phone summary
         self._near = {"day": None, "hour": {}, "all": {}}  # closest calls that did not trade, for the phone updates
-        self._hours_sent = set()  # (date, hour) of the hourly phone updates already sent
+        self._hours_sent = set()
+        self._open_day = None  # day the 9:15 "market open" phone message went out  # (date, hour) of the hourly phone updates already sent
 
     # ---------- alerts ----------
     def alert(self, kind, message):
@@ -419,6 +420,18 @@ class SignalService:
             out.append((name, st.get("spot"), (st.get("prev") or {}).get("close")))
         return out
 
+    def _market_open_note(self, now):
+        """One "market open" phone message on a trading day, at the first watcher run from 9:15."""
+        if self.phone is None or self._open_day == now.date() or not (9, 15) <= (now.hour, now.minute) < (10, 15):
+            return
+        self._open_day = now.date()
+        import journal
+        import notify
+        try:
+            self.phone.send(notify.open_text(f"{now:%d %b}", journal.STRATEGIES))
+        except Exception:
+            log.exception("market open phone message failed")
+
     def _hourly(self, now):
         """Phone update at 10:15, 11:15, 12:15, 13:15 and 14:15 (owner 27-Oct-2026); the day summary follows at 15:31."""
         slot = now.hour if now.minute >= 15 else now.hour - 1
@@ -683,6 +696,8 @@ class SignalService:
             now = self.clock()
             hm = (now.hour, now.minute)
             try:
+                if self.src.market_open():
+                    self._market_open_note(now)
                 if self.src.market_open() and SESSION[0] < hm <= SESSION[1]:
                     if now.minute % 5 == 0:
                         self.run_once()
