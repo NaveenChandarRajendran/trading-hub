@@ -30,7 +30,10 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 Int
 .nav-group:first-child .nav-divider { display: none; }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .topbar { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
-.topbar h1 { font-size: 15px; font-weight: 500; margin: 0; }
+.topbar h1 { font-size: 15px; font-weight: 600; margin: 0; }
+.topbar-title { display: flex; flex-direction: column; justify-content: center; min-width: 0; line-height: 1.25; }
+.topbar-hint { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-count { margin-left: auto; padding: 0 6px; border-radius: 8px; background: var(--surface-2); color: var(--text-3); font-size: var(--fs-xs); font-weight: 500; }
 .spacer { flex: 1; }
 .content { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }

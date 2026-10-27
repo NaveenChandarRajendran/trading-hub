@@ -1,6 +1,26 @@
 # Current state
 
-_Last updated: 2026-10-26 (stop/target + expiry backtest, new-strategy search on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy_Backtest`)_
+
+## Navigation and the Today page (owner 27-Oct-2026: "very confusing to see where what is happening")
+- Sidebar: five everyday pages on top, in this order: **Today** (`today`, new landing page `/`), **Charts & Signals**
+  (`dashboard`, was "Dashboard"), **Buy / Sell** (`option-chain`, was "Option Chain"), **Trade History** (`paper-trade`,
+  was "Paper Trading"), **Backtest**. Below them two folded sections, "Live market data" (6 tools) and "Paste tools" (5);
+  `GROUPS.closedByDefault`, the open/closed state is saved per section (`shared/sidebarGroups.ts`); the section of the
+  page on screen always shows. Paths are unchanged. Each page has a one-line `hint` under its title in the top bar.
+- **Today** (`src/apps/today/`, logic in `logic/today.ts` with tests): every trade of the day from every account
+  (Manual, Dharani, Trend, 4 Pillar, SuperTrend) from `GET /api/journal/trades?from=today&to=today`; open trades priced
+  live from `/ws/paper` ticks (manual security id parsed from the journal id `manual-<day>-<sid>-<n>`, rule trades'
+  ids from `/api/signals/state` auto.today). Big total (booked after charges + running before charges), a tile per
+  account, Open now table (Exit with a two-step confirm; manual: Add stop + target), Closed today table, Both / Nifty /
+  Bank Nifty filter. P&L green / red everywhere; rows and tiles get a green / red edge. Refreshes every 10 s and on
+  every fill. No backend change.
+- Charts & Signals: the Interval picker always shows (it hid when a strategy was picked; a strategy opens at its own
+  candle size, "(rule)" marks it); the manual positions box and "Today's paper trades" table moved to Today (a link card
+  with the day's P&L replaces them; Day P&L / Open trades in the strip link to Today); "Paper trading" header is now
+  "Rule accounts". Buy / Sell: views "Option chain / My orders / My P&L", "My P&L today (manual)", links to Today after
+  an order. `Start_Trading_Day` opens `/` (= Today).
+
 
 ## Apps (frontend, `src/apps/registry.ts`)
 | App | Data | Notes |

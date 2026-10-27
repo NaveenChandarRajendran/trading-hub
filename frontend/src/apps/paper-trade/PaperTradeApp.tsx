@@ -2,6 +2,7 @@
 // Greeks, plus the owner's own manual paper buy / sell, positions, orders and P&L of the manual account. The
 // strategy-wise journal of all paper trades is the new Paper Trading page (apps/paper-journal).
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, Pill, Segmented, Stat, Status } from '../../shared/ui';
@@ -20,7 +21,7 @@ import { usePaper, type Paper } from './usePaper';
 import './paper-trade.css';
 
 type View = 'trade' | 'orders' | 'pnl';
-const VIEWS = [{ value: 'trade', label: 'Chain' }, { value: 'orders', label: 'Orders' }, { value: 'pnl', label: 'P&L' }] as const;
+const VIEWS = [{ value: 'trade', label: 'Option chain' }, { value: 'orders', label: 'My orders' }, { value: 'pnl', label: 'My P&L' }] as const;
 const CHAIN_REFRESH_MS = 15000;
 
 
@@ -204,7 +205,7 @@ export default function PaperTradeApp() {
           <div className="pt-gap pt-alerts">
             {paper.error && <Alert kind="error">{paper.error}</Alert>}
             {!paper.error && paper.meta?.lastError && paper.meta.marketOpen && <Alert kind="warn">{paper.meta.lastError}</Alert>}
-            {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
+            {notice && <Alert kind={notice.kind}>{notice.text}{notice.kind === 'info' && <> <Link to="/today">See all of today&apos;s trades on Today →</Link></>}</Alert>}
           </div>
         )}
       </section>
@@ -214,8 +215,8 @@ export default function PaperTradeApp() {
         <Stat label="ATM IV" value={ivAtm == null ? '–' : inr(2)(ivAtm)} delta={dhan ? `As of ${dhan.meta.asOf.slice(11, 16)} IST` : ''} />
         <Stat label="Days to expiry" value={expiry || chain?.expiry ? daysToExpiry(expiry || chain!.expiry, paper.today) : '–'} delta={`Lot ${chain?.lotSize ?? '–'}`} />
         <Stat label="PCR (OI)" value={chainPcr == null ? '–' : inr(2)(chainPcr)} delta={pain != null ? `Max pain ${inr(0)(pain)}` : ''} />
-        <Stat label="Day P&L (manual)" value={<span className={toneOf(dayPnl)}>{signedRupees(dayPnl)}</span>}
-          delta={f ? `Available ${rupees(f.available, 0)}` : ''} />
+        <Stat label="My P&L today (manual)" value={<span className={toneOf(dayPnl)}>{signedRupees(dayPnl)}</span>}
+          delta={<>{f ? `Available ${rupees(f.available, 0)} · ` : ''}<Link to="/today">All trades on Today →</Link></>} />
       </div>
 
       {view === 'trade' && (chainError ? (chainError !== paper.error && <Alert kind="error">{chainError}</Alert>)

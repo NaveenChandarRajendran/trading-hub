@@ -59,13 +59,12 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
             {spot != null && <> · spot <b className="num">{inr(2)(spot)}</b></>}
             {d.live && d.feedState !== 'open' && ` · live feed ${d.feedState}`}</span></h3>
         <span className="db-head-end">
-          {strategy === 'all' && (
-            <label className="field db-inline">Interval
-              <select value={d.interval} onChange={(e) => d.setInterval(Number(e.target.value))}>
-                {INTERVALS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-              </select>
-            </label>
-          )}
+          {/* always shown (owner 27-Oct-2026: it hid when a strategy was picked); a strategy starts at its own size */}
+          <label className="field db-inline">Interval
+            <select value={d.interval} onChange={(e) => d.setInterval(Number(e.target.value))}>
+              {INTERVALS.map((x) => <option key={x.value} value={x.value}>{x.label}{strategy !== 'all' && x.value === preset.interval ? ' (rule)' : ''}</option>)}
+            </select>
+          </label>
           {d.isDaily ? (
             <label className="field db-inline">Range
               <select value={d.rangeDays} onChange={(e) => d.setRangeDays(Number(e.target.value))}>

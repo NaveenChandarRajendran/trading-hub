@@ -1,0 +1,44 @@
+/* Today page (owner 27-Oct-2026). Colours only from tokens: green = profit, red = loss everywhere. */
+.td { display: flex; flex-direction: column; gap: var(--sp-4); }
+.td .td-head { display: flex; flex-direction: column; gap: var(--sp-4); }
+.td .td-head-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.td .td-date { margin: 0 0 2px; font-size: var(--fs-xl); font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; }
+.td .td-sub { font-size: var(--fs-sm); color: var(--text-3); }
+.td .td-head-end { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.td a.pill { text-decoration: none; }
+.td .td-figs { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--sp-3); }
+.td .td-fig { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); min-width: 0; }
+.td .td-total.gain { background: var(--up-soft); border-color: color-mix(in srgb, var(--up) 35%, transparent); }
+.td .td-total.loss { background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 35%, transparent); }
+.td .td-label { font-size: var(--fs-sm); color: var(--text-3); }
+.td .td-big { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.td .td-count { font-size: 28px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.td .num.up, .td .up { color: var(--up); }
+.td .num.down, .td .down { color: var(--down); }
+
+.td .td-accts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
+.td .td-acct { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--r-lg); font-size: var(--fs-lg); font-weight: 600; }
+.td .td-acct.gain { border-left-color: var(--up); }
+.td .td-acct.loss { border-left-color: var(--down); }
+.td .td-acct.none { opacity: .75; }
+.td .td-acct-name { display: flex; flex-direction: column; font-size: var(--fs-md); color: var(--text); }
+.td .td-acct-where { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+
+.td .td-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; display: flex; align-items: center; gap: var(--sp-2); }
+.td .td-n { min-width: 22px; padding: 0 7px; border-radius: 11px; background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); text-align: center; }
+.td .td-scroll { overflow-x: auto; }
+.td table.td-table { font-size: var(--fs-md); }
+.td table.td-table td { height: 40px; white-space: nowrap; }
+.td table.t td.txt, .td table.t th.txt { text-align: left; }
+.td tr.td-row td:first-child { box-shadow: inset 4px 0 0 var(--border-strong); padding-left: var(--sp-3); }
+.td tr.td-row.gain td:first-child { box-shadow: inset 4px 0 0 var(--up); }
+.td tr.td-row.loss td:first-child { box-shadow: inset 4px 0 0 var(--down); }
+.td .td-who { display: block; font-weight: 600; }
+.td .td-where { display: block; font-size: var(--fs-xs); color: var(--text-3); }
+.td .td-side { display: inline-block; min-width: 34px; margin-right: 4px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; text-align: center; }
+.td .td-side.CE { background: var(--accent-soft); color: var(--accent); }
+.td .td-side.PE { background: var(--warn-soft); color: var(--warn); }
+.td .td-actions, .td .td-confirm { display: inline-flex; gap: var(--sp-2); }
+.td .btn.td-danger { background: var(--down); border-color: var(--down); color: var(--on-accent); }
+.td .td-foot { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
+@media (max-width: 760px) { .td .td-figs { grid-template-columns: 1fr; } }

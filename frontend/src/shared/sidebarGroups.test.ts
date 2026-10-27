@@ -10,11 +10,17 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['', 'Manual (Paste)', 'Live (Dhan)']); // '' = top section, no header
-    expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard']);
-    expect(apps[0].id).toBe('dashboard'); // landing page
-    expect(g[1].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
-    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'order-flow', 'option-chain', 'paper-trade', 'backtest']); // Backtest last (owner 25-Oct-2026)
+    expect(g.map((x) => x.label)).toEqual(['', 'Live market data', 'Paste tools']); // '' = top section, no header
+    // owner 27-Oct-2026: the five everyday pages on top, Today first (landing page)
+    expect(g[0].apps.map((a) => a.name)).toEqual(['Today', 'Charts & Signals', 'Buy / Sell', 'Trade History', 'Backtest']);
+    expect(apps[0].id).toBe('today');
+    expect(g[1].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'order-flow']);
+    expect(g[2].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
+  });
+
+  it('keeps the old page addresses', () => {
+    const path = (id: string) => apps.find((a) => a.id === id)?.path;
+    expect([path('dashboard'), path('option-chain'), path('paper-trade'), path('backtest')]).toEqual(['/dashboard', '/option-chain', '/paper-trade', '/backtest']);
   });
 
   it('drops empty sections', () => {
@@ -26,5 +32,11 @@ describe('sidebar groups', () => {
     expect(parseClosed(null)).toEqual([]);
     expect(parseClosed('not json')).toEqual([]);
     expect(parseClosed('[1,2]')).toEqual([]);
+  });
+
+  it('folds default-closed sections until the user opens them', () => {
+    expect(parseClosed(null, ['live', 'manual'])).toEqual(['live', 'manual']);
+    expect(parseClosed('{"live":true}', ['live', 'manual'])).toEqual(['manual']);
+    expect(parseClosed('{"live":true,"manual":false}', ['live', 'manual'])).toEqual(['manual']);
   });
 });

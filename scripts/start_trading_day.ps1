@@ -118,7 +118,7 @@ if (-not $status) {
     $sig = Get-Api '/api/signals/state?symbol=NIFTY'
     if ($sig -and $sig.auto) {
         $word = if ($sig.auto.auto) { 'ON' } else { 'OFF' }
-        Say ("Auto is $word (as you last left it). Turn it on or off on the dashboard.") 'Cyan'
+        Say ("Auto is $word (as you last left it). Turn it on or off on Charts & Signals.") 'Cyan'
     }
 }
 
@@ -126,7 +126,7 @@ $front = $false
 foreach ($i in 1..30) {
     try { Invoke-WebRequest -Uri 'http://localhost:5173/' -UseBasicParsing -TimeoutSec 3 | Out-Null; $front = $true; break } catch { Start-Sleep -Seconds 2 }
 }
-if ($front) { Start-Process 'http://localhost:5173/'; Say 'Dashboard opened in the browser.' 'Green' }
+if ($front) { Start-Process 'http://localhost:5173/'; Say 'Trading Hub opened in the browser (Today page).' 'Green' }
 else { Say 'FAILED: the frontend did not start. Look at the Frontend window for the error.' 'Red' }
 
 Write-Host ''

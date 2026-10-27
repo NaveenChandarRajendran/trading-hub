@@ -4,6 +4,7 @@
 // today's trades → "Market context" (day levels, Trending OI, OI views, OI levels, order flow; collapsed) → snapshot bar.
 // Charts and candles: useDashboard per index; rule boxes, OI and paper data: useSignals per index (GET /api/signals/state).
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { copyText } from '../../shared/clipboard';
 import { nseDate } from '../../shared/dhan/chainAdapter';
 import { inr, signed } from '../../shared/grid';
@@ -11,7 +12,6 @@ import { errorText } from '../../shared/live/liveStatus';
 import { Alert, CopyValue, Pill, Segmented, Status } from '../../shared/ui';
 import { hm } from '../oi-support-resistance/OsrResult';
 import { levelsText } from '../oi-support-resistance/logic/levels';
-import { api as paperApi } from '../paper-trade/logic/api';
 import { BB_PERIOD, DEFAULT_INDICATORS, EMA_PERIOD, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE, ST_FACTOR, ST_PERIOD, STORAGE_PREFIX, type IndicatorToggles } from './config/settings';
 import { componentsCard } from './logic/cards';
 import { srLevels } from './logic/levels';
@@ -21,7 +21,7 @@ import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
 import { ChartPanel, INDEX_NAME, strategyName } from './ChartPanel';
 import {
-  AccountCard, AutoSwitch, DayLevels, ManualPositions, manualPnl, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TodayTrades, TrendingOiCard,
+  AccountCard, AutoSwitch, DayLevels, manualPnl, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TrendingOiCard,
 } from './SignalPanels';
 import { StrategyBoard } from './StrategyBoard';
 import { useDashboard, type Dashboard } from './useDashboard';
@@ -151,12 +151,19 @@ export default function DashboardApp() {
   const sigB = useSignals('BANKNIFTY');
   const sN = sigN.data;
   const sB = sigB.data;
-  const presetInterval = CHART_PRESETS[strategy].interval;
+  // a strategy's chart opens at its own candle size, and the Interval picker stays usable (owner 27-Oct-2026)
+  const [strategyInterval, setStrategyInterval] = useState<number | null>(null);
+  useEffect(() => setStrategyInterval(null), [strategy]);
+  const presetInterval = strategy === 'all' ? null : strategyInterval ?? CHART_PRESETS[strategy].interval;
   const dN = useDashboard(useOptionIds(sN, 'NIFTY', true), { symbol: 'NIFTY', interval: presetInterval });
   const dB = useDashboard(useOptionIds(sB, 'BANKNIFTY', true), { symbol: 'BANKNIFTY', interval: presetInterval });
   // the interval and date pickers move both charts together
   const both = {
-    setInterval: (v: number) => { dN.setInterval(v); dB.setInterval(v); },
+    setInterval: (v: number) => {
+      if (strategy !== 'all') return setStrategyInterval(v);
+      dN.setInterval(v);
+      dB.setInterval(v);
+    },
     setDay: (v: string) => { dN.setDay(v); dB.setDay(v); },
     setRangeDays: (v: number) => { dN.setRangeDays(v); dB.setRangeDays(v); },
   };
@@ -198,8 +205,10 @@ export default function DashboardApp() {
           {SYMS.map((x) => (
             <span key={x}><span className="db-muted">{INDEX_NAME[x]}</span> <b className="num">{spotOf(x) != null ? inr(2)(spotOf(x)!) : '—'}</b></span>
           ))}
-          <span><span className="db-muted">Day P&amp;L</span> <b className={`num ${tone(dayPnl)}`}>{signed(0)(dayPnl)}</b></span>
-          <span><span className="db-muted">Open trades</span> <b className="num">{openCount}</b></span>
+          <Link to="/today" className="db-strip-link" title="See every trade on Today">
+            <span className="db-muted">Day P&amp;L</span> <b className={`num ${tone(dayPnl)}`}>{signed(0)(dayPnl)}</b>
+            <span className="db-muted"> · Open trades</span> <b className="num">{openCount}</b>
+          </Link>
           <span><span className="db-muted">VIX</span> <b className="num">{vix != null ? inr(2)(vix) : '—'}</b></span>
         </span>
         <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>
@@ -266,7 +275,7 @@ export default function DashboardApp() {
 
       {/* 4. paper trading */}
       <div className="db-section-head">
-        <h3 className="card-title">Paper trading{tab !== 'both' ? ` · ${INDEX_NAME[tab]}` : ''}</h3>
+        <h3 className="card-title">Rule accounts{tab !== 'both' ? ` · ${INDEX_NAME[tab]}` : ''}</h3>
         <AutoSwitch auto={s?.auto ?? null} busy={sigN.busy} notice={sigN.notice} onAuto={(on) => void sigN.toggleAuto(on)} />
       </div>
       <div className="db-accts">
@@ -275,14 +284,12 @@ export default function DashboardApp() {
             onExit={(id) => void sigN.exitTrade(id)} />
         ))}
       </div>
-      {manual.length > 0 && (
-        <section className="card">
-          <div className="card-head"><h3 className="card-title">Your own paper trades (Option Chain screen)</h3></div>
-          <ManualPositions positions={manual} ltp={ltp} busy={sigN.busy} onBracket={(id) => void sigN.bracket(id).then(() => sigB.reload())}
-            onExitManual={(id) => void paperApi.exit(id).then(() => { sigN.reload(); sigB.reload(); })} />
-        </section>
-      )}
-      <TodayTrades auto={s?.auto ?? null} shadow={s?.shadow ?? null} />
+      {/* owner 27-Oct-2026: every trade of the day (manual ones too) with live P&L lives on one page, Today */}
+      <Link to="/today" className="card db-today-link">
+        <span><b>All of today&apos;s trades{manual.length ? `, including your ${manual.length} manual trade${manual.length > 1 ? 's' : ''},` : ''} are on Today</b>
+          <span className="db-muted"> · open and closed, every account, live P&amp;L, Exit buttons</span></span>
+        <span className={`num ${tone(dayPnl)}`}>{signed(0)(dayPnl)} →</span>
+      </Link>
 
       {/* 5. market context (collapsed) */}
       <details className="card db-context" onToggle={(e) => write('context', (e.target as HTMLDetailsElement).open ? '1' : '0')} open={read('context') === '1'}>

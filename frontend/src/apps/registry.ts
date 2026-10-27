@@ -2,11 +2,13 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
 export type AppGroup = 'home' | 'manual' | 'live';
 
-/** Sidebar sections, in display order. A section without a label has no header (always open). */
-export const GROUPS: { id: AppGroup; label: string }[] = [
+/** Sidebar sections, in display order. A section without a label has no header (always open).
+ * Owner 27-Oct-2026 ("very confusing layout"): the five pages used every day on top, the market data tools folded away
+ * below them (closedByDefault: folded until opened once). */
+export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[] = [
   { id: 'home', label: '' },
-  { id: 'manual', label: 'Manual (Paste)' },
-  { id: 'live', label: 'Live (Dhan)' },
+  { id: 'live', label: 'Live market data', closedByDefault: true },
+  { id: 'manual', label: 'Paste tools', closedByDefault: true },
 ];
 
 export interface AppEntry {
@@ -14,6 +16,7 @@ export interface AppEntry {
   group: AppGroup;
   name: string;
   path: string;
+  hint?: string; // one plain line under the page title: what the page is for
   icon: string; // single glyph; swap for an icon library later
   component: LazyExoticComponent<ComponentType>;
 }
@@ -22,12 +25,52 @@ export interface AppEntry {
 // The first entry is the landing page (/).
 export const apps: AppEntry[] = [
   {
+    // owner 27-Oct-2026: one place for every trade of the day (all accounts, Manual too) with live P&L; the landing page
+    id: 'today',
+    group: 'home',
+    name: 'Today',
+    path: '/today',
+    hint: "Every trade today, from every account, with live profit and loss",
+    icon: '◉',
+    component: lazy(() => import('./today/TodayApp')),
+  },
+  {
     id: 'dashboard',
     group: 'home',
-    name: 'Dashboard',
+    name: 'Charts & Signals',
     path: '/dashboard',
+    hint: 'Where each rule stands, the charts and the market context',
     icon: '◫',
     component: lazy(() => import('./dashboard/DashboardApp')),
+  },
+  {
+    // owner 25-Oct-2026: the chain + manual buy / sell (was "Paper Trading"), now with IV and Greeks; 27-Oct: "Buy / Sell"
+    id: 'option-chain',
+    group: 'home',
+    name: 'Buy / Sell',
+    path: '/option-chain',
+    hint: 'Option chain: place your own paper trades',
+    icon: '⊞',
+    component: lazy(() => import('./paper-trade/PaperTradeApp')),
+  },
+  {
+    // owner 25-Oct-2026: every strategy's paper orders and trades with history (MegaBull's too), like the Excel
+    id: 'paper-trade',
+    group: 'home',
+    name: 'Trade History',
+    path: '/paper-trade',
+    hint: 'Past days, order book, P&L calendar and strategies side by side',
+    icon: '⇄',
+    component: lazy(() => import('./paper-journal/PaperJournalApp')),
+  },
+  {
+    id: 'backtest',
+    group: 'home',
+    name: 'Backtest',
+    path: '/backtest',
+    hint: 'How each rule did on past data',
+    icon: '◔',
+    component: lazy(() => import('./backtest/BacktestApp')),
   },
   {
     id: 'option-strategy',
@@ -116,33 +159,6 @@ export const apps: AppEntry[] = [
     path: '/order-flow',
     icon: '≋',
     component: lazy(() => import('./order-flow/OrderFlowApp')),
-  },
-  {
-    // owner 25-Oct-2026: the chain + manual buy / sell (was "Paper Trading"), now with IV and Greeks
-    id: 'option-chain',
-    group: 'live',
-    name: 'Option Chain',
-    path: '/option-chain',
-    icon: '⊞',
-    component: lazy(() => import('./paper-trade/PaperTradeApp')),
-  },
-  {
-    // owner 25-Oct-2026: every strategy's paper orders and trades with history (MegaBull's too), like the Excel
-    id: 'paper-trade',
-    group: 'live',
-    name: 'Paper Trading',
-    path: '/paper-trade',
-    icon: '⇄',
-    component: lazy(() => import('./paper-journal/PaperJournalApp')),
-  },
-  {
-    // owner 25-Oct-2026: at the bottom of the sidebar, below Paper Trading
-    id: 'backtest',
-    group: 'live',
-    name: 'Backtest',
-    path: '/backtest',
-    icon: '◔',
-    component: lazy(() => import('./backtest/BacktestApp')),
   },
 ];
 

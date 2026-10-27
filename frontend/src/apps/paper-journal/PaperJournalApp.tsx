@@ -1,8 +1,9 @@
 // Paper Trading (owner 25-Oct-2026): one place for every strategy's paper trades, like the Excel tracker. Order book
 // and trades for any past day (MegaBull's too: the app records each order it sends there), open positions, the daily
 // P&L calendar and the strategies side by side. History from 1 Oct 2026 (imported once from the Excel). Data:
-// GET /api/journal/* (backend/journal.py). Buying and selling by hand is on the Option Chain page.
+// GET /api/journal/* (backend/journal.py). Buying and selling by hand is on the Buy / Sell page (was Option Chain); today's live view is the Today page.
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { errorText } from '../../shared/live/liveStatus';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Heatmap, Pill, Segmented, Stat, type Tone } from '../../shared/ui';
@@ -144,7 +145,7 @@ export default function PaperJournalApp() {
         <Stat label={`Net · ${longDate(day)}`} value={<span className={toneOf(daySum.net)}>{signedRupees(daySum.net)}</span>} delta={`${daySum.trades} trades${daySum.open ? ` · ${daySum.open} open` : ''}`} />
         <Stat label="Win rate" value={sum.winRate == null ? '–' : `${sum.winRate.toFixed(1)}%`} delta={`${sum.wins} won`} />
         <Stat label="Avg win / loss" value={<span className="num"><span className="up">{signedRupees(sum.avgWin)}</span> / <span className="down">{signedRupees(sum.avgLoss)}</span></span>} />
-        <Stat label="Open now" value={openNow.length} delta="Live P&L on the Dashboard" />
+        <Stat label="Open now" value={openNow.length} delta={<Link to="/today">Live P&amp;L on Today →</Link>} />
       </section>
 
       <section className="card">
@@ -214,7 +215,7 @@ export default function PaperJournalApp() {
         <p className="card-foot">
           {fyLabel(fy)} so far. 1–23 Oct 2026 come from the Excel tracker (one buy and one sell per trade); from 26 Oct the app records every
           order itself, MegaBull&apos;s included. MegaBull charges are the 0.37% estimate; the app accounts use Dhan&apos;s charges.
-          Manual = your own buy / sell on the Option Chain page.
+          Manual = your own buy / sell on the Buy / Sell page.
         </p>
       </section>
     </div>
