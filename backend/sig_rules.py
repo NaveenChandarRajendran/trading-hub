@@ -38,6 +38,7 @@ MB_PCR = 0.9  # owner 23-Oct evening: "near 1 or above" = call side, "well below
 MB_RSI_DHARANI = (45.0, 55.0)  # put below the first, call above the second
 MB_PIVOT_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 100.0}  # room to the next pivot level (both rules, any index)
 MB_WALL_ROOM = {"NIFTY": 50.0, "BANKNIFTY": 200.0}  # room to the nearest OI level in the trade's direction
+MB_ST_WAIT_BAND_CLOSE = True  # owner 27-Oct-2026: SuperTrend Rules waits for the next candle to CLOSE beyond the band
 
 DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not checked; trade tagged."
 
@@ -45,7 +46,7 @@ DELTA_NOTE = "Estimated from Dhan ticks; not used until it matches Dext. Not che
 SETTINGS = {
     "trendingOiStrength": "TH_TOI_STRENGTH", "trendingOiRows": "TH_TOI_ROWS", "vixMax": "MB_VIX_MAX", "pcr": "MB_PCR",
     "rsi4Pillar": "MB_RSI_4P", "pivotRoom": "MB_PIVOT_ROOM", "wallRoom": "MB_WALL_ROOM",
-    "trendSkipExpiryDays": "TH_SKIP_EXPIRY",
+    "trendSkipExpiryDays": "TH_SKIP_EXPIRY", "superTrendWaitBandClose": "MB_ST_WAIT_BAND_CLOSE",
 }
 
 # the two Trend gates added 26-Oct-2026; sig_service.skipped_setup shadows a setup blocked only by these
@@ -417,8 +418,44 @@ def four_pillar_rule(state):
     return _megabull_rule(state, four_pillar_checks, "fourPillar", "4 PILLAR RULES", "4 Pillar Rules")
 
 
+def _green(checks):
+    return all(c["state"] == PASS or (c["state"] == NOT_CHECKED and c.get("exempt")) for c in checks)
+
+
+def band_close_check(state, side):
+    """Owner 27-Oct-2026 (backtest: 5 y loss -3.90 L -> -1.10 L): the candle after the setup must CLOSE beyond the band."""
+    i = state["i"]
+    up, low = _ago(state, "bb_upper"), _ago(state, "bb_lower")
+    close = state["bars"][i]["close"]
+    if up is None:
+        return check("bandClose", "Next candle closed beyond the band", NOT_CHECKED, "Not enough candles yet", True)
+    ok = close >= up if side == "CE" else close <= low
+    word, band = ("above", up) if side == "CE" else ("below", low)
+    return check("bandClose", "Next candle closed beyond the band", PASS if ok else FAIL,
+                 f"Closed {_fmt(close)} vs {'upper' if side == 'CE' else 'lower'} band {_fmt(band)} (needs {word})", True)
+
+
 def supertrend_rule(state):
-    return _megabull_rule(state, dharani_checks, "superTrend", "SUPERTREND RULES", "SuperTrend Rules")
+    """With MB_ST_WAIT_BAND_CLOSE the setup (trigger, confirmation, pillars, room) is read on the candle BEFORE the last
+    completed one, and the last completed candle must close beyond the Bollinger band; entry at the next open."""
+    if not MB_ST_WAIT_BAND_CLOSE:
+        return _megabull_rule(state, dharani_checks, "superTrend", "SUPERTREND RULES", "SuperTrend Rules")
+    i, bars = state["i"], state["bars"]
+    same_day = i >= 1 and _day_of(bars[i - 1]["time"]) == _day_of(bars[i]["time"])
+    r = _megabull_rule({**state, "i": i - 1} if same_day else state, dharani_checks, "superTrend", "SUPERTREND RULES", "SuperTrend Rules")
+    if same_day:
+        r["checks"].append(band_close_check(state, r["side"]))
+    else:
+        r["checks"].append(check("bandClose", "Next candle closed beyond the band", FAIL, "Waiting for the setup candle", True))
+    green = _green(r["checks"])
+    r.update(grade="A" if green else None, go=green and not r["blocked"])
+    return r
+
+
+def _day_of(epoch_s):
+    from sig_indicators import IST
+    from datetime import datetime
+    return datetime.fromtimestamp(epoch_s, IST).date()
 
 
 def megabull_rule(state):

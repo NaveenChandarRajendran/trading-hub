@@ -2,6 +2,12 @@
 
 _Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy_Backtest`)_
 
+## SuperTrend Rules waits for a band close (owner 27-Oct-2026)
+`sig_rules.supertrend_rule`: with `MB_ST_WAIT_BAND_CLOSE` (autopaper.json rules `superTrendWaitBandClose`, default on)
+the setup is read on the candle before the last completed one and a new must-have check `bandClose` needs the last
+completed candle to CLOSE beyond the Bollinger band (call: >= upper, put: <= lower); entry at the next open. Backtest
+(both indices, -10/+20): -3.90 L / 1,491 trades -> -1.10 L / 583 trades. backtest.py uses it automatically.
+
 ## Navigation and the Today page (owner 27-Oct-2026: "very confusing to see where what is happening")
 - Sidebar: five everyday pages on top, in this order: **Today** (`today`, new landing page `/`), **Charts & Signals**
   (`dashboard`, was "Dashboard"), **Buy / Sell** (`option-chain`, was "Option Chain"), **Trade History** (`paper-trade`,

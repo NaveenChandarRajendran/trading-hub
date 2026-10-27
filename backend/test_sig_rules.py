@@ -139,7 +139,8 @@ def test_room_to_the_wall():
     assert states(r)["room"] == FAIL and not r["go"]
 
 
-def test_dharani_put_go():
+def test_dharani_put_go(monkeypatch):
+    monkeypatch.setattr("sig_rules.MB_ST_WAIT_BAND_CLOSE", False)  # the setup itself; the wait is tested below
     # NIFTY pivot from 22,812.30 / 22,521.10 / 22,687.65 = 22,673.68; S1 = 22,535.06
     prev = {"high": 22812.30, "low": 22521.10, "close": 22687.65}
     s = state([22700, 22660, 22640], symbol="NIFTY", st_line=22720, st_dir=1, rsi=38, bb_upper=22760, bb_lower=22640, bb_basis=22700)
@@ -153,7 +154,42 @@ def test_dharani_put_go():
     assert not megabull_rule(s)["go"]
 
 
-def test_dharani_supertrend_flip_is_a_trigger():
+def _dharani_put_setup():
+    prev = {"high": 22812.30, "low": 22521.10, "close": 22687.65}
+    s = state([22700, 22660, 22640], symbol="NIFTY", st_line=22720, st_dir=1, rsi=38, bb_upper=22760, bb_lower=22640, bb_basis=22700)
+    s["bars"][-1]["low"] = 22630  # pressed the lower band
+    s.update(prev=prev, piv=pivots(**prev), sr={"levels": {"R": [], "S": [{"strike": 22500, "oi": 1}]}})
+    return s
+
+
+def _next_candle(s, close):
+    """Adds the candle after the setup (same indicator values) and makes it the last completed one."""
+    s["bars"].append(bar("10:15", close))
+    for v in s["ind"].values():
+        v.append(v[-1])
+    s["i"] += 1
+    s["hm"] = (10, 20)
+    return s
+
+
+def test_supertrend_waits_for_the_next_candle_to_close_beyond_the_band():
+    """Owner 27-Oct-2026: no entry on the setup candle; the next candle must CLOSE beyond the band (put: below the lower)."""
+    s = _dharani_put_setup()
+    r = supertrend_rule(s)
+    assert not r["go"]  # setup candle alone: waits
+    r = supertrend_rule(_next_candle(_dharani_put_setup(), 22630))  # closed below the lower band 22,640
+    assert r["side"] == "PE" and states(r)["bandClose"] == PASS and r["go"] and r["grade"] == "A"
+    r = supertrend_rule(_next_candle(_dharani_put_setup(), 22650))  # back inside the bands
+    assert states(r)["bandClose"] == FAIL and not r["go"] and r["grade"] is None
+
+
+def test_supertrend_band_close_can_be_switched_off(monkeypatch):
+    monkeypatch.setattr("sig_rules.MB_ST_WAIT_BAND_CLOSE", False)
+    assert supertrend_rule(_dharani_put_setup())["go"]
+
+
+def test_dharani_supertrend_flip_is_a_trigger(monkeypatch):
+    monkeypatch.setattr("sig_rules.MB_ST_WAIT_BAND_CLOSE", False)
     # no level crossed; SuperTrend flips green on the 10:05 candle (line 22,640), 10:10 closes above it -> trigger + confirmation
     prev = {"high": 22812.30, "low": 22521.10, "close": 22687.65}
     s = state([22650, 22655, 22660], symbol="NIFTY", rsi=58, bb_upper=22655, bb_lower=22550, bb_basis=22600)
