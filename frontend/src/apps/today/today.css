@@ -57,6 +57,9 @@
 .td .td-tag.s1 { --tag: var(--accent); }
 .td .td-tag.s2 { --tag: var(--series-4); }
 .td .td-tag.s3 { --tag: var(--series-2); }
-.td .td-tag.s4 { --tag: var(--series-3); }
-.td .td-tag.s5 { --tag: var(--text-2); }
+.td .td-tag.s4 { --tag: var(--warn); }
+.td .td-tag.s5 { --tag: var(--series-3); }
+.td .td-tag.s6 { --tag: var(--text-2); }
+.td .td-tag.s0 { --tag: var(--border-strong); }
 @media (max-width: 900px) { .td .td-strat { grid-template-columns: 1fr auto; } .td .td-strat-detail { grid-column: 1 / -1; } }
+.td button.td-phone { border: 0; font: inherit; font-size: var(--fs-xs); cursor: pointer; }

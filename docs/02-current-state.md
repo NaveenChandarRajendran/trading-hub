@@ -16,6 +16,15 @@ _Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy
   Losing / No trade today, its P&L, won / lost and what it holds; each strategy keeps one colour tag in every table), Open now table (Exit with a two-step confirm; manual: Add stop + target), Closed today table, Both / Nifty /
   Bank Nifty filter. P&L green / red everywhere; rows and tiles get a green / red edge. Refreshes every 10 s and on
   every fill. No backend change.
+- **Phone alerts** (owner 27-Oct-2026, `backend/notify.py`, tests `test_notify.py`): Telegram bot messages on every rule
+  entry and exit (exit with the day's booked P&L so far) and a short day summary per strategy (all accounts incl. Manual)
+  right after the 15:31 end-of-day summary. One-time setup: `Setup_Phone_Alerts.bat` -> `backend/setup_phone_alerts.py`
+  (bot key in a hidden prompt, chat found via getUpdates, saved to `~/TradingHubKeys/telegram.json`, outside git; test
+  message). No file = alerts off. Sends on a background thread; a failed send is logged and raised once a day as an app
+  alert, never blocks the trader. `GET /api/notify/status`, `POST /api/notify/test` (Today page "Phone alerts ON · test").
+  Wiring: `main.build_signals` (on_order hook, `svc.phone`, `svc.rows_today`), `sig_service._end_of_day`.
+  Today page knows "Rebound Call" (slot `reboundCall`, journal strategy name "Rebound Call"); an unknown strategy name still
+  gets its own row.
 - Charts & Signals: the Interval picker always shows (it hid when a strategy was picked; a strategy opens at its own
   candle size, "(rule)" marks it); the manual positions box and "Today's paper trades" table moved to Today (a link card
   with the day's P&L replaces them; Day P&L / Open trades in the strip link to Today); "Paper trading" header is now

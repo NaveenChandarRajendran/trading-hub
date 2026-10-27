@@ -146,6 +146,8 @@ class SignalService:
         self._key_alert_day = None
         self._stop = threading.Event()
         self._thread = None
+        self.phone = None  # notify.Notifier (phone alerts), set by main.build_signals
+        self.rows_today = lambda: []  # every trade of the day (journal rows, all accounts), for the phone summary
 
     # ---------- alerts ----------
     def alert(self, kind, message):
@@ -502,6 +504,13 @@ class SignalService:
             self._append(os.path.join(self.cfg["logDir"], f"summary_{now.date()}.txt"), text + "\n")
             self.alert("summary", text)
             self.skips.clear()
+            if self.phone is not None:  # short version for the phone, every account incl. Manual (owner 27-Oct-2026)
+                import journal
+                import notify
+                try:
+                    self.phone.send(notify.summary_text(f"{now:%d %b}", self.rows_today(), journal.STRATEGIES))
+                except Exception:
+                    log.exception("phone summary failed")
 
     def _traded_today(self, now):
         return now.weekday() < 5 and self.heartbeat is not None and self.heartbeat.date() == now.date()

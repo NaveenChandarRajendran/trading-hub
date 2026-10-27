@@ -4,6 +4,7 @@
 // shadow log), /ws/paper (live prices and the manual positions). Logic: logic/today.ts. PAPER ONLY.
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { API_BASE, getJson, requestJson } from '../../shared/api';
 import { errorText } from '../../shared/live/liveStatus';
 import { Alert, EmptyState, Pill, Segmented, Status } from '../../shared/ui';
 import { minutesToExit } from '../dashboard/logic/signals';
@@ -13,7 +14,7 @@ import { api as paperApi } from '../paper-trade/logic/api';
 import { keyOf } from '../paper-trade/logic/feed';
 import { longDate, price, signedRupees, toneOf } from '../paper-trade/format';
 import { usePaper } from '../paper-trade/usePaper';
-import { STATUS_TEXT, WHO, WHO_ORDER, buildRows, forIndex, summarize, type TodayRow, type Who } from './logic/today';
+import { STATUS_TEXT, WHO_ORDER, buildRows, whoInfo, forIndex, summarize, type TodayRow } from './logic/today';
 import './today.css';
 
 const REFRESH_MS = 10000;
@@ -21,10 +22,10 @@ const INDEXES = [{ value: 'both', label: 'Both' }, { value: 'NIFTY', label: 'Nif
 type Index = (typeof INDEXES)[number]['value'];
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const whoName = (w: string) => WHO[w as Who]?.name ?? w;
+const whoName = (w: string) => whoInfo(w).name;
 /** Each strategy keeps one colour in every table, so a trade's owner is seen at a glance. */
-const tagOf = (w: string) => `s${WHO_ORDER.indexOf(w as Who) + 1}`;
-const whoWhere = (w: string) => WHO[w as Who]?.where ?? '';
+const tagOf = (w: string) => `s${WHO_ORDER.indexOf(w) + 1}`;
+const whoWhere = (w: string) => whoInfo(w).where;
 const hm = (t: string | null) => (t ? t.slice(0, 5) : '–');
 /** Row / tile accent (a coloured edge, not coloured text): gain, loss or nothing. */
 const mood = (v: number | null) => (!v ? '' : v > 0 ? 'gain' : 'loss');
@@ -71,6 +72,10 @@ export default function TodayApp() {
   const [notice, setNotice] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const today = paper.today;
+  const [phone, setPhone] = useState<boolean | null>(null); // phone alerts set up (Setup_Phone_Alerts.bat)
+  useEffect(() => {
+    getJson<{ enabled: boolean }>(API_BASE, '/api/notify/status').then((r) => setPhone(r.enabled), () => setPhone(null));
+  }, []);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -152,6 +157,13 @@ export default function TodayApp() {
                 Auto trading {auto.auto ? 'ON' : 'OFF'}
               </Link>
             )}
+            {phone != null && (
+              <button type="button" className={`pill ${phone ? 'up' : 'neutral'} td-phone`} disabled={busy || !phone}
+                title={phone ? 'Send a test message to your phone' : 'Run Setup_Phone_Alerts.bat once to get alerts on your phone'}
+                onClick={() => void act(() => requestJson(API_BASE, '/api/notify/test', { method: 'POST' }), 'Test message sent to your phone')}>
+                Phone alerts {phone ? 'ON · test' : 'OFF'}
+              </button>
+            )}
             {marketOpen && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 PM · {left} min left</Pill>}
             <Segmented label="Index" options={INDEXES} value={index} onChange={setIndex} />
           </div>
@@ -190,8 +202,8 @@ export default function TodayApp() {
           {sum.byWho.map((w) => (
             <div key={w.who} role="row" className={`td-strat ${w.status}`}>
               <span role="cell" className="td-strat-name">
-                <span className={`td-tag ${tagOf(w.who)}`}>{WHO[w.who].name}</span>
-                <span className="td-strat-where">{WHO[w.who].where}</span>
+                <span className={`td-tag ${tagOf(w.who)}`}>{whoInfo(w.who).name}</span>
+                <span className="td-strat-where">{whoInfo(w.who).where}</span>
               </span>
               <span role="cell" className={`td-status ${w.status}`}>{STATUS_TEXT[w.status]}</span>
               <span role="cell" className="td-strat-pnl"><Money v={w.trades ? w.pnl : null} /></span>

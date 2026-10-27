@@ -324,6 +324,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
                                 journal=jr)
         sig_service.register(app, signals)
         app.state.signals = signals
+        if signals.phone is not None:
+            import notify
+            notify.register(app, signals.phone)
     return app
 
 
@@ -333,10 +336,15 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
     trader = None
     svc_ref = {}
     alert = lambda kind, msg: svc_ref["svc"].alert(kind, msg)  # noqa: E731
+    import notify
+    phone = notify.Notifier(alert=alert)  # owner 27-Oct-2026: entry / exit / day summary on the phone (Telegram), if set up
+    rows_today = lambda: notify.day_rows(journal, paper, tracker.clock().date().isoformat())  # noqa: E731
+
     def on_order(trade, event):
         if journal is not None:  # the app's own order history (MegaBull keeps only today's)
             journal.record(trade, event, tracker.clock())
         svc_ref["svc"].on_order(trade, event)
+        phone.on_order(trade, event, notify.day_pnl(rows_today()) if event.startswith("exit") else None)
     if paper:
         mb_cfg = cfg["megabull"]
 
@@ -363,6 +371,7 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
         paper.orderflow = flow
     sources = sig_service.MarketSources(tracker, candles, get_expiries, lot_size, trending_oi_body, trader)
     svc = sig_service.SignalService(cfg, sources, trader, orderflow=flow, paper=paper)
+    svc.phone, svc.rows_today = phone, rows_today
     svc_ref["svc"] = svc
     return svc
 

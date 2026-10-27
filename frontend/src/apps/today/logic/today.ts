@@ -5,19 +5,21 @@
 // ids and the backend's last price of rule trades), the manual paper positions and the live feed's ticks.
 import type { AutoTrade } from '../../dashboard/logic/signals';
 import type { Position } from '../../paper-trade/logic/api';
-import { STRATEGIES, type JTrade } from '../../paper-journal/logic/journal';
+import type { JTrade } from '../../paper-journal/logic/journal';
 
-export type Who = (typeof STRATEGIES)[number];
+export type Who = string; // journal strategy name
 
 /** Plain names for the account chips and the "Who" column; MegaBull rules run on MegaBull, the rest in this app. */
 export const WHO: Record<Who, { name: string; where: string }> = {
   Manual: { name: 'My trades', where: 'Manual' },
+  'Rebound Call': { name: 'Rebound Call', where: 'App account' }, // BankNifty Rebound Call, paper from 28-Oct-2026
   'Dharani Rules': { name: 'Dharani Rules', where: 'App account' },
   'Trend Rules': { name: 'Trend Rules', where: 'App account' },
   '4 Pillar Rules': { name: '4 Pillar Rules', where: 'MegaBull' },
   'SuperTrend Rules': { name: 'SuperTrend Rules', where: 'MegaBull' },
 };
-export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', '4 Pillar Rules', 'SuperTrend Rules'];
+export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', '4 Pillar Rules', 'SuperTrend Rules'];
+export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {
   id: string;
@@ -110,7 +112,8 @@ export function summarize(rows: TodayRow[]): DaySummary {
   return {
     total: r2(booked + running), booked, running, open: open.length, closed: closed.length,
     won: closed.filter((r) => (r.pnl ?? 0) > 0).length, lost: closed.filter((r) => (r.pnl ?? 0) <= 0 && r.pnl != null).length,
-    byWho: WHO_ORDER.map((who) => {
+    // a strategy the page does not know yet still gets its row, after the known ones
+    byWho: [...WHO_ORDER, ...new Set(rows.map((r) => r.who).filter((w) => !WHO_ORDER.includes(w)))].map((who) => {
       const mine = rows.filter((r) => r.who === who);
       const done = mine.filter((r) => !r.open && r.pnl != null);
       const pnl = sum(mine);

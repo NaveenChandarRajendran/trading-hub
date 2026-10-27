@@ -1,0 +1,177 @@
+"""
+notify.py - short phone alerts through a Telegram bot (owner, 27-Oct-2026: "the purpose of this app is to avoid screen
+time"). One message when a rule enters, one when it exits (with the day's P&L so far), and a day summary after the close.
+PAPER ONLY: this module only sends text; it never places or changes an order.
+
+Setup: Setup_Phone_Alerts.bat -> setup_phone_alerts.py asks for the bot key in a hidden prompt and saves
+{"botToken", "chatId"} to ~/TradingHubKeys/telegram.json (outside the Trading Journey folder and outside git).
+No file = alerts off, silently. Sending runs on its own thread: a slow or failed send never delays the trader; a failure
+is logged and raised once a day as an app alert.
+"""
+import json
+import logging
+import os
+import queue
+import threading
+
+import requests
+
+from journal import strategy_of
+
+log = logging.getLogger("notify")
+
+DEFAULT_KEYS_FILE = "~/TradingHubKeys/telegram.json"
+API = "https://api.telegram.org/bot{token}/{method}"
+
+
+def load_keys(path=DEFAULT_KEYS_FILE):
+    """(bot token, chat id) or None when phone alerts are not set up."""
+    p = os.path.expanduser(path)
+    try:
+        with open(p, encoding="utf-8-sig") as f:  # utf-8-sig: Windows PowerShell 5 writes a BOM
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    token, chat = str(d.get("botToken") or "").strip(), str(d.get("chatId") or "").strip()
+    return (token, chat) if token and chat else None
+
+
+def rupees(v):
+    v = v or 0
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}₹{abs(v):,.0f}"
+
+
+def entry_text(t):
+    stop = f" · stop {t['stop']:.2f}" if t.get("stop") else ""
+    target = f" · target {t['target']:.2f}" if t.get("target") else ""
+    return (f"🔵 ENTRY · {strategy_of(t)}\n{t['instrument']['name']} · {t['qty']} qty @ {t['entryPrice']:.2f} "
+            f"· {str(t.get('entryTime') or '')[:5]}{stop}{target}")
+
+
+def exit_text(t, day_pnl=None):
+    pnl = t.get("netPnl") if t.get("netPnl") is not None else t.get("grossPnl")
+    mark = "🟢" if (pnl or 0) > 0 else "🔴"
+    exit_price = t.get("exitPrice")
+    line = (f"{mark} EXIT · {strategy_of(t)} · {rupees(pnl)}\n{t['instrument']['name']} · "
+            f"{t['entryPrice']:.2f} → {exit_price:.2f}" if exit_price is not None else
+            f"{mark} EXIT · {strategy_of(t)} · {rupees(pnl)}\n{t['instrument']['name']}")
+    line += f" · {t.get('exitReason') or 'exit'} · {str(t.get('exitTime') or '')[:5]}"
+    if day_pnl is not None:
+        line += f"\nToday so far: {rupees(day_pnl)}"
+    return line
+
+
+def summary_text(day, rows, order):
+    """Day summary from the journal's trade rows (all accounts, Manual too). order: strategy names in board order."""
+    closed = [r for r in rows if r["status"] == "closed"]
+    still_open = [r for r in rows if r["status"] == "open"]
+    total = sum(r.get("netPnl") or 0 for r in closed)
+    lines = [f"📋 Day summary {day} · {rupees(total)}"]
+    names = list(order) + sorted({r["strategy"] for r in rows} - set(order))  # a rule not in the list still shows
+    for name in names:
+        mine = [r for r in closed if r["strategy"] == name]
+        if not mine:
+            lines.append(f"🔵 {name}: still in a trade" if any(r["strategy"] == name for r in still_open) else f"⚪ {name}: no trade")
+            continue
+        net = sum(r.get("netPnl") or 0 for r in mine)
+        won = sum(1 for r in mine if (r.get("netPnl") or 0) > 0)
+        mark = "🟢" if net > 0 else "🔴" if net < 0 else "⚪"
+        lines.append(f"{mark} {name}: {rupees(net)} ({len(mine)} trade{'s' if len(mine) != 1 else ''}, {won} won)")
+    if still_open:
+        lines.append(f"⚠ Still open: {', '.join(r['instrument'] or '?' for r in still_open)}")
+    return "\n".join(lines)
+
+
+class Notifier:
+    """Queues texts and sends them to Telegram on a background thread. Disabled when no keys are set up."""
+
+    def __init__(self, keys_file=DEFAULT_KEYS_FILE, alert=lambda kind, msg: None, post=None, start=True):
+        self.keys_file, self.alert = keys_file, alert
+        self.post = post or (lambda url, body: requests.post(url, json=body, timeout=10))
+        self.q = queue.Queue()
+        self.sent, self.failed = 0, 0
+        self._warned_day = None
+        if start:
+            threading.Thread(target=self._run, name="notify", daemon=True).start()
+
+    @property
+    def enabled(self):
+        return load_keys(self.keys_file) is not None
+
+    def send(self, text):
+        if self.enabled:
+            self.q.put(text)
+
+    def send_now(self, text):
+        """Send one message and return (ok, error). Used by the worker, the setup script and the test button."""
+        keys = load_keys(self.keys_file)
+        if not keys:
+            return False, "Phone alerts are not set up (run Setup_Phone_Alerts.bat)."
+        token, chat = keys
+        last = ""
+        for _ in range(2):
+            try:
+                r = self.post(API.format(token=token, method="sendMessage"), {"chat_id": chat, "text": text})
+                if getattr(r, "status_code", 200) == 200:
+                    self.sent += 1
+                    return True, ""
+                last = f"Telegram answered {r.status_code}"
+            except Exception as e:  # network down, DNS ...: never let it reach the trader
+                last = type(e).__name__
+        self.failed += 1
+        return False, last
+
+    def _run(self):
+        while True:
+            text = self.q.get()
+            ok, err = self.send_now(text)
+            if not ok:
+                log.warning("phone alert not sent: %s", err)
+                from datetime import date
+                if self._warned_day != date.today():
+                    self._warned_day = date.today()
+                    self.alert("api", f"A phone alert could not be sent ({err}). Alerts still show here in the app.")
+
+    # ---------- trader events ----------
+    def on_order(self, trade, event, day_pnl=None):
+        """entry / exit <reason> from the auto trader (rule trades, and manual trades given a stop + target)."""
+        try:
+            if event == "entry":
+                self.send(entry_text(trade))
+            elif event.startswith("exit") and trade.get("status") == "closed":
+                self.send(exit_text(trade, day_pnl))
+        except Exception:
+            log.exception("phone alert text failed for %s", event)
+
+
+def day_rows(journal, paper, day):
+    """Every trade of the day as the journal API returns it: rule trades + the manual account's round trips."""
+    from journal import manual_round_trips
+    rows = list(journal.trades(day, day)) if journal is not None else []
+    if paper is not None:
+        try:
+            rows += manual_round_trips(paper.trades(day), day)
+        except Exception:
+            log.exception("phone alerts: manual trades %s", day)
+    return rows
+
+
+def day_pnl(rows):
+    """Booked P&L of the day (closed trades, after charges)."""
+    return round(sum(r.get("netPnl") or 0 for r in rows if r["status"] == "closed"), 2)
+
+
+def register(app, phone):
+    """GET /api/notify/status, POST /api/notify/test (sends one test message to the phone)."""
+    from fastapi import HTTPException
+
+    @app.get("/api/notify/status")
+    def status():
+        return {"enabled": phone.enabled, "sent": phone.sent, "failed": phone.failed}
+
+    @app.post("/api/notify/test")
+    def test():
+        ok, err = phone.send_now("✅ Test from Trading Hub: phone alerts work.")
+        if not ok:
+            raise HTTPException(400, err)
+        return {"ok": True}
