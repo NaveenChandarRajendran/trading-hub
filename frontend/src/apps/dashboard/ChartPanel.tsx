@@ -15,7 +15,7 @@ import { PriceChart } from './PriceChart';
 import type { Dashboard } from './useDashboard';
 
 export const INDEX_NAME: Record<string, string> = { NIFTY: 'Nifty', BANKNIFTY: 'Bank Nifty' };
-export const strategyName = (k: ChartStrategy) => (k === 'all' ? 'All indicators' : BOARD.find((b) => b.key === k)?.name ?? k);
+export const strategyName = (k: ChartStrategy) => (k === 'all' ? 'Plain chart' : BOARD.find((b) => b.key === k)?.name ?? k);
 
 /** Opens the chart in its own browser window (live, same app). */
 export function popOut(symbol: string, strategy: ChartStrategy) {
@@ -46,7 +46,9 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
   const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
   const ctx = sig?.context.find((c) => c?.symbol === d.symbol) ?? null;
   const pivot = d.isDaily ? null : d.day ? (d.prevSession ? pivots(d.prevSession.high, d.prevSession.low, d.prevSession.close).P : null) : ctx?.pivot ?? null;
-  const marks = useMemo(() => (d.live ? tradeMarks(sig?.auto, strategy, d.symbol) : []), [d.live, sig?.auto, strategy, d.symbol]);
+  // the plain chart is price only: OI levels, pivot and trade marks come with a strategy (owner 27-Oct-2026)
+  const plain = strategy === 'all';
+  const marks = useMemo(() => (d.live && !plain ? tradeMarks(sig?.auto, strategy, d.symbol) : []), [d.live, plain, sig?.auto, strategy, d.symbol]);
   const intervalLabel = INTERVALS.find((x) => x.value === d.interval)?.label ?? `${d.interval} min`;
   const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const spot = d.summary?.chain.data?.meta.spot;
@@ -93,12 +95,12 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
       {!d.bars.length ? (
         <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
       ) : (
-        <PriceChart bars={d.bars} levels={d.live ? sr?.levels ?? null : null} pivot={pivot}
-          resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`}
+        <PriceChart bars={d.bars} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
+          resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`} zoomKey={d.isDaily ? undefined : d.symbol}
           indicators={shown} params={params} marks={marks}
           volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
       )}
-      <p className="card-foot">{strategyName(strategy)}: {preset.note} ▲ buy · ▼ sell (today&apos;s paper trades).
+      <p className="card-foot">{strategyName(strategy)}: {preset.note}{plain ? '' : ' ▲ buy · ▼ sell (today\'s paper trades).'}
         {!d.live && ' An earlier day or the daily chart: no live updates and no OI levels.'}</p>
     </section>
   );
