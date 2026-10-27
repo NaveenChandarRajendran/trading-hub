@@ -38,3 +38,13 @@ def test_journal_endpoints():
     tr = c.get("/api/journal/trades", params={"from": "2026-10-01", "to": "2026-10-31"}).json()["rows"]
     assert {t["strategy"] for t in tr} == {"Manual", "4 Pillar Rules"}
     assert c.get("/api/journal/orders", params={"date": "26-10-2026"}).status_code == 400
+
+
+def test_journal_days_always_lists_today_on_a_trading_day():
+    class OpenOnly(FakePaper):  # 27-Oct: manual trades still open, nothing closed yet
+        def clock(self):
+            return datetime(2026, 10, 27, 11, 0, tzinfo=IST)
+
+    app = FastAPI()
+    jr.register(app, jr.Journal(tempfile.mkdtemp()), OpenOnly())
+    assert TestClient(app).get("/api/journal/days").json()["days"][0] == "2026-10-27"

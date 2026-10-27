@@ -22,6 +22,8 @@ import threading
 from datetime import date as Date
 from datetime import timedelta
 
+import holidays
+
 log = logging.getLogger("journal")
 
 STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "Dharani Rules",
@@ -267,7 +269,11 @@ def register(app, journal, paper=None):
         have = set(journal.days())
         if paper is not None:
             try:
-                have.update(r["day"] for r in paper.pnl("2026-01-01", paper.clock().date().isoformat()))
+                today = paper.clock().date()
+                have.update(r["day"] for r in paper.pnl("2026-01-01", today.isoformat()))
+                # today always shows on a trading day, before any trade closes (owner, 27-Oct-2026: open manual trades)
+                if holidays.is_trading_day(today):
+                    have.add(today.isoformat())
             except Exception:
                 pass
         return {"days": sorted(have, reverse=True), "strategies": STRATEGIES}
