@@ -42,6 +42,8 @@ Dhan's order APIs.
    loading ("Loading candles…"), market closed (last session's charts, Buy / Sell off with the reason), stale feed
    (off, reason), orders closed after 15:15, insufficient funds (reason, engine rejects too), token expired (banner +
    off). Checked in light and dark with live prices.
+Fixes (28-Oct): bottom strip collapsed by default (▲ / ▼, drag the top edge to resize, height remembered); strike
+dropdown drawn above the page so the Trade panel never scrolls sideways.
 Phase 2: Option Chain, Depth, OI Insights tabs.
 
 ## Backend (step 1)

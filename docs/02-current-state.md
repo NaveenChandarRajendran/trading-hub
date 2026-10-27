@@ -66,6 +66,11 @@ Step 2 done: page Live → Power Scalper (`src/apps/scalper/`): `/ws/scalper` li
 history `/api/scalper/candles`, index + ATM CE / PE charts on one synced time grid (volume pane), Trade panel
 (tickets: step 3), Positions / Orders strip, Reports view. Candle helpers moved to `src/shared/chart/candles.ts`.
 Tests: `scalper/logic/*.test.ts`.
+Layout fixes (28-Oct, `fix/scalper-ui`): the Positions / Orders strip is collapsed to its header on every load (charts get
+the full height); ▲ or a Positions / Orders / Open / Closed tab opens it, ▼ hides it, its top edge drags to resize
+(120 px to 60 % of the window, height remembered in this browser as `scalper.stripHeight`). The strike dropdown is drawn
+on `document.body` at a fixed position (kept on screen, opens upward when there is no room below), so the Trade panel
+never scrolls sideways. Pure helpers + tests: `scalper/logic/layout.ts`.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

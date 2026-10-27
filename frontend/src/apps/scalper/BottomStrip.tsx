@@ -1,10 +1,14 @@
 // Power Scalper account strip: Positions / Orders, Open / Closed counts, today's Scalper P&L (live) and funds.
-import { useState } from 'react';
+// Collapsed to its header on every load so the charts get the full height; ▴ (or a tab) opens it, its top edge
+// drags to resize (the height is remembered in this browser).
+import { useState, type CSSProperties } from 'react';
 import { ApiError } from '../../shared/api';
 import { EmptyState, Pill, Segmented } from '../../shared/ui';
 import { STATUS_TONE, hms, price, rupees, shortName, signedRupees, toneOf } from '../paper-trade/format';
 import { keyOf } from '../paper-trade/logic/feed';
+import { STORAGE_PREFIX } from './config/settings';
 import { api, type Order, type Position } from './logic/api';
+import { STRIP_DEFAULT, clampStrip } from './logic/layout';
 import type { Scalper } from './useScalper';
 
 const TABS = [{ value: 'positions', label: 'Positions' }, { value: 'orders', label: 'Orders' }] as const;
@@ -22,9 +26,22 @@ export const dayPnl = (sc: Scalper) => {
   return f.realized - f.charges + [...sc.positions.values()].reduce((t, p) => t + liveUnrealized(sc, p), 0);
 };
 
+const HEIGHT_KEY = STORAGE_PREFIX + 'stripHeight';
+const savedHeight = () => {
+  try {
+    const h = Number(localStorage.getItem(HEIGHT_KEY));
+    return h > 0 ? h : STRIP_DEFAULT;
+  } catch {
+    return STRIP_DEFAULT;
+  }
+};
+
 export function BottomStrip({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'info' | 'error', text: string) => void }) {
   const [tab, setTab] = useState<'positions' | 'orders'>('positions');
   const [which, setWhich] = useState<'open' | 'closed'>('open');
+  const [expanded, setExpanded] = useState(false);
+  const [height, setHeight] = useState(savedHeight);
+  const [dragging, setDragging] = useState(false);
   const positions = [...sc.positions.values()];
   const open = positions.filter((p) => p.open_qty > 0);
   const closed = positions.filter((p) => p.open_qty <= 0);
@@ -41,18 +58,56 @@ export function BottomStrip({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'i
     }
   };
 
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const y0 = e.clientY;
+    const h0 = height;
+    let h = h0;
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      h = clampStrip(h0 + y0 - ev.clientY, window.innerHeight);
+      setHeight(h);
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      setDragging(false);
+      try {
+        localStorage.setItem(HEIGHT_KEY, String(h));
+      } catch {
+        /* blocked storage */
+      }
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
+
+  const style = { '--sc-strip-h': `${clampStrip(height, window.innerHeight)}px` } as CSSProperties;
   return (
-    <section className="card sc-bottom">
+    <section className={`card sc-bottom${expanded ? ' open' : ''}`} style={expanded ? style : undefined}>
+      {expanded && (
+        <div className={`sc-resize${dragging ? ' on' : ''}`} role="separator" aria-orientation="horizontal"
+          aria-label="Drag to resize the positions panel" title="Drag to resize" onPointerDown={startResize} />
+      )}
       <div className="sc-bottom-head">
-        <Segmented label="Account view" options={TABS} value={tab} onChange={setTab} />
+        <button type="button" className="btn sc-bottom-toggle" aria-expanded={expanded}
+          aria-label={expanded ? 'Hide positions and orders' : 'Show positions and orders'}
+          title={expanded ? 'Hide (charts full height)' : 'Show positions and orders'} onClick={() => setExpanded((x) => !x)}>
+          <span aria-hidden>{expanded ? '▼' : '▲'}</span>
+        </button>
+        <Segmented label="Account view" options={TABS} value={tab} onChange={(v) => { setTab(v); setExpanded(true); }} />
         {tab === 'positions' && (
-          <Segmented label="Positions" value={which} onChange={setWhich}
+          <Segmented label="Positions" value={which} onChange={(v) => { setWhich(v); setExpanded(true); }}
             options={[{ value: 'open', label: `Open ${open.length}` }, { value: 'closed', label: `Closed ${closed.length}` }]} />
         )}
         <span className="sc-bottom-stat" title="Realized + open P&L minus today's charges">Scalper P&amp;L today (after charges) <b className={`num ${toneOf(pnl)}`}>{signedRupees(pnl)}</b></span>
         <span className="sc-bottom-stat">Funds <b className="num">{rupees(sc.funds?.available)}</b></span>
       </div>
-      <div className="sc-table">
+      {expanded && <div className="sc-table">
         {tab === 'positions' ? (!rows.length ? <EmptyState>{which === 'open' ? 'No open Scalper positions.' : 'No closed positions today.'}</EmptyState> : (
           <table className="t">
             <thead><tr><th>Instrument</th><th>Qty</th><th>Avg</th><th>LTP</th><th>P&amp;L</th><th>Target</th><th>Stop</th><th /></tr></thead>
@@ -93,7 +148,7 @@ export function BottomStrip({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'i
             </tbody>
           </table>
         ))}
-      </div>
+      </div>}
     </section>
   );
 }
