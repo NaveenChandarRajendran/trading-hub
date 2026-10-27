@@ -1,12 +1,9 @@
-import { Fragment, useEffect, useMemo } from 'react';
 import { ApiError } from '../../shared/api';
-import { inr } from '../../shared/grid';
 import { EmptyState, Pill } from '../../shared/ui';
-import { STRIKES_EACH_SIDE } from './config/settings';
-import { STATUS_TONE, hms, lakh, longDate, pct, price, shortName, signedRupees, toneOf } from './format';
+import { STATUS_TONE, hms, price, shortName, signedRupees, toneOf } from './format';
 import { api, type Chain, type Order, type Position } from './logic/api';
-import { changePct, chainWindow, itm, spotGapAfter } from './logic/chain';
-import { keyOf, type InstrumentKey } from './logic/feed';
+import { keyOf } from './logic/feed';
+import { OptionChain } from './OptionChain';
 import type { TicketTarget } from './OrderTicket';
 import type { Paper } from './usePaper';
 
@@ -28,21 +25,6 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
   onTicket: (t: TicketTarget) => void;
   onNotice: (kind: 'info' | 'error', text: string) => void;
 }) {
-  const spotKey = keyOf(chain.spot.segment, chain.spot.securityId);
-  const spot = paper.ticks.get(spotKey)?.ltp ?? null;
-  const win = useMemo(() => chainWindow(chain.rows, spot, STRIKES_EACH_SIDE), [chain.rows, spot]);
-  const gapAfter = spotGapAfter(win.rows, spot); // the live spot line sits below this row
-
-  // subscribe to the index and the strikes on screen; the backend adds open positions and pending orders itself
-  const keys = useMemo(() => {
-    const k: InstrumentKey[] = [spotKey];
-    for (const r of win.rows) for (const leg of [r.ce, r.pe]) if (leg) k.push(keyOf('NSE_FNO', leg.securityId));
-    return k;
-  }, [spotKey, win.rows]);
-  const keysId = keys.join(',');
-  useEffect(() => paper.subscribe(keys), [keysId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const lot = chain.lotSize ?? 1;
   const positions = [...paper.positions.values()].sort((a, b) => b.open_qty - a.open_qty);
   const openOrders = [...paper.orders.values()].filter(OPEN).sort((a, b) => b.created_at.localeCompare(a.created_at));
 
@@ -57,75 +39,7 @@ export function TradeView({ paper, chain, onTicket, onNotice }: {
 
   return (
     <div className="split pt-split">
-      <section className="card">
-        <div className="card-head">
-          <h3 className="card-title">Option chain · {chain.symbol} · {longDate(chain.expiry)}</h3>
-          <span className="pt-chain-meta">
-            <span className="muted num">Lot {lot} · ATM ±{STRIKES_EACH_SIDE}</span>
-            <span className="pt-legend" title="In the money: calls below spot, puts above spot"><i className="pt-swatch" />ITM</span>
-          </span>
-        </div>
-        {!win.rows.length ? (
-          <EmptyState>
-            {paper.meta?.marketOpen ? `Waiting for the live ${chain.symbol} price…` : `Market closed. Live prices appear from 09:15 IST.`}
-          </EmptyState>
-        ) : (
-          <div className="pt-scroll">
-            <table className="t pt-chain">
-              <thead>
-                <tr className="pt-group">
-                  <th className="pt-call" colSpan={3}>CALLS</th>
-                  <th className="pt-strike" rowSpan={2}>Strike</th>
-                  <th className="pt-put" colSpan={3}>PUTS</th>
-                </tr>
-                <tr>
-                  <th className="pt-call" title="Call open interest, lakh contracts">OI (L)</th><th className="pt-call">Chg %</th><th className="pt-call">LTP</th>
-                  <th className="pt-put">LTP</th><th className="pt-put">Chg %</th><th className="pt-put" title="Put open interest, lakh contracts">OI (L)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {win.rows.map((r, i) => {
-                  const ce = r.ce && paper.ticks.get(keyOf('NSE_FNO', r.ce.securityId));
-                  const pe = r.pe && paper.ticks.get(keyOf('NSE_FNO', r.pe.securityId));
-                  const cpc = changePct(ce?.ltp, ce?.close);
-                  const ppc = changePct(pe?.ltp, pe?.close);
-                  const ticket = (side: 'BUY' | 'SELL', leg: typeof r.ce) => leg && onTicket({ side, securityId: leg.securityId, name: leg.name, lotSize: lot });
-                  const money = spot != null ? itm(r.strike, spot) : { ce: false, pe: false };
-                  const ceItm = money.ce ? 'pt-itm' : '';
-                  const peItm = money.pe ? 'pt-itm' : '';
-                  return (
-                    <Fragment key={r.strike}>
-                      <tr className={r.strike === win.atm ? 'hl' : ''}>
-                        <td className={ceItm}>{lakh(ce?.oi)}</td>
-                        <td className={`${toneOf(cpc)} ${ceItm}`}>{pct(cpc)}</td>
-                        <td className={`pt-leg pt-leg-ce ${ceItm}`}>
-                          {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
-                          {price(ce?.ltp)}
-                        </td>
-                        <td className="pt-strike">{inr(0)(r.strike)}</td>
-                        <td className={`pt-leg pt-leg-pe ${peItm}`}>
-                          {price(pe?.ltp)}
-                          {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
-                        </td>
-                        <td className={`${toneOf(ppc)} ${peItm}`}>{pct(ppc)}</td>
-                        <td className={peItm}>{lakh(pe?.oi)}</td>
-                      </tr>
-                      {i === gapAfter && (
-                        <tr className="pt-spot-row" aria-label={`${chain.symbol} spot ${inr(2)(spot)}`}>
-                          <td colSpan={3} />
-                          <td className="pt-strike"><span className="pill accent pt-spot-pill">{chain.symbol} {inr(2)(spot)}</span></td>
-                          <td colSpan={3} />
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="card-foot">Hover a row and press B or S. Sell closes an open position only (option buying, no short selling).</p>
-      </section>
+      <OptionChain paper={paper} chain={chain} onTicket={onTicket} />
 
       <div className="pt-stack">
         <section className="card">

@@ -129,12 +129,8 @@ describe('calendar', () => {
 
 describe('chain window', () => {
   const rows = [25000, 25050, 25100, 25150, 25200].map((strike) => ({ strike, ce: null, pe: null }));
-  it('ATM +/- n around spot, clipped at the ends', async () => {
-    const { chainWindow, changePct } = await import('./chain');
-    expect(chainWindow(rows, 25110, 1)).toEqual({ rows: rows.slice(1, 4), atm: 25100 });
-    expect(chainWindow(rows, 25125, 1).atm).toBe(25100); // tie -> lower strike
-    expect(chainWindow(rows, 24000, 2).rows.map((r) => r.strike)).toEqual([25000, 25050, 25100]);
-    expect(chainWindow(rows, null, 2)).toEqual({ rows: [], atm: null });
+  it('change % against the previous close', async () => {
+    const { changePct } = await import('./chain');
     expect(changePct(110, 100)).toBe(10);
     expect(changePct(110, 0)).toBeNull();
   });

@@ -170,7 +170,7 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
   `dhan_feed.py` (binary feed parser + reconnecting client), `paper_api.py` (service, routes, WebSocket), `pt_` tables in
   `schema.sql` / `store.py` (`data/paper.json` without `DATABASE_URL`), option list from Dhan's instrument CSV in
   `instruments.py` (lot sizes, strikes, security IDs; cached per IST day).
-- Frontend `src/apps/paper-trade/`: Trade (chain ATM ±10 with B/S, positions, open orders, order ticket),
+- Frontend `src/apps/paper-trade/`: Trade (full option chain with B/S, positions, open orders, order ticket),
   Orders (order book + fills per day, CSV), P&L (FY calendar heatmap, month table, day trades, CSV).
   Shared: `src/shared/api.ts` (also used by Trending OI), `src/shared/ui/Heatmap.tsx`, `Segmented`, `Status`,
   `--heat-*` and `--backdrop` tokens.
@@ -183,6 +183,18 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
   highlight), a live spot line with a "NIFTY 22,957.05" pill between the two strikes around spot (`logic/chain.ts`
   `itm`, `spotGapAfter`, tested), and an ITM legend in the card head. Stat tiles wrap long text (`ui.css`).
   At ~1280px the chain card is narrower than the table, so it scrolls sideways (unchanged from before).
+
+- Full option chain (2026-10-27, `fix/full-option-chain`): every strike of the expiry (`/api/paper/chain` already
+  returned them all; the page used to cut ATM ±10), opened with ATM in the middle (again on a new symbol / expiry /
+  Strikes choice, never while scrolling). "Strikes" selector ±10 / ±20 / All (default All, `paper-trade.strikes` in
+  localStorage). `OptionChain.tsx`: only the rows in view + 5 either side are rendered (spacer rows, measured row
+  height) and subscribed; the subscription follows the scroll 300 ms after it stops (the backend sends at most 100
+  instruments per feed message). Rows without a live tick show the shared option-chain cache (`GET /api/option-chain`,
+  re-read every 60 s; also gives spot before the first index tick). Open positions and pending orders always stay
+  subscribed (page + backend `_sync_feed`). Sticky header (`border-collapse: separate` for the sticky rows).
+  Shared strike helper `src/shared/chain/strikes.ts` (`strikeList`, `strikeWindow`, `visibleRange`, `centerScrollTop`)
+  for the Scalper's strike dropdowns. Tests: `shared/chain/strikes.test.ts`, `paper-trade/logic/chainFeed.test.ts`
+  (real 261-strike NIFTY chain), `test_paper_api.py::test_chain_returns_every_strike_of_the_expiry`.
 
 Known limits / open:
 - Never run against the live Dhan feed yet: record frames with `backend/capture_feed.py` on a trading day

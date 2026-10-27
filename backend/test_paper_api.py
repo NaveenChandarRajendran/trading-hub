@@ -330,6 +330,18 @@ def test_chain_from_instrument_list(env):
     assert c.get("/api/paper/chain?symbol=FINNIFTY").status_code == 400
 
 
+
+def test_chain_returns_every_strike_of_the_expiry(env):
+    """The Paper Trading chain shows all strikes (the page picks ATM / ±N itself): no window on the backend."""
+    c, svc, *_ = env
+    leg = lambda k, t: {"securityId": int(k) * 10 + (1 if t == "CE" else 2), "name": f"NIFTY 27 OCT {k} {t}",  # noqa: E731
+                        "lotSize": 65}
+    strikes = [17000.0 + 50 * i for i in range(261)]  # 17,000 .. 30,000 like the real NIFTY list
+    svc.instruments.chain = lambda symbol, expiry: [{"strike": k, "ce": leg(k, "CE"), "pe": leg(k, "PE")} for k in strikes]
+    rows = c.get("/api/paper/chain?symbol=NIFTY").json()["rows"]
+    assert [r["strike"] for r in rows] == strikes
+    assert rows[-1]["pe"] == {"securityId": 300002, "name": "NIFTY 27 OCT 30000.0 PE"}
+
 def test_pnl_meta_lists_holidays(env):
     c, *_ = env
     meta = c.get("/api/paper/pnl?from=2026-10-01&to=2026-10-31").json()["meta"]
