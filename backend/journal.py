@@ -27,9 +27,10 @@ import holidays
 log = logging.getLogger("journal")
 
 STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "Dharani Rules",
-            "tradingHub": "Trend Rules"}
-ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Dharani", "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Manual"]
+            "tradingHub": "Trend Rules", "reboundCall": "Rebound Call"}
+ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Dharani", "rebound": "App · Rebound Call",
+           "manual": "App · Manual"}
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Manual"]
 
 
 def strategy_of(trade):
