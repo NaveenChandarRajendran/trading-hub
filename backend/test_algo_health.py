@@ -131,3 +131,62 @@ def test_only_candles_opening_at_or_after_0930_and_inside_the_session(env):
     starts = [c["candle_start"][11:16] for c in store.algo_candles(DAY)]
     assert all(s <= "15:25" for s in starts)
     assert not [e for e in events(store, "stale") if "15:35" in e["message"] or "15:40" in e["message"]]
+
+
+# ---------- Dhan token check at startup and at 09:00 (26-Oct-2026: the token had expired at 00:29) ----------
+def test_token_is_checked_once_at_startup_and_once_at_0900(env):
+    algo, paper, clock, store, feed, tmp = env
+    calls = []
+    algo.data.check_token = lambda: calls.append(clock.now) or (True, "valid until 27/10/2026 08:30")
+    for t in (at("06:00"), at("06:00", 1), at("08:59", 59)):
+        clock.now = t
+        algo.tick(t)
+    assert len(calls) == 1  # startup
+    for t in (at("09:00"), at("09:00", 1), at("10:00")):
+        clock.now = t
+        algo.tick(t)
+    assert [c.strftime("%H:%M") for c in calls] == ["06:00", "09:00"]
+    msgs = [e["message"] for e in events(store, "info") if "token" in e["message"]]
+    assert msgs == ["Dhan token checked at startup: valid until 27/10/2026 08:30",
+                    "Dhan token checked at 09:00: valid until 27/10/2026 08:30"]
+
+
+def test_a_start_after_0900_counts_as_that_days_check(env):
+    algo, paper, clock, store, feed, tmp = env
+    calls = []
+    algo.data.check_token = lambda: calls.append(1) or (True, "valid")
+    for t in (at("10:30"), at("10:31"), at("14:00")):
+        clock.now = t
+        algo.tick(t)
+    assert len(calls) == 1
+
+
+def test_an_invalid_token_logs_one_clear_error_and_shows_on_the_page(env):
+    algo, paper, clock, store, feed, tmp = env
+    expired = [False]
+
+    def check():
+        expired[0] = True  # DhanClient.check_token sets token_expired on DH-901
+        return False, "Dhan access token expired or invalid (DH-901)"
+
+    algo.data.check_token = check
+    algo.data.token_expired = lambda: expired[0]
+    clock.now = at("09:00")
+    algo.tick(at("09:00"))
+    algo.tick(at("09:00", 1))
+    errs = [e["message"] for e in events(store, "error") if "token" in e["message"]]
+    assert errs == ["Dhan token check at startup: Dhan access token expired or invalid (DH-901). The feed stays idle "
+                    "and no entries are taken until a new token is sent (POST /api/token or backend/.env.local + restart)"]
+    clock.now = at("09:00", 2)
+    st = algo.status()
+    assert st["meta"]["tokenExpired"] and st["meta"]["health"]["state"] == "error"
+    assert "Dhan token expired" in st["meta"]["health"]["reason"]
+
+
+def test_a_token_check_that_cannot_reach_dhan_is_logged_not_fatal(env):
+    algo, paper, clock, store, feed, tmp = env
+    algo.data.check_token = lambda: (None, "Dhan HTTP 502: Bad Gateway")
+    clock.now = at("07:42")
+    algo.tick(at("07:42"))
+    assert [e["message"] for e in events(store, "error")] == ["Dhan token could not be checked at startup: Dhan HTTP 502: Bad Gateway"]
+    assert not algo.data.token_expired()

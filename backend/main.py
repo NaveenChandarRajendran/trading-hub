@@ -162,7 +162,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
 
         algo = AlgoService(paper.store, paper, paper.instruments, AlgoData(
             expiries=get_expiries, chain=algo_chain, trending=algo_trending, components=algo_components,
-            intraday=algo_intraday, token_expired=lambda: tracker.client.token_expired),
+            intraday=algo_intraday, token_expired=lambda: tracker.client.token_expired,
+            check_token=getattr(tracker.client, "check_token", None)),
             clock=paper.clock, mode=algo_mode)
 
     def start_default_tracking():
@@ -392,7 +393,7 @@ def main():
     tracker = Tracker(client, store=store, each_side=a.strikes, force=a.force)
     track = [s.strip().upper() for s in a.track.split(",") if s.strip()]
     paper = paper_api.PaperService(
-        paper_store, DhanFeed(client.client_id, client.token),
+        paper_store, DhanFeed(client.client_id, client.token, token_ok=lambda: not client.token_expired),
         OptionInstruments(os.path.join(a.data_dir, "option_instruments.json")), levels=TrackerLevels(tracker))
     logging.getLogger("main").info("OI breakout algo: ALGO_MODE=%s (paper orders only, never real orders)", algo_config.MODE)
     uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE), host=a.host, port=a.port,

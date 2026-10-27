@@ -82,6 +82,12 @@ Report: `backend/logs/replay-<date>.md` / `.json`.
 ## Reliability
 - Feed watchdog (dhan_feed.py): recv() is polled every 5 s; no packet for 2 minutes in market hours drops and re-makes
   the connection with backoff. Every disconnect, stale feed and reconnect attempt is logged.
+- Feed window (27-Oct, after the 26-Oct pre-market storm): the feed connects only 09:00–15:35 IST on trading days
+  ("Feed idle until 09:00" once otherwise) and only while the Dhan token is valid. A connection that drops within 10 s
+  counts as a failed attempt (backoff keeps growing); HTTP 429 waits 60 s, doubling to 5 min. Repeated feed lines
+  are collapsed: the first is logged, then "Feed connection lost ×37 in the last 5 min" every 5 minutes.
+- Token check (read-only `GET /profile`) when the algo starts and at 09:00: one clear line in the log; an invalid
+  token shows on the Algo page and keeps the feed idle until a new token is sent.
 - Per-index watchdog (algo): no tick for 2 minutes → "Feed stale" in the log, then resubscribe / reconnect with backoff
   (30 s, 60 s, 2 min, 5 min; one feed action per 30 s), every attempt logged; "Feed back" when ticks return.
 - Exceptions in the tick handler, candle builder and evaluation are logged with their traceback (decision log + file);

@@ -23,7 +23,7 @@ import threading
 import time as _time
 import traceback
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta
 from typing import Callable
 
 import algo_config as cfg
@@ -43,6 +43,7 @@ IDX, FNO = "IDX_I", "NSE_FNO"
 # fine-grained kind -> algo_events.type (the kind stays in details.kind)
 EVENT_TYPE = {"armed": "signal", "cancel": "signal", "expire": "signal", "stale": "feed"}
 SUMMARY_AT = (15, 35)  # IST: algo_daily_summary is written once the session is over
+TOKEN_CHECK_AT = dtime(9, 0)  # IST: the token is checked again before the feed connects
 
 
 @dataclass
@@ -54,6 +55,7 @@ class AlgoData:
     components: Callable[[str], dict]  # -> {"constituents", "quotes": {sym: ltp}, "history": {sym: daily candles}}
     intraday: Callable[[str], list]  # -> 1-minute index candles, previous session + today (Dhan intraday)
     token_expired: Callable[[], bool]
+    check_token: Callable[[], tuple] | None = None  # -> (True | False | None, message): GET /profile, read-only
 
 
 class AlgoBroker:
@@ -173,6 +175,7 @@ class AlgoService:
         self._errors_seen = {}  # (where, message) -> last time logged, so a repeating error is logged once a minute
         self._next_heartbeat = None
         self._last_feed_action = None  # one resubscribe / reconnect per 30 s, whichever index asks
+        self._token_checked = {"startup": False, "day": None}  # token checks: once at startup, once at 09:00
         if paper is not None:
             paper.listeners.append(self.on_packet)
             feed = getattr(paper, "feed", None)
@@ -253,6 +256,32 @@ class AlgoService:
                         tb="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)), now=now)
         except Exception:
             log.exception("algo error could not be recorded")
+
+    def _token_check(self, now):
+        """Checks the Dhan token when the algo starts and at 09:00 on trading days (before the feed connects), and
+        logs one clear line. An invalid token shows on the Algo page (meta.tokenExpired / health)."""
+        check = self.data.check_token
+        if check is None:
+            return
+        at_0900 = self.trading_day(now) and now.time() >= TOKEN_CHECK_AT
+        if self._token_checked["startup"] and not (at_0900 and self._token_checked["day"] != now.date()):
+            return
+        when = "at startup" if not self._token_checked["startup"] else f"at {TOKEN_CHECK_AT:%H:%M}"
+        self._token_checked["startup"] = True
+        if at_0900:
+            self._token_checked["day"] = now.date()  # a start after 09:00 counts as that day's check
+        try:
+            ok, msg = check()
+        except Exception as e:
+            ok, msg = None, str(e)
+        if ok:
+            self.record("*", "info", f"Dhan token checked {when}: {msg}", now=now)
+        elif ok is False:
+            self.record("*", "error", f"Dhan token check {when}: {msg}. The feed stays idle and no entries are taken "
+                                      f"until a new token is sent (POST /api/token or backend/.env.local + restart)",
+                        now=now)
+        else:
+            self.record("*", "error", f"Dhan token could not be checked {when}: {msg}", now=now)
 
     def _feed_event(self, level, message):
         """Disconnects, stale feed and reconnect attempts from dhan_feed.py, into the decision log."""
@@ -402,7 +431,10 @@ class AlgoService:
     def tick(self, now):
         """Once a second. Network calls (levels, filters) run outside the lock: the feed thread needs it for
         every tick, so it must never wait on Dhan. Each index is guarded separately."""
-        if self.mode == "off" or not self.trading_day(now):
+        if self.mode == "off":
+            return
+        self._token_check(now)
+        if not self.trading_day(now):
             return
         with self.lock:
             self._ensure_day(now)

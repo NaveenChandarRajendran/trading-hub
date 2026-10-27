@@ -69,6 +69,10 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
   (end to end with the real engine: entry, exits, 15:15, risk, stale data, restart, kill switch, signals mode, the
   no-real-orders check), `algo/logic/algo.test.ts`.
 - First live paper day 23-Oct-2026 (A): ran all day, no trades (see "23-Oct review" below).
+- Feed reconnect storm fix (27-Oct, `fix/feed-reconnect`): feed only 09:00–15:35 IST on trading days and with a valid
+  token, short-lived connections (< 10 s) keep the backoff growing, HTTP 429 → 60 s doubling to 5 min, repeated feed
+  lines collapsed per 5 min, token check (`DhanClient.check_token`, GET /profile) at algo start and 09:00.
+  Tests: `test_dhan_feed.py`, `test_dhan_token.py`, `test_algo_health.py`.
 - Reliability (24-Oct): feed watchdog in `dhan_feed.py` (polled recv, reconnect after 2 min without packets in market
   hours, `on_event` into the algo log), per-index watchdog + logged resubscribe / reconnect attempts, exceptions with
   tracebacks, heartbeat every 15 min, status `health` (ok / stale / error + reason) on the page, network calls outside

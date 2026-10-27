@@ -127,6 +127,14 @@ class FeedStale(Exception):
 IST = timezone(timedelta(hours=5, minutes=30))
 STALE_AFTER = 120  # seconds without any packet during market hours -> reconnect
 RECV_POLL = 5  # seconds: recv() never waits longer than this, so a silent socket is noticed
+FEED_FROM, FEED_TO = dtime(9, 0), dtime(15, 35)  # the feed connects only inside this window on trading days
+IDLE_CHECK = 60  # seconds between window / token checks while idle
+MIN_UPTIME = 10  # a connection that drops sooner counts as a failed attempt: the backoff keeps growing
+RATE_LIMIT_BACKOFF = (60, 120, 240, 300)  # Dhan rejected the connection with HTTP 429
+COLLAPSE_SEC = 300  # repeated feed messages: the first is logged, then one summary line per 5 minutes
+# messages that repeat during a reconnect storm, by prefix -> the summary's label
+COLLAPSE = {"Feed connection lost": "Feed connection lost", "Feed reconnect attempt": "Feed reconnect attempts",
+            "Feed connected again": "Feed connected again"}
 
 
 def nse_market_open(now=None):
@@ -134,6 +142,21 @@ def nse_market_open(now=None):
     now = now or datetime.now(IST)
     return (now.weekday() < 5 and now.date().isoformat() not in NSE_HOLIDAYS
             and dtime(9, 15) <= now.time() < dtime(15, 30))
+
+
+def feed_window(now=None):
+    """09:00-15:35 IST on NSE trading days: the only time the feed connects (Dhan drops and rate-limits
+    connections outside market hours, which caused a reconnect storm on 26-Oct-2026)."""
+    now = now or datetime.now(IST)
+    return (now.weekday() < 5 and now.date().isoformat() not in NSE_HOLIDAYS
+            and FEED_FROM <= now.time() < FEED_TO)
+
+
+def is_rate_limited(e):
+    """True when Dhan rejected the WebSocket handshake with HTTP 429 (websockets raises InvalidStatus /
+    InvalidStatusCode; the status sits on .response.status_code or .status_code)."""
+    status = getattr(getattr(e, "response", None), "status_code", None) or getattr(e, "status_code", None)
+    return status == 429 or "HTTP 429" in str(e)
 
 
 def _default_connect(url):
@@ -147,11 +170,17 @@ class DhanFeed:
     After a token-expired disconnect (807) it waits for set_token() instead of retrying.
     Watchdog: recv() is polled every recv_poll s; with no packet for stale_after s while market_open(), the connection
     is dropped and re-made with backoff (a half-open socket otherwise blocks recv() forever, silently).
-    on_event(level, message) reports every disconnect, stale feed and reconnect attempt (the algo logs them)."""
+    on_event(level, message) reports every disconnect, stale feed and reconnect attempt (the algo logs them); a
+    message that repeats (connection lost, reconnect attempt) is logged once and then summarised every 5 minutes.
+    Connects only while in_window() (09:00-15:35 IST on trading days) and token_ok() (the REST client has not seen
+    DH-901). A connection that lives less than min_uptime s counts as a failed attempt; HTTP 429 waits 60 s, doubling
+    up to 5 min."""
 
     def __init__(self, client_id=None, token=None, on_packet=None, connect=_default_connect,
                  backoff=(1, 2, 5, 10, 30), stale_after=STALE_AFTER, market_open=nse_market_open, on_event=None,
-                 recv_poll=RECV_POLL):
+                 recv_poll=RECV_POLL, in_window=feed_window, token_ok=lambda: True, min_uptime=MIN_UPTIME,
+                 rate_limit_backoff=RATE_LIMIT_BACKOFF, idle_check=IDLE_CHECK, collapse_sec=COLLAPSE_SEC,
+                 monotonic=time.monotonic):
         self.client_id = client_id or os.getenv("DHAN_CLIENT_ID", "")
         self.token = token or os.getenv("DHAN_ACCESS_TOKEN", "")
         self.on_packet = on_packet or (lambda pkt: None)
@@ -159,8 +188,12 @@ class DhanFeed:
         self.backoff = backoff
         self.stale_after, self.market_open, self.recv_poll = stale_after, market_open, recv_poll
         self.on_event = on_event or (lambda level, message: None)
+        self.in_window, self.token_ok, self.min_uptime = in_window, token_ok, min_uptime
+        self.rate_limit_backoff, self.idle_check = rate_limit_backoff, idle_check
+        self.collapse_sec, self._mono = collapse_sec, monotonic
+        self._repeats = {}  # summary label -> {"since", "count", "last"} of suppressed messages
         self.status = {"connected": False, "tokenExpired": False, "lastError": "", "lastPacketAt": None,
-                       "stale": False, "reconnects": 0, "connectedAt": None}
+                       "stale": False, "reconnects": 0, "connectedAt": None, "idle": "", "rateLimited": 0}
         self._subs = {}  # (segment, security_id) -> mode
         self._lock = threading.Lock()
         self._stopping = False
@@ -214,11 +247,43 @@ class DhanFeed:
             asyncio.run_coroutine_threadsafe(self._ws.close(), self._loop)
 
     def _event(self, level, message):
+        label = next((v for k, v in COLLAPSE.items() if message.startswith(k)), None)
+        if label:
+            now = self._mono()
+            r = self._repeats.get(label)
+            if r and now - r["since"] < self.collapse_sec:
+                r["count"] += 1
+                r["last"] = message
+                return  # summarised later
+            self._flush_repeats(now)
+            self._repeats[label] = {"since": now, "count": 0, "last": message}
+        self._emit(level, message)
+
+    def _flush_repeats(self, now=None, force=False):
+        """One line per label whose 5-minute window is over: "Feed connection lost ×37 in the last 5 min"."""
+        now = self._mono() if now is None else now
+        for label, r in list(self._repeats.items()):
+            if force or now - r["since"] >= self.collapse_sec:
+                if r["count"]:
+                    detail = r["last"].split(": ", 1)[1] if ": " in r["last"] else r["last"]
+                    mins = max(1, round(min(now - r["since"], self.collapse_sec) / 60))
+                    self._emit("warning", f"{label} ×{r['count']} in the last {mins} min (last: {detail})")
+                del self._repeats[label]
+
+    def _emit(self, level, message):
         getattr(log, level, log.info)(message)
         try:
             self.on_event(level, message)
         except Exception:
             log.exception("feed on_event failed")
+
+    def _idle_reason(self):
+        """Why the feed should not connect now ("" = connect)."""
+        if not self.in_window():
+            return f"Feed idle until {FEED_FROM:%H:%M} (connects {FEED_FROM:%H:%M}-{FEED_TO:%H:%M} IST on trading days)"
+        if not self.token_ok():
+            return "Feed waiting for a valid Dhan token (DH-901): send a new one (POST /api/token)"
+        return ""
 
     def start(self):
         self._thread = threading.Thread(target=lambda: asyncio.run(self.run()), name="dhan-feed", daemon=True)
@@ -276,12 +341,25 @@ class DhanFeed:
         self._loop = asyncio.get_running_loop()
         self._wake = asyncio.Event()
         attempt = 0
+        limited = 0  # consecutive HTTP 429 rejections
         while not self._stopping:
+            self._flush_repeats()
             if self.status["tokenExpired"] or not (self.client_id and self.token):
                 if not self.status["tokenExpired"]:
                     self.status["lastError"] = "DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN not set"
                 await self._wait(3600)
                 continue
+            idle = self._idle_reason()
+            if idle:
+                if self.status["idle"] != idle:  # one line per idle period, not one per check
+                    self._flush_repeats(force=True)
+                    self.status["idle"] = idle
+                    self._event("info", idle)
+                attempt = limited = 0
+                await self._wait(self.idle_check)
+                continue
+            self.status["idle"] = ""
+            stable = False
             try:
                 async with self._connect(FEED_URL.format(token=self.token, client_id=self.client_id)) as ws:
                     self._ws = ws
@@ -289,7 +367,6 @@ class DhanFeed:
                     self.status.update(connected=True, lastError="", stale=False, connectedAt=connected_at)
                     if attempt:
                         self._event("info", f"Feed connected again after {attempt} attempt{'s' if attempt > 1 else ''}")
-                    attempt = 0
                     by_mode = {}
                     for key, mode in self.subscriptions().items():
                         by_mode.setdefault(mode, []).append(key)
@@ -302,6 +379,11 @@ class DhanFeed:
                             frame = None
                         if frame is not None:
                             self._handle(frame)
+                        if not stable and time.time() - connected_at >= self.min_uptime:
+                            stable = True  # survived: the next drop starts the backoff from the beginning
+                            attempt = limited = 0
+                        if not self.in_window():
+                            break  # 15:35: close and go idle
                         last = max(self.status["lastPacketAt"] or 0, connected_at)
                         if self.market_open() and time.time() - last > self.stale_after:
                             raise FeedStale(f"no packet for {time.time() - last:.0f} s during market hours")
@@ -315,6 +397,8 @@ class DhanFeed:
                 self._event("warning", f"Feed stale: {e}; reconnecting")
             except Exception as e:
                 if not self._stopping:
+                    if is_rate_limited(e):
+                        limited += 1
                     self.status["lastError"] = f"Feed connection lost: {e or e.__class__.__name__}"
                     self._event("warning", f"Feed connection lost: {e or e.__class__.__name__}")
             finally:
@@ -322,9 +406,14 @@ class DhanFeed:
                 self.status["connected"] = False
             if self._stopping:
                 break
+            if not self.in_window():
+                continue  # closed at the end of the window: no reconnect, the loop goes idle
             if not self.status["tokenExpired"]:
                 wait = self.backoff[min(attempt, len(self.backoff) - 1)]
+                if limited:  # HTTP 429: at least 60 s, doubling up to 5 min
+                    wait = max(wait, self.rate_limit_backoff[min(limited - 1, len(self.rate_limit_backoff) - 1)])
                 attempt += 1
-                self.status["reconnects"] += 1
-                self._event("info", f"Feed reconnect attempt {attempt} in {wait} s")
+                self.status.update(reconnects=self.status["reconnects"] + 1, rateLimited=limited)
+                self._event("info", f"Feed reconnect attempt {attempt} in {wait} s"
+                                    + (" (Dhan rate limit, HTTP 429)" if limited else ""))
                 await self._wait(wait)

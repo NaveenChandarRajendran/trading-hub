@@ -40,6 +40,28 @@ class DhanClient:
         self.token = token.strip()
         self.token_expired = False
 
+    def check_token(self):
+        """Read-only GET /profile: is the access token valid? Returns (True | False | None, message); None = could not
+        tell (network, Dhan down). An invalid token also sets token_expired, which every page and the algo show."""
+        if not self.client_id or not self.token:
+            return False, "DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN not set"
+        try:
+            r = self.session.get(BASE + "/profile", headers={"access-token": self.token, "client-id": self.client_id,
+                                                             "Accept": "application/json"}, timeout=20)
+        except requests.RequestException as e:
+            return None, f"network error: {e}"
+        if r.status_code == 401 or "DH-901" in r.text:
+            self.token_expired = True
+            return False, "Dhan access token expired or invalid (DH-901)"
+        if not r.ok:
+            return None, f"Dhan HTTP {r.status_code}: {r.text[:200]}"
+        try:
+            validity = (r.json() or {}).get("tokenValidity")
+        except ValueError:
+            validity = None
+        self.token_expired = False
+        return True, f"valid until {validity}" if validity else "valid"
+
     def _post(self, path, body, gap=MIN_GAP_SECONDS):
         if not self.client_id or not self.token:
             raise DhanError("DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN not set")
