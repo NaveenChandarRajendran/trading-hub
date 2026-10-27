@@ -13,7 +13,7 @@ import { api as paperApi } from '../paper-trade/logic/api';
 import { keyOf } from '../paper-trade/logic/feed';
 import { longDate, price, signedRupees, toneOf } from '../paper-trade/format';
 import { usePaper } from '../paper-trade/usePaper';
-import { WHO, buildRows, forIndex, summarize, type TodayRow, type Who } from './logic/today';
+import { STATUS_TEXT, WHO, WHO_ORDER, buildRows, forIndex, summarize, type TodayRow, type Who } from './logic/today';
 import './today.css';
 
 const REFRESH_MS = 10000;
@@ -22,6 +22,8 @@ type Index = (typeof INDEXES)[number]['value'];
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const whoName = (w: string) => WHO[w as Who]?.name ?? w;
+/** Each strategy keeps one colour in every table, so a trade's owner is seen at a glance. */
+const tagOf = (w: string) => `s${WHO_ORDER.indexOf(w as Who) + 1}`;
 const whoWhere = (w: string) => WHO[w as Who]?.where ?? '';
 const hm = (t: string | null) => (t ? t.slice(0, 5) : '–');
 /** Row / tile accent (a coloured edge, not coloured text): gain, loss or nothing. */
@@ -178,15 +180,31 @@ export default function TodayApp() {
       {paper.error && <Alert kind="warn">{paper.error}</Alert>}
       {(notice || sig.notice) && <Alert kind="info">{notice || sig.notice}</Alert>}
 
-      {/* 2. one tile per account */}
-      <section className="td-accts" aria-label="P&L by account">
-        {sum.byWho.map((w) => (
-          <div key={w.who} className={`td-acct ${w.trades ? mood(w.pnl) : 'none'}`}>
-            <span className="td-acct-name">{WHO[w.who].name}<span className="td-acct-where">{WHO[w.who].where}</span></span>
-            <Money v={w.trades ? w.pnl : null} />
-            <span className="td-label">{w.trades ? `${w.trades} trade${w.trades > 1 ? 's' : ''}${w.open ? ` · ${w.open} open` : ''}` : 'No trades yet'}</span>
-          </div>
-        ))}
+      {/* 2. strategy board (owner 27-Oct-2026: "which strategy is going for a trade and which one is losing or winning") */}
+      <section className="card">
+        <div className="card-head">
+          <h3 className="td-title">Strategies today</h3>
+          <span className="td-label">Which rule took a trade, and how each one is doing</span>
+        </div>
+        <div className="td-strats" role="table" aria-label="Strategies today">
+          {sum.byWho.map((w) => (
+            <div key={w.who} role="row" className={`td-strat ${w.status}`}>
+              <span role="cell" className="td-strat-name">
+                <span className={`td-tag ${tagOf(w.who)}`}>{WHO[w.who].name}</span>
+                <span className="td-strat-where">{WHO[w.who].where}</span>
+              </span>
+              <span role="cell" className={`td-status ${w.status}`}>{STATUS_TEXT[w.status]}</span>
+              <span role="cell" className="td-strat-pnl"><Money v={w.trades ? w.pnl : null} /></span>
+              <span role="cell" className="td-strat-detail">
+                {!w.trades ? 'Waiting for its setup' : [
+                  `${w.trades} trade${w.trades > 1 ? 's' : ''}`,
+                  w.won ? `${w.won} won` : '', w.lost ? `${w.lost} lost` : '',
+                  w.holding.length ? `in ${w.holding.join(', ')}` : '',
+                ].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* 3. open trades */}
@@ -209,7 +227,7 @@ export default function TodayApp() {
               <tbody>
                 {shown.open.map((r) => (
                   <tr key={r.id} className={`td-row ${mood(r.pnl)}`}>
-                    <td><span className="td-who">{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
+                    <td><span className={`td-tag ${tagOf(r.who)}`}>{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
                     <td className="txt"><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
                     <td className="num">{r.qty}</td>
                     <td className="num">{hm(r.entryTime)}</td>
@@ -256,7 +274,7 @@ export default function TodayApp() {
               <tbody>
                 {shown.closed.map((r) => (
                   <tr key={r.id} className={`td-row ${mood(r.pnl)}`}>
-                    <td><span className="td-who">{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
+                    <td><span className={`td-tag ${tagOf(r.who)}`}>{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
                     <td className="txt"><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
                     <td className="num">{r.qty}</td>
                     <td className="num">{hm(r.entryTime)}</td>

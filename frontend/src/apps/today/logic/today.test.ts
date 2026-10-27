@@ -41,9 +41,18 @@ describe('today', () => {
   it('adds booked and running P&L per account', () => {
     const s = summarize(buildRows([manualOpen, ruleClosed, ruleOpen], auto, pos, { 52175: 55.1 }));
     expect([s.total, s.booked, s.running, s.open, s.closed, s.won, s.lost]).toEqual([961.75, 900, 61.75, 2, 1, 1, 0]);
-    expect(s.byWho.map((w) => [w.who, w.pnl, w.trades])).toEqual([
-      ['Manual', 347.75, 1], ['Dharani Rules', 900, 1], ['Trend Rules', -286, 1], ['4 Pillar Rules', 0, 0], ['SuperTrend Rules', 0, 0],
+    expect(s.byWho.map((w) => [w.who, w.pnl, w.trades, w.status])).toEqual([
+      ['Manual', 347.75, 1, 'in-trade'], ['Dharani Rules', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'],
+      ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'],
     ]);
+    expect(s.byWho[0].holding).toEqual(['NIFTY 27 OCT 22700 PUT']);
+    expect([s.byWho[1].won, s.byWho[1].lost]).toEqual([1, 0]);
+  });
+
+  it('marks a strategy that only lost as losing today', () => {
+    const lost: JTrade = { ...ruleClosed, id: 'st-1', strategy: 'SuperTrend Rules', account: 'MegaBull', grossPnl: -1450, netPnl: -1513 };
+    const w = summarize(buildRows([lost], [], [], {})).byWho.find((x) => x.who === 'SuperTrend Rules')!;
+    expect([w.status, w.pnl, w.won, w.lost]).toEqual(['down', -1513, 0, 1]);
   });
 
   it('filters by index and orders open / closed', () => {

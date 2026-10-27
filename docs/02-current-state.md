@@ -12,7 +12,8 @@ _Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy
   (Manual, Dharani, Trend, 4 Pillar, SuperTrend) from `GET /api/journal/trades?from=today&to=today`; open trades priced
   live from `/ws/paper` ticks (manual security id parsed from the journal id `manual-<day>-<sid>-<n>`, rule trades'
   ids from `/api/signals/state` auto.today). Big total (booked after charges + running before charges), a tile per
-  account, Open now table (Exit with a two-step confirm; manual: Add stop + target), Closed today table, Both / Nifty /
+  account, **Strategies today** board (owner 27-Oct-2026 follow-up: one row per strategy with In a trade now / Winning /
+  Losing / No trade today, its P&L, won / lost and what it holds; each strategy keeps one colour tag in every table), Open now table (Exit with a two-step confirm; manual: Add stop + target), Closed today table, Both / Nifty /
   Bank Nifty filter. P&L green / red everywhere; rows and tiles get a green / red edge. Refreshes every 10 s and on
   every fill. No backend change.
 - Charts & Signals: the Interval picker always shows (it hid when a strategy was picked; a strategy opens at its own

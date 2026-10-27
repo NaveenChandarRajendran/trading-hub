@@ -75,7 +75,21 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
   });
 }
 
-export interface WhoTotal { who: Who; pnl: number; trades: number; open: number }
+export interface WhoTotal {
+  who: Who;
+  pnl: number;
+  trades: number;
+  open: number;
+  won: number;
+  lost: number;
+  holding: string[]; // options it is in right now
+  status: 'in-trade' | 'up' | 'down' | 'flat' | 'none'; // what the strategy board says in a word
+}
+
+/** One word per strategy for the board: in a trade now, else up / down / flat on the day, or no trade today. */
+export const STATUS_TEXT: Record<WhoTotal['status'], string> = {
+  'in-trade': 'In a trade now', up: 'Winning today', down: 'Losing today', flat: 'Break-even', none: 'No trade today',
+};
 export interface DaySummary {
   total: number; // booked (closed, after charges) + running (open, before charges)
   booked: number;
@@ -98,7 +112,14 @@ export function summarize(rows: TodayRow[]): DaySummary {
     won: closed.filter((r) => (r.pnl ?? 0) > 0).length, lost: closed.filter((r) => (r.pnl ?? 0) <= 0 && r.pnl != null).length,
     byWho: WHO_ORDER.map((who) => {
       const mine = rows.filter((r) => r.who === who);
-      return { who, pnl: sum(mine), trades: mine.length, open: mine.filter((r) => r.open).length };
+      const done = mine.filter((r) => !r.open && r.pnl != null);
+      const pnl = sum(mine);
+      const holding = mine.filter((r) => r.open).map((r) => r.option);
+      const status: WhoTotal['status'] = !mine.length ? 'none' : holding.length ? 'in-trade' : pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'flat';
+      return {
+        who, pnl, trades: mine.length, open: holding.length, won: done.filter((r) => (r.pnl as number) > 0).length,
+        lost: done.filter((r) => (r.pnl as number) <= 0).length, holding, status,
+      };
     }),
   };
 }
