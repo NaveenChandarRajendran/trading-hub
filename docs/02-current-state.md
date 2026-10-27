@@ -237,6 +237,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   `stop`, `target`, `day_rule`, `toi_cache` (defaults = the live behaviour).
 
 ## Watch list (owner, 26-Oct-2026: check regularly, every after-close review)
+- **Rebound Call (BankNifty, paper, owner approved 27-Oct-2026)**: new rule `sig_rebound.py` on its own Rs 1 L book
+  `rebound` (config `autopaper.json` reboundCall; spec `docs/strategies/rebound-call.md`). Log it daily in the Excel tab
+  "Option Buy - Rebound Call" and review with the rest on 15-Nov-2026.
 - **Excel tracker, every sheet, every trading day**: follow `docs/excel-daily-checklist.md` (the MegaBull P&L calendar
   is hand-filled and was missed once on 26-Oct). The Excel is the record for the 15-Nov-2026 review.
 - **Dhan OI verdict vs the OI itself.** 26-Oct 12:30 Nifty: PCR (OI + chg) 1.24 and puts ~55% (bullish lean), Trending

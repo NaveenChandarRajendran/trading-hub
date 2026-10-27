@@ -11,6 +11,7 @@ Each trading day D (skip weekends and NSE holidays, `holidays.py`):
    - `Option Buy - SuperTrend Rules` (date in B, invested V, net AI)
    - `Option Buy - Dharani Rules` (date in B, invested V, net AI)
    - `Option Buying - Trading Hub` (the app's paper trades, Trend + others; date in B)
+   - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; Dharani's columns; date in B)
    - `Option Selling - Megabull` (selling, owner's own entries, expiry days only; date in B)
 2. **`Megabull Option Buy - P&L` calendar (hand-filled, NOT automatic)**: month in D6, columns D..J = Sun..Sat,
    first week in row 8. The cell for D gets the formula
