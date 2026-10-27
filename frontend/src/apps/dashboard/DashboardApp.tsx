@@ -153,7 +153,7 @@ export default function DashboardApp() {
   const sB = sigB.data;
   const presetInterval = CHART_PRESETS[strategy].interval;
   const dN = useDashboard(useOptionIds(sN, 'NIFTY', true), { symbol: 'NIFTY', interval: presetInterval });
-  const dB = useDashboard(useOptionIds(sB, 'BANKNIFTY', false), { symbol: 'BANKNIFTY', interval: presetInterval });
+  const dB = useDashboard(useOptionIds(sB, 'BANKNIFTY', true), { symbol: 'BANKNIFTY', interval: presetInterval });
   // the interval and date pickers move both charts together
   const both = {
     setInterval: (v: number) => { dN.setInterval(v); dB.setInterval(v); },
@@ -170,7 +170,8 @@ export default function DashboardApp() {
   const vix = s?.context.find((c) => c?.vix != null)?.vix;
   const rows = s?.auto?.today ?? [];
   // the manual paper account counts too (owner 27-Oct-2026): its P&L before charges, at the live price
-  const manual = s?.paperPositions ?? [];
+  // hand-placed positions come per index (each signals state has its own); the Both tab shows both (owner 27-Oct-2026)
+  const manual = symbols.flatMap((x) => (x === 'NIFTY' ? sN : sB)?.paperPositions ?? []);
   const dayPnl = rows.reduce((t, r) => t + (r.status === 'closed' ? r.netPnl ?? 0 : r.pnl ?? 0), 0)
     + manual.reduce((t, p) => t + manualPnl(p, ltp[p.security_id]), 0);
   const openCount = (s?.auto?.open ?? []).length + manual.filter((p) => p.open_qty !== 0).length;
@@ -274,11 +275,11 @@ export default function DashboardApp() {
             onExit={(id) => void sigN.exitTrade(id)} />
         ))}
       </div>
-      {(s?.paperPositions ?? []).length > 0 && (
+      {manual.length > 0 && (
         <section className="card">
           <div className="card-head"><h3 className="card-title">Your own paper trades (Option Chain screen)</h3></div>
-          <ManualPositions positions={s?.paperPositions ?? []} ltp={ltp} busy={sigN.busy} onBracket={(id) => void sigN.bracket(id)}
-            onExitManual={(id) => void paperApi.exit(id).then(() => sigN.reload())} />
+          <ManualPositions positions={manual} ltp={ltp} busy={sigN.busy} onBracket={(id) => void sigN.bracket(id).then(() => sigB.reload())}
+            onExitManual={(id) => void paperApi.exit(id).then(() => { sigN.reload(); sigB.reload(); })} />
         </section>
       )}
       <TodayTrades auto={s?.auto ?? null} shadow={s?.shadow ?? null} />
