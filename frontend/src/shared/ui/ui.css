@@ -72,6 +72,15 @@
 .ds .alert.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
 .ds .alert.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 
+/* toasts (Toast.tsx): bottom-right, above everything, soft tints like alerts */
+.ds .toasts { position: fixed; right: var(--sp-5); bottom: var(--sp-5); z-index: 50; display: flex; flex-direction: column; gap: var(--sp-2); max-width: 420px; }
+.ds .toast { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); font-size: var(--fs-md);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); color: var(--text); }
+.ds .toast.info { border-left: 3px solid var(--accent); }
+.ds .toast.error { border-left: 3px solid var(--down); background: var(--down-soft); }
+.ds .toast span { flex: 1; }
+.ds .toast button { border: 0; background: none; color: var(--text-3); cursor: pointer; font: inherit; }
+
 .ds .empty { text-align: center; color: var(--text-3); padding: var(--sp-6) var(--sp-4); border: 1px dashed var(--border); border-radius: var(--r-lg); }
 
 .ds .split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr); gap: var(--sp-4); }

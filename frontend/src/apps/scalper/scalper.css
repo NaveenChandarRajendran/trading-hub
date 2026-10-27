@@ -16,6 +16,11 @@
 .sc .sc-chart-title { font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .sc .sc-ltp { font-weight: 600; }
 .sc .sc-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc .sc-help { position: relative; }
+.sc .sc-help-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 380px; box-shadow: var(--shadow-pop); display: flex; flex-direction: column; gap: var(--sp-2); }
+.sc .sc-help-pop table.t td { text-align: left; white-space: normal; }
+.sc kbd { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 1px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); }
+.sc .sc-chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: var(--fs-sm); pointer-events: none; }
 .sc .sc-chart-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
 .sc .sc-chart { flex: 1 1 auto; min-height: 0; min-width: 0; }
 

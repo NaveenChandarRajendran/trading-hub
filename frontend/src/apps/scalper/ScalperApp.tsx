@@ -1,12 +1,12 @@
 // Power Scalper: one-screen scalping workspace. PAPER ONLY: every order goes to the backend's paper engine
 // ("Scalper" account, its own capital and P&L). Index + CE + PE charts on one synced time axis, the Trade panel and
 // the account strip with the CE / PE tickets (one-click MARKET Buy / Sell) and the positions.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { aggregate, type Candle } from '../../shared/chart/candles';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { inr } from '../../shared/grid';
-import { Alert, Pill, Segmented, Status } from '../../shared/ui';
+import { Alert, Pill, Segmented, Status, Toasts, useToasts } from '../../shared/ui';
 import { longDate, pct, price, toneOf } from '../paper-trade/format';
 import { cacheQuotes } from '../paper-trade/logic/chain';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
@@ -15,6 +15,7 @@ import {
   CHAIN_CACHE_REFRESH_MS, DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe,
 } from './config/settings';
 import { api, type Chain, type ScalperTick } from './logic/api';
+import { HOTKEYS, hotkeyAction } from './logic/hotkeys';
 import { pickerItems } from './logic/picker';
 import { alignSeries, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
 import { ChartSync } from './logic/sync';
@@ -120,18 +121,16 @@ export default function ScalperApp() {
   const [busy, setBusy] = useState(false);
   const [futureKey, setFutureKey] = useState<InstrumentKey | null>(null);
   const [histErr, setHistErr] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const toasts = useToasts();
+  const setNotice = (n: { kind: 'info' | 'error'; text: string }) => toasts.push(n.kind, n.text);
+  const [hotkeys, setHotkeys] = useState(false); // off on every load (never remembered): a stray key must not trade
+  const [help, setHelp] = useState(false);
   const sync = useMemo(() => new ChartSync(), []);
   const now = useNow();
 
   useEffect(() => save('view', view), [view]);
   useEffect(() => save('symbol', symbol), [symbol]);
   useEffect(() => save('tf', tf), [tf]);
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(null), notice.kind === 'info' ? 4000 : 8000);
-    return () => clearTimeout(t);
-  }, [notice]);
 
   // strikes and security IDs of the expiry (Dhan's instrument list, every strike)
   useEffect(() => {
@@ -282,21 +281,56 @@ export default function ScalperApp() {
       ask: tickOf(side)?.ask, available: sc.funds?.available, openQty: pos?.open_qty ?? 0, hasInstrument: !!leg,
     });
   };
-  const place = async (side: Side, action: 'BUY' | 'SELL') => {
+  const place = async (side: Side, action: 'BUY' | 'SELL', via = '') => {
     const leg = legs[side];
     if (!leg || busy) return;
     setBusy(true);
     try {
       const { order: o } = await api.place(leg.securityId, action, lots[side]);
       setNotice(o.status === 'REJECTED'
-        ? { kind: 'error', text: `${action === 'BUY' ? 'Buy' : 'Sell'} ${o.name} rejected: ${o.reason}` }
-        : { kind: 'info', text: `${action === 'BUY' ? 'Bought' : 'Sold'} ${o.qty} ${o.name}${o.avg_price ? ` @ ${price(o.avg_price)}` : ''} (paper).` });
+        ? { kind: 'error', text: `${via}${action === 'BUY' ? 'Buy' : 'Sell'} ${o.name} rejected: ${o.reason}` }
+        : { kind: 'info', text: `${via}${action === 'BUY' ? 'Bought' : 'Sold'} ${o.qty} ${o.name}${o.avg_price ? ` @ ${price(o.avg_price)}` : ''} (paper).` });
     } catch (e) {
-      setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Order failed.' });
+      setNotice({ kind: 'error', text: `${via}${e instanceof ApiError ? e.message : 'Order failed.'}` });
     } finally {
       setBusy(false);
     }
   };
+
+  // hotkeys (toggle on + page focused, never while typing): every hotkey order shows a toast, refusals too
+  const hot = useRef({ buy: (_side: Side) => {}, exitAll: () => {} });
+  hot.current = {
+    buy: (side) => {
+      const why = checkOf(side).buy;
+      if (why) setNotice({ kind: 'error', text: `Hotkey Shift+${side === 'CE' ? 'B' : 'S'}: ${why}` });
+      else void place(side, 'BUY', `Hotkey Shift+${side === 'CE' ? 'B' : 'S'}: `);
+    },
+    exitAll: () => {
+      if (![...sc.positions.values()].some((p) => p.open_qty > 0)) {
+        setNotice({ kind: 'error', text: 'Hotkey Shift+X: no open Scalper positions.' });
+        return;
+      }
+      api.exitAll()
+        .then(() => setNotice({ kind: 'info', text: 'Hotkey Shift+X: exit all sent.' }))
+        .catch((e) => setNotice({ kind: 'error', text: `Hotkey Shift+X: ${e instanceof ApiError ? e.message : 'exit all failed.'}` }));
+    },
+  };
+  useEffect(() => {
+    if (!hotkeys || view !== 'trade') return;
+    const onKey = (e: KeyboardEvent) => {
+      const a = hotkeyAction({ // explicit fields: a KeyboardEvent's properties are getters, so {...e} would drop them
+        key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat,
+        target: e.target as HTMLElement | null,
+      }, true, document.hasFocus());
+      if (!a) return;
+      e.preventDefault();
+      if (a === 'buyCE') hot.current.buy('CE');
+      else if (a === 'buyPE') hot.current.buy('PE');
+      else hot.current.exitAll();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hotkeys, view]);
   // an open position on a CE / PE chart: entry line, ✕ exit, draggable TP / SL (OCO in the paper engine)
   const tradingOn = status.kind === 'live' && !!sc.meta?.acceptingOrders;
   const chartPosition = (side: Side): PositionProps | null => {
@@ -353,18 +387,34 @@ export default function ScalperApp() {
           <div className="field">Timeframe<Segmented label="Timeframe" options={TIMEFRAMES} value={tf} onChange={setTf} /></div>
           <div className="field">View<Segmented label="View" options={VIEWS} value={view} onChange={setView} /></div>
           <div className="toolbar-end">
+            <label className="sc-follow" title="Shift+B / Shift+S / Shift+X while this page has focus (never while typing)">
+              <input type="checkbox" checked={hotkeys} onChange={(e) => setHotkeys(e.target.checked)} /> Hotkeys
+            </label>
+            <div className="sc-help">
+              <button type="button" className="btn ghost" aria-expanded={help} aria-label="Hotkeys help" onClick={() => setHelp((h) => !h)}>?</button>
+              {help && (
+                <div className="card sc-help-pop" role="dialog" aria-label="Hotkeys">
+                  <div className="card-title">Hotkeys {hotkeys ? '(on)' : '(off: switch on to use)'}</div>
+                  <table className="t"><tbody>
+                    {HOTKEYS.map((h) => <tr key={h.keys}><td><kbd>{h.keys}</kbd></td><td>{h.action}</td></tr>)}
+                  </tbody></table>
+                  <p className="muted sc-small">Only while this page has focus and you are not typing in a field. Every hotkey order shows a message. Paper orders only.</p>
+                </div>
+              )}
+            </div>
             <Pill tone="accent">PAPER</Pill>
             <PageStatus sc={sc} />
           </div>
         </div>
-        {(sc.error || error || notice) && (
+        {(sc.error || error || status.kind === 'token') && (
           <div className="sc-alerts">
+            {status.kind === 'token' && <Alert kind="error">Dhan token expired: Buy / Sell are off and prices are frozen. Send a new token (POST /api/token, or backend/.env.local + restart).</Alert>}
             {sc.error && <Alert kind="error">{sc.error}</Alert>}
             {error && error !== sc.error && <Alert kind="error">{error}</Alert>}
-            {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
           </div>
         )}
       </section>
+      <Toasts items={toasts.items} onDismiss={toasts.dismiss} />
 
       {view === 'reports' ? <Reports sc={sc} onNotice={(kind, text) => setNotice({ kind, text })} /> : (
         <>

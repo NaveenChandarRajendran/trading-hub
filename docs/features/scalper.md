@@ -35,7 +35,13 @@ Dhan's order APIs.
    back with a message) and places / moves the OCO leg (`PUT /api/scalper/protection`). Existing TP / SL lines have a
    grip on the right to drag them (modify); dropping one back on the position label cancels it. Pixel ↔ price via
    Lightweight Charts' `priceToCoordinate` / `coordinateToPrice`; no new library.
-5. Hotkeys + states, both themes.
+5. **Done** — Hotkeys (toggle in the top bar, off on every load, never remembered): Shift+B buys the CE ticket,
+   Shift+S the PE ticket, Shift+X exits all, Esc cancels a chart drag; only while the page has focus and never while
+   typing in a field or with Ctrl / Alt / Meta or a held-down repeat; a "?" popover lists them; every hotkey order
+   (and refusal) shows a toast. Toasts (shared `src/shared/ui/Toast.tsx`) replace the inline notices. States:
+   loading ("Loading candles…"), market closed (last session's charts, Buy / Sell off with the reason), stale feed
+   (off, reason), orders closed after 15:15, insufficient funds (reason, engine rejects too), token expired (banner +
+   off). Checked in light and dark with live prices.
 Phase 2: Option Chain, Depth, OI Insights tabs.
 
 ## Backend (step 1)

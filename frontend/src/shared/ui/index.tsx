@@ -53,3 +53,5 @@ export { CopyValue } from './CopyValue';
 export { CheckIcon, CopyIcon } from './icons';
 export { Heatmap } from './Heatmap';
 export type { HeatCell, HeatLevel } from './Heatmap';
+export { Toasts, useToasts } from './Toast';
+export type { ToastItem } from './Toast';

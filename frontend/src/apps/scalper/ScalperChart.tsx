@@ -105,6 +105,7 @@ export function ScalperChart({ id, bars, sync, resetKey, position }: {
   return (
     <div className="sc-chart-wrap">
       <div className="sc-chart" ref={box} />
+      {!bars.length && <div className="sc-chart-empty">Loading candles…</div>}
       {ready && position && chart.current && candles.current && (
         <PositionOverlay chart={chart.current} series={candles.current} frame={frame} {...position} />
       )}
