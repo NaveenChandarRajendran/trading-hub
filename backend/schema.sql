@@ -333,3 +333,62 @@ CREATE TABLE IF NOT EXISTS th_login_attempts (        -- kept one day; 5 failure
 );
 CREATE INDEX IF NOT EXISTS th_login_attempts_user ON th_login_attempts (username, at);
 CREATE INDEX IF NOT EXISTS th_login_attempts_ip ON th_login_attempts (ip, at);
+
+-- ================================================================ strategies (strategies.py, docs/users-and-strategies.md)
+-- User -> strategy -> paper trades. A strategy's capital periods are pt_accounts rows (pt_accounts.strategy_id): the
+-- open one has archived_at NULL; "Reset capital" archives it and opens a new one, so history is never lost.
+CREATE TABLE IF NOT EXISTS th_strategies (
+    id           serial           PRIMARY KEY,
+    user_id      integer          NOT NULL REFERENCES th_users(id),
+    name         text             NOT NULL,
+    description  text             NOT NULL DEFAULT '',
+    notes        text             NOT NULL DEFAULT '',     -- markdown
+    capital      double precision NOT NULL,                -- the open period's starting capital
+    kind         text             NOT NULL DEFAULT 'manual' CHECK (kind IN ('manual', 'algo')),
+    created_at   timestamptz      NOT NULL DEFAULT now(),
+    updated_at   timestamptz      NOT NULL DEFAULT now(),
+    archived_at  timestamptz                              -- archived: read-only, history kept (no hard delete)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS th_strategies_user_name ON th_strategies (user_id, lower(name));
+
+CREATE TABLE IF NOT EXISTS th_user_prefs (               -- e.g. 'trading_into.paper' -> '7'
+    user_id  integer  NOT NULL REFERENCES th_users(id),
+    key      text     NOT NULL,
+    value    text     NOT NULL,
+    PRIMARY KEY (user_id, key)
+);
+
+-- Owner of every paper / algo row. Filled by scripts/migrate_users_strategies.py, which then makes them NOT NULL.
+ALTER TABLE pt_accounts           ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE pt_orders             ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE pt_trades             ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE pt_positions          ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE pt_order_levels       ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE scalper_daily_summary ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE algo_daily_summary    ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE algo_events           ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+ALTER TABLE algo_state            ADD COLUMN IF NOT EXISTS strategy_id integer REFERENCES th_strategies(id);
+CREATE INDEX IF NOT EXISTS pt_accounts_strategy ON pt_accounts (strategy_id);
+CREATE INDEX IF NOT EXISTS pt_orders_strategy_day ON pt_orders (strategy_id, trade_date);
+CREATE INDEX IF NOT EXISTS pt_trades_strategy_day ON pt_trades (strategy_id, trade_date);
+CREATE INDEX IF NOT EXISTS pt_positions_strategy_day ON pt_positions (strategy_id, trade_date);
+
+-- One row per strategy per day with fills (round trips flat -> flat; net = realized - charges, as the P&L calendar).
+-- Replaces the Scalper-only scalper_daily_summary (its rows are copied here by the migration; that table is kept).
+CREATE TABLE IF NOT EXISTS pt_daily_summary (
+    strategy_id  integer          NOT NULL REFERENCES th_strategies(id),
+    account_id   integer          NOT NULL REFERENCES pt_accounts(id),
+    trade_date   date             NOT NULL,
+    trades       integer          NOT NULL,
+    wins         integer          NOT NULL,
+    losses       integer          NOT NULL,
+    fills        integer          NOT NULL,
+    realized     double precision NOT NULL,
+    charges      double precision NOT NULL,
+    net          double precision NOT NULL,
+    best_trade   double precision,
+    worst_trade  double precision,
+    updated_at   timestamptz      NOT NULL,
+    PRIMARY KEY (account_id, trade_date)
+);
+CREATE INDEX IF NOT EXISTS pt_daily_summary_strategy ON pt_daily_summary (strategy_id, trade_date);

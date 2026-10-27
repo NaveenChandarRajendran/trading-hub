@@ -29,6 +29,12 @@ CANDLE_COLS = ("candle_start", "open", "high", "low", "close", "minutes", "rsi",
                "oi_change", "oi_change_points", "components", "components_move")
 SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gross_pnl", "charges", "net_pnl")
 SCALPER_SUMMARY_COLS = ("trades", "wins", "losses", "fills", "realized", "charges", "net", "best_trade", "worst_trade")
+STRATEGY_EDITABLE = ("name", "description", "notes", "archived_at")
+OPEN_ORDER_STATES = ("PENDING", "TRIGGERED")
+
+
+class DuplicateName(ValueError):
+    """A user already has a strategy with this name (names are unique per user, ignoring case; archived ones count)."""
 OC_LEG = ("oi", "prev_oi", "ltp", "prev_close", "volume", "iv")
 OC_COLS = ("strike", "spot") + tuple(f"ce_{k}" for k in OC_LEG) + tuple(f"pe_{k}" for k in OC_LEG)
 
@@ -420,9 +426,9 @@ class PaperJsonStore:
     def accounts(self):
         return [dict(a) for a in self.d["accounts"]]
 
-    def create_account(self, capital, now, name=None):
+    def create_account(self, capital, now, name=None, strategy_id=None):
         a = {"id": len(self.d["accounts"]) + 1, "capital": float(capital), "created_at": now.isoformat(),
-             "archived_at": None, "name": name}
+             "archived_at": None, "name": name, "strategy_id": strategy_id}
         self.d["accounts"].append(a)
         self._write()
         return dict(a)
@@ -437,6 +443,72 @@ class PaperJsonStore:
         for a in self.d["accounts"]:
             if a["id"] == acc:
                 a["capital"] = float(capital)
+        self._write()
+
+    # ---- strategies (same interface as PaperPgStore)
+    def _strategy_out(self, st):
+        acc = next((a["id"] for a in reversed(self.d["accounts"])
+                    if a.get("strategy_id") == st["id"] and not a["archived_at"]), None)
+        return {**st, "account_id": acc}
+
+    def strategies(self, user_id):
+        return [self._strategy_out(st) for st in self.d.get("strategies", []) if st["user_id"] == user_id]
+
+    def strategy(self, sid):
+        st = next((st for st in self.d.get("strategies", []) if st["id"] == sid), None)
+        return self._strategy_out(st) if st else None
+
+    def create_strategy(self, user_id, name, description, capital, kind, now, account_name=None):
+        rows = self.d.setdefault("strategies", [])
+        if any(st["user_id"] == user_id and st["name"].lower() == name.lower() for st in rows):
+            raise DuplicateName(name)
+        st = {"id": len(rows) + 1, "user_id": user_id, "name": name, "description": description, "notes": "",
+              "capital": float(capital), "kind": kind, "created_at": now.isoformat(), "updated_at": now.isoformat(),
+              "archived_at": None}
+        rows.append(st)
+        self.create_account(capital, now, account_name, st["id"])  # writes the file
+        return self.strategy(st["id"])
+
+    def update_strategy(self, sid, now, **fields):
+        st = next(st for st in self.d["strategies"] if st["id"] == sid)
+        if "name" in fields and any(o["id"] != sid and o["user_id"] == st["user_id"]
+                                    and o["name"].lower() == fields["name"].lower() for o in self.d["strategies"]):
+            raise DuplicateName(fields["name"])
+        st.update({k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in fields.items() if k in STRATEGY_EDITABLE})
+        st["updated_at"] = now.isoformat()
+        self._write()
+        return self.strategy(sid)
+
+    def strategy_set_capital(self, sid, capital, now):
+        st = self.strategy(sid)
+        self.set_capital(st["account_id"], capital)
+        return self._set_strategy_capital(sid, capital, now)
+
+    def strategy_reset(self, sid, capital, now):
+        st = self.strategy(sid)
+        if st["account_id"]:
+            self.archive_account(st["account_id"], now)
+        acc = next(a for a in self.d["accounts"] if a["id"] == st["account_id"]) if st["account_id"] else {}
+        self.create_account(capital, now, acc.get("name"), sid)
+        return self._set_strategy_capital(sid, capital, now)
+
+    def _set_strategy_capital(self, sid, capital, now):
+        st = next(st for st in self.d["strategies"] if st["id"] == sid)
+        st["capital"], st["updated_at"] = float(capital), now.isoformat()
+        self._write()
+        return self.strategy(sid)
+
+    def book_open(self, acc, day):
+        """True when the account holds an open position or a pending order on that day."""
+        pos = self.d["positions"].get(str(acc), {}).get(day, {}).values()
+        orders = self.d["orders"].get(str(acc), {}).get(day, {}).values()
+        return any(p["buy_qty"] != p["sell_qty"] for p in pos) or any(o["status"] in OPEN_ORDER_STATES for o in orders)
+
+    def user_pref(self, user_id, key):
+        return self.d.get("prefs", {}).get(f"{user_id}|{key}")
+
+    def set_user_pref(self, user_id, key, value):
+        self.d.setdefault("prefs", {})[f"{user_id}|{key}"] = str(value)
         self._write()
 
     def save_order(self, acc, day, order):
@@ -585,25 +657,26 @@ class PaperPgStore:
     @staticmethod
     def _account(r):
         return {"id": r[0], "capital": r[1], "created_at": r[2].astimezone(IST).isoformat(),
-                "archived_at": r[3].astimezone(IST).isoformat() if r[3] else None, "name": r[4]}
+                "archived_at": r[3].astimezone(IST).isoformat() if r[3] else None, "name": r[4], "strategy_id": r[5]}
 
     def active_account(self, name=None):
         """name None: the manual Paper Trading account; "Algo": the algo's."""
         with self.pg._cursor() as cur:
-            cur.execute("SELECT id, capital, created_at, archived_at, name FROM pt_accounts WHERE archived_at IS NULL "
+            cur.execute("SELECT id, capital, created_at, archived_at, name, strategy_id FROM pt_accounts WHERE archived_at IS NULL "
                         "AND name IS NOT DISTINCT FROM %s ORDER BY id DESC LIMIT 1", (name,))
             r = cur.fetchone()
         return self._account(r) if r else None
 
     def accounts(self):
         with self.pg._cursor() as cur:
-            cur.execute("SELECT id, capital, created_at, archived_at, name FROM pt_accounts ORDER BY id")
+            cur.execute("SELECT id, capital, created_at, archived_at, name, strategy_id FROM pt_accounts ORDER BY id")
             return [self._account(r) for r in cur.fetchall()]
 
-    def create_account(self, capital, now, name=None):
+    def create_account(self, capital, now, name=None, strategy_id=None):
         with self.pg._cursor() as cur:
-            cur.execute("INSERT INTO pt_accounts (capital, created_at, name) VALUES (%s, %s, %s) "
-                        "RETURNING id, capital, created_at, archived_at, name", (float(capital), now, name))
+            cur.execute("INSERT INTO pt_accounts (capital, created_at, name, strategy_id) VALUES (%s, %s, %s, %s) "
+                        "RETURNING id, capital, created_at, archived_at, name, strategy_id",
+                        (float(capital), now, name, strategy_id))
             return self._account(cur.fetchone())
 
     def archive_account(self, acc, now):
@@ -614,50 +687,141 @@ class PaperPgStore:
         with self.pg._cursor() as cur:
             cur.execute("UPDATE pt_accounts SET capital=%s WHERE id=%s", (float(capital), acc))
 
+    # ---- strategies (th_strategies; the open capital period is the pt_accounts row with archived_at NULL)
+    _STRATEGY_SQL = ("SELECT s.id, s.user_id, s.name, s.description, s.notes, s.capital, s.kind, s.created_at, "
+                     "s.updated_at, s.archived_at, (SELECT a.id FROM pt_accounts a WHERE a.strategy_id = s.id "
+                     "AND a.archived_at IS NULL ORDER BY a.id DESC LIMIT 1) FROM th_strategies s ")
+
+    @staticmethod
+    def _strategy(r):
+        iso = lambda t: t.astimezone(IST).isoformat() if t else None  # noqa: E731
+        return {"id": r[0], "user_id": r[1], "name": r[2], "description": r[3], "notes": r[4], "capital": r[5],
+                "kind": r[6], "created_at": iso(r[7]), "updated_at": iso(r[8]), "archived_at": iso(r[9]),
+                "account_id": r[10]}
+
+    def strategies(self, user_id):
+        with self.pg._cursor() as cur:
+            cur.execute(self._STRATEGY_SQL + "WHERE s.user_id=%s ORDER BY s.id", (user_id,))
+            return [self._strategy(r) for r in cur.fetchall()]
+
+    def strategy(self, sid):
+        with self.pg._cursor() as cur:
+            cur.execute(self._STRATEGY_SQL + "WHERE s.id=%s", (sid,))
+            r = cur.fetchone()
+            return self._strategy(r) if r else None
+
+    def _unique(self, fn):
+        import psycopg2.errors
+        try:
+            return fn()
+        except psycopg2.errors.UniqueViolation as e:
+            raise DuplicateName(str(e)) from None
+
+    def create_strategy(self, user_id, name, description, capital, kind, now, account_name=None):
+        """The strategy and its first capital period (pt_accounts row), in one transaction."""
+        def run():
+            with self.pg._cursor() as cur:
+                cur.execute("INSERT INTO th_strategies (user_id, name, description, capital, kind, created_at, updated_at) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                            (user_id, name, description, float(capital), kind, now, now))
+                sid = cur.fetchone()[0]
+                cur.execute("INSERT INTO pt_accounts (capital, created_at, name, strategy_id) VALUES (%s, %s, %s, %s)",
+                            (float(capital), now, account_name, sid))
+            return self.strategy(sid)
+        return self._unique(run)
+
+    def update_strategy(self, sid, now, **fields):
+        fields = {k: v for k, v in fields.items() if k in STRATEGY_EDITABLE}
+        sets = ", ".join(f"{k}=%s" for k in fields)
+
+        def run():
+            with self.pg._cursor() as cur:
+                cur.execute(f"UPDATE th_strategies SET {sets + ', ' if sets else ''}updated_at=%s WHERE id=%s",
+                            (*fields.values(), now, sid))
+            return self.strategy(sid)
+        return self._unique(run)
+
+    def strategy_set_capital(self, sid, capital, now):
+        with self.pg._cursor() as cur:
+            cur.execute("UPDATE pt_accounts SET capital=%s WHERE strategy_id=%s AND archived_at IS NULL", (float(capital), sid))
+            cur.execute("UPDATE th_strategies SET capital=%s, updated_at=%s WHERE id=%s", (float(capital), now, sid))
+        return self.strategy(sid)
+
+    def strategy_reset(self, sid, capital, now):
+        """Archive the open capital period and open a new one (same account name); history stays."""
+        with self.pg._cursor() as cur:
+            cur.execute("UPDATE pt_accounts SET archived_at=%s WHERE strategy_id=%s AND archived_at IS NULL "
+                        "RETURNING name", (now, sid))
+            prev = cur.fetchone()
+            cur.execute("INSERT INTO pt_accounts (capital, created_at, name, strategy_id) VALUES (%s, %s, %s, %s)",
+                        (float(capital), now, prev[0] if prev else None, sid))
+            cur.execute("UPDATE th_strategies SET capital=%s, updated_at=%s WHERE id=%s", (float(capital), now, sid))
+        return self.strategy(sid)
+
+    def book_open(self, acc, day):
+        """True when the account holds an open position or a pending order on that day."""
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT EXISTS (SELECT 1 FROM pt_positions WHERE account_id=%s AND trade_date=%s "
+                        "AND buy_qty <> sell_qty) OR EXISTS (SELECT 1 FROM pt_orders WHERE account_id=%s "
+                        "AND trade_date=%s AND status = ANY(%s))", (acc, day, acc, day, list(OPEN_ORDER_STATES)))
+            return cur.fetchone()[0]
+
+    def user_pref(self, user_id, key):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT value FROM th_user_prefs WHERE user_id=%s AND key=%s", (user_id, key))
+            r = cur.fetchone()
+            return r[0] if r else None
+
+    def set_user_pref(self, user_id, key, value):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO th_user_prefs (user_id, key, value) VALUES (%s, %s, %s) "
+                        "ON CONFLICT (user_id, key) DO UPDATE SET value=EXCLUDED.value", (user_id, key, str(value)))
+
     def save_order(self, acc, day, o):
         cols = self._ORDER_COLS
         updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in ("id", "created_at"))
         with self.pg._cursor() as cur:
-            cur.execute(f"INSERT INTO pt_orders (account_id, trade_date, {', '.join(cols)}) "
-                        f"VALUES (%s, %s, {', '.join(['%s'] * len(cols))}) "
+            cur.execute(f"INSERT INTO pt_orders (account_id, trade_date, strategy_id, {', '.join(cols)}) "
+                        f"VALUES (%s, %s, (SELECT strategy_id FROM pt_accounts WHERE id=%s), {', '.join(['%s'] * len(cols))}) "
                         f"ON CONFLICT (account_id, id) DO UPDATE SET {updates}",
-                        (acc, day, *[o.get(c, self._ORDER_DEFAULTS.get(c)) for c in cols]))
+                        (acc, day, acc, *[o.get(c, self._ORDER_DEFAULTS.get(c)) for c in cols]))
 
     def save_trade(self, acc, day, t):
         c = t["charges"]
         with self.pg._cursor() as cur:
             cur.execute("INSERT INTO pt_trades (account_id, id, order_id, trade_date, security_id, side, qty, price, "
-                        "value, brokerage, stt, transaction, sebi, stamp, gst, traded_at) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                        "value, brokerage, stt, transaction, sebi, stamp, gst, traded_at, strategy_id) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,(SELECT strategy_id FROM pt_accounts WHERE id=%s)) ON CONFLICT DO NOTHING",
                         (acc, t["id"], t["order_id"], day, t["security_id"], t["side"], t["qty"], t["price"],
-                         t["value"], *[c[k] for k in _CHARGE_FIELDS], t["time"]))
+                         t["value"], *[c[k] for k in _CHARGE_FIELDS], t["time"], acc))
 
     def save_position(self, acc, day, p):
         with self.pg._cursor() as cur:
             cur.execute("INSERT INTO pt_positions (account_id, trade_date, security_id, lot_size, buy_qty, sell_qty, "
-                        "avg_buy, avg_sell, realized) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "avg_buy, avg_sell, realized, strategy_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,(SELECT strategy_id FROM pt_accounts WHERE id=%s)) "
                         "ON CONFLICT (account_id, trade_date, security_id) DO UPDATE SET lot_size=EXCLUDED.lot_size, "
                         "buy_qty=EXCLUDED.buy_qty, sell_qty=EXCLUDED.sell_qty, avg_buy=EXCLUDED.avg_buy, "
                         "avg_sell=EXCLUDED.avg_sell, realized=EXCLUDED.realized",
                         (acc, day, p["security_id"], p["lot_size"], p["buy_qty"], p["sell_qty"], p["avg_buy"],
-                         p["avg_sell"], p["realized"]))
+                         p["avg_sell"], p["realized"], acc))
 
     def save_order_levels(self, acc, day, r):
         z = r["zone"] or {}
         with self.pg._cursor() as cur:
             cur.execute("INSERT INTO pt_order_levels (account_id, order_id, trade_date, symbol, expiry, spot, levels_at, "
-                        "levels, zone_slot, zone_strike, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "levels, zone_slot, zone_strike, created_at, strategy_id) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,(SELECT strategy_id FROM pt_accounts WHERE id=%s)) "
                         "ON CONFLICT (account_id, order_id) DO NOTHING",
                         (acc, r["order_id"], day, r["symbol"], r["expiry"], r["spot"], r["levelsAt"],
-                         json.dumps(r["levels"]), z.get("slot"), z.get("strike"), r["created_at"]))
+                         json.dumps(r["levels"]), z.get("slot"), z.get("strike"), r["created_at"], acc))
 
     # ---- OI breakout algo (algo_service.py). Every day argument is the IST trading date 'YYYY-MM-DD'.
     def algo_add_event(self, ev):
         """ev: {ts, trade_date, index, variant, type, kind, setup, message, details}. A repeat (same uid) is ignored."""
         details = {**(ev.get("details") or {}), "kind": ev.get("kind") or ev["type"]}
         with self.pg._cursor() as cur:
-            cur.execute('INSERT INTO algo_events (trade_date, ts, "index", variant, type, setup, message, details, uid) '
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (uid) DO NOTHING",
+            cur.execute('INSERT INTO algo_events (trade_date, ts, "index", variant, type, setup, message, details, uid, '
+                        "strategy_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,(SELECT strategy_id FROM pt_accounts WHERE name='Algo' AND archived_at IS NULL ORDER BY id DESC LIMIT 1)) ON CONFLICT (uid) DO NOTHING",
                         (ev["trade_date"], ev["ts"], ev["index"], ev["variant"], ev["type"], ev.get("setup", ""),
                          ev["message"], json.dumps(details, default=str), event_uid(ev)))
             return cur.rowcount == 1
@@ -678,7 +842,8 @@ class PaperPgStore:
 
     def algo_save_state(self, day, index, variant, state):
         with self.pg._cursor() as cur:
-            cur.execute('INSERT INTO algo_state (trade_date, "index", variant, state, updated_at) VALUES (%s,%s,%s,%s,now()) '
+            cur.execute('INSERT INTO algo_state (trade_date, "index", variant, state, updated_at, strategy_id) '
+                        "VALUES (%s,%s,%s,%s,now(),(SELECT strategy_id FROM pt_accounts WHERE name='Algo' AND archived_at IS NULL ORDER BY id DESC LIMIT 1)) "
                         'ON CONFLICT (trade_date, "index", variant) DO UPDATE SET state=EXCLUDED.state, updated_at=now()',
                         (day, index, variant, json.dumps(state, default=str)))
 
@@ -740,7 +905,8 @@ class PaperPgStore:
         with self.pg._cursor() as cur:
             for r in rows:
                 cur.execute(f'INSERT INTO algo_daily_summary (trade_date, "index", variant, {", ".join(SUMMARY_COLS)}, '
-                            f"updated_at) VALUES (%s,%s,%s,{', '.join(['%s'] * len(SUMMARY_COLS))}, now()) "
+                            f"updated_at, strategy_id) VALUES (%s,%s,%s,{', '.join(['%s'] * len(SUMMARY_COLS))}, now(), "
+                            "(SELECT strategy_id FROM pt_accounts WHERE name='Algo' AND archived_at IS NULL ORDER BY id DESC LIMIT 1)) "
                             'ON CONFLICT (trade_date, "index", variant) DO UPDATE SET '
                             + ", ".join(f"{c}=EXCLUDED.{c}" for c in SUMMARY_COLS) + ", updated_at=now()",
                             (r["trade_date"], r["index"], r["variant"], *[r.get(c) for c in SUMMARY_COLS]))
@@ -836,11 +1002,11 @@ class PaperPgStore:
     def scalper_save_summary(self, row):
         cols = SCALPER_SUMMARY_COLS
         with self.pg._cursor() as cur:
-            cur.execute(f"INSERT INTO scalper_daily_summary (account_id, trade_date, {', '.join(cols)}, updated_at) "
-                        f"VALUES (%s, %s, {', '.join(['%s'] * len(cols))}, now()) "
+            cur.execute(f"INSERT INTO scalper_daily_summary (account_id, trade_date, {', '.join(cols)}, updated_at, "
+                        f"strategy_id) VALUES (%s, %s, {', '.join(['%s'] * len(cols))}, now(), (SELECT strategy_id FROM pt_accounts WHERE id=%s)) "
                         "ON CONFLICT (account_id, trade_date) DO UPDATE SET "
                         + ", ".join(f"{c}=EXCLUDED.{c}" for c in cols) + ", updated_at=now()",
-                        (row["account_id"], row["trade_date"], *[row.get(c) for c in cols]))
+                        (row["account_id"], row["trade_date"], *[row.get(c) for c in cols], row["account_id"]))
 
     def scalper_summaries(self, acc, from_day, to_day):
         with self.pg._cursor() as cur:

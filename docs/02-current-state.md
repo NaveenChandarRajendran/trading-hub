@@ -26,7 +26,13 @@ page). Users only via `backend/scripts/create_user.py`; argon2id; 30-day sliding
 Log out), relative API calls (`shared/api.ts` `apiFetch`, `wsUrl`), Vite proxy for `/api` and `/ws`. Double-clicked
 `dist/index.html` only shows how to start. Tables `th_users`, `th_sessions`, `th_login_attempts`. Tests:
 `backend/test_auth.py` (every route 401 / 4401, limits, expiry, logout, Postgres store, CLI), `shared/auth/auth.test.ts`,
-feed 4401 test. Next: step 2 (strategies, migration).
+feed 4401 test.
+Step 2 done (28-Oct): `th_strategies` (+ `th_user_prefs`, `pt_daily_summary`, `strategy_id` on pt_accounts / pt_orders /
+pt_trades / pt_positions / pt_order_levels / scalper_daily_summary / algo_events / algo_state / algo_daily_summary;
+writes fill it from the account), `strategies.py` + `/api/strategies*` (owner-only, 404 for others; set / reset
+capital, archive need a flat book), `scripts/migrate_users_strategies.py` (backup, one transaction, idempotent,
+P&L check; rehearsed on a copy of the live tables, NOT run on the live DB yet). Tests: `test_strategies.py` (rules +
+isolation, JSON and Postgres), `test_migration.py`. Next: step 3 (engine, WebSocket, algo per strategy).
 
 ## Dashboard (branch `feature/dashboard`, ADR 0003)
 Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backend (`python main.py`) and open it.

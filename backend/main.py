@@ -11,6 +11,7 @@ Open without one: POST /api/auth/login and the UI page (GET /).
 
 Endpoints:
     POST /api/auth/login | /api/auth/logout, GET /api/auth/me   (auth_api.py)
+    /api/strategies[/{id}[/capital|reset|archive|unarchive]]   (the user's own strategies; strategies_api.py)
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
@@ -58,11 +59,13 @@ from candles import parse_intraday, recent_sessions
 import paper_api
 from paper_levels import TrackerLevels
 import sr_api
+import strategies_api
 from dhan_client import SCRIP, DhanClient, DhanError, TokenExpired
 from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
 from envfile import load_env_file
 from store import IST, PaperPgStore, PgStore
+from strategies import Strategies
 from tracker import Tracker
 
 ALLOWED_INTERVALS = (1, 3, 5, 10, 15, 30)
@@ -381,6 +384,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     dashboard_levels_api.register(app, tracker.store, tracker.clock)
     if paper:
         paper_api.register(app, paper)
+        strategies_api.register(app, Strategies(paper.store, paper.clock))
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo
