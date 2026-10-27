@@ -293,7 +293,7 @@ def test_status_endpoint_shape(env):
 
 # ---------------------------------------------------------------- safety
 ALGO_MODULES = ("algo_config.py", "algo_filters.py", "algo_logic.py", "algo_service.py", "algo_api.py", "algo_replay.py")
-ALLOWED_IMPORTS = {"json", "logging", "os", "re", "sys", "argparse", "threading", "time", "traceback", "dataclasses",
+ALLOWED_IMPORTS = {"json", "logging", "os", "re", "sys", "argparse", "contextlib", "threading", "time", "traceback", "dataclasses",
                    "datetime", "typing", "fastapi", "algo_config", "algo_filters", "algo_logic", "algo_reports",
                    "algo_service", "calc", "chain_snapshots", "envfile",
                    "candles", "dhan_client", "dhan_feed", "holidays", "instruments", "paper_charges", "paper_engine",
@@ -404,6 +404,6 @@ def test_premium_target_exit_and_a_win_ends_the_index_day(env):
     assert st["open"] is None and t["exitReason"].startswith("Premium target: LTP 145 >= entry 120.05 + 20%")
     assert t["pnl"] > t["charges"] > 0 and st["won"]
     algo.filters = lambda sym, end, now, r=None: {**GOOD_CE, "toi": None}
-    candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22790)
+    candle(algo, paper, clock, "10:30", 22780, 22805, 22775, 22785)  # touches R1, closes back below R1 - 10: R1 reclaimed
     msgs = [e["message"] for e in algo.store.algo_events(DAY) if e["kind"] == "skip"]
     assert any("a trade closed in profit: done for NIFTY today" in m for m in msgs) and st["open"] is None

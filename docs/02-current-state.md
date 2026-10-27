@@ -73,6 +73,16 @@ setups on 5-minute candles, filters from the live apps, its own "Algo" paper acc
   token, short-lived connections (< 10 s) keep the backoff growing, HTTP 429 → 60 s doubling to 5 min, repeated feed
   lines collapsed per 5 min, token check (`DhanClient.check_token`, GET /profile) at algo start and 09:00.
   Tests: `test_dhan_feed.py`, `test_dhan_token.py`, `test_algo_health.py`.
+- Broken levels and setup priority (27-Oct, `fix/broken-levels`, every variant): level state per index per day
+  (`state["broken"]`: a support closed below by the buffer / a resistance closed above is broken until a close back
+  beyond it by the buffer); no Range CE at a broken S1, no Range PE at a broken R1; max 1 range trade per level per day
+  (`state["rangeTaken"]`); each open trade records its level and D never arms the other side at that level; a retest
+  that closes on the wrong side of an armed level is logged. New log kind `level` (type `levels`).
+  Replay-only options in `algo_config.py` (live values leave the rules unchanged): `STOP_BUFFER`, `RANGE_TOI_WITH_MIN`,
+  `ARM_ON_STOP_CANDLE` (point-2 proposal, waiting for Naveen). `algo_replay.py --rules before-27oct,live,stop50,
+  range-toi20,arm-on-stop` compares them; `--export-scenario` writes `fixtures/scenarios/<day>.json`.
+  Tests: `test_algo_levels.py` (rules), `test_algo_scenarios.py` (23 / 26 / 27-Oct as stored, one-setup-per-level
+  check on every candle of every day, variant and rule set). The 27-Oct fixture was exported at 11:55 (partial day).
 - Reliability (24-Oct): feed watchdog in `dhan_feed.py` (polled recv, reconnect after 2 min without packets in market
   hours, `on_event` into the algo log), per-index watchdog + logged resubscribe / reconnect attempts, exceptions with
   tracebacks, heartbeat every 15 min, status `health` (ok / stale / error + reason) on the page, network calls outside

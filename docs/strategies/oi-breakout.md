@@ -1,6 +1,8 @@
 # Strategy: OI breakout algo (paper only)
 
-Status: approved by Naveen 23-Oct-2026 (first live paper day 23-Oct). Code: `backend/algo_logic.py` (rules),
+Status: approved by Naveen 23-Oct-2026 (first live paper day 23-Oct); broken-level rule and setup priority added
+27-Oct-2026. This file is the single written source of the rules: the code follows it, and every rule change updates it.
+Status line of each rule: **live** unless marked *replay option* or *proposal*. Code: `backend/algo_logic.py` (rules),
 `backend/algo_service.py` (runner), every number in `backend/algo_config.py`. PAPER TRADING ONLY: orders go to the
 paper engine's "Algo" account (₹1,00,000); there is no code path to Dhan's order APIs.
 
@@ -22,6 +24,22 @@ change during the day. A backend started after 09:30 locks them at start (logged
 
 Buffer: NIFTY 10, BANKNIFTY 25 points.
 
+## Level state: broken and reclaimed (27-Oct-2026, every variant)
+- A **support** (S1, S2, S3) is **broken** when a 5-minute candle closes below it − buffer. A **resistance** (R1, R2,
+  R3) is broken when a candle closes above it + buffer.
+- A broken level is **reclaimed** when a candle closes back beyond it by the buffer: a support above it + buffer, a
+  resistance below it − buffer. Until then it stays broken, for the rest of the day.
+- The log shows "S1 54,500 broken: …" and "S1 54,500 reclaimed: …" for R1 / S1 (the levels the range setup uses).
+
+## One setup per level (27-Oct-2026, every variant)
+- At any level only one setup is active at a time. **Breakout / breakdown comes first:** once a level is broken it
+  belongs to the breakout / breakdown setup until it is reclaimed. A price coming back to a broken support from below
+  is a *pullback to broken support* (a Breakdown PE setup), never a CE bounce; a price coming back to a broken
+  resistance from above is a Breakout CE pullback, never a PE rejection.
+- The algo never holds or signals a CE and a PE at the same level at the same time. Variant D, which can arm a setup
+  while a trade is open, does not arm a setup at the level of an open trade of the other side ("break not armed: Range
+  CE is open at S1"). The regression tests check this on every candle of every stored day.
+
 ## Setup 1: Breakout CE / Breakdown PE
 - **Break**: a candle closes above R1 + buffer (PE: below S1 − buffer).
 - **Filters on the break candle** (CE / PE): Trending OI Bullish / Bearish with |strength| ≥ 40 %; OI change BULLISH /
@@ -41,9 +59,20 @@ Buffer: NIFTY 10, BANKNIFTY 25 points.
   Stop: a close above R1 + buffer, or premium −10 %.
 - **S1 bounce → CE**: low ≤ S1 and close above S1. Target R1 zone (spot ≥ R1 − buffer). Stop: a close below
   S1 − buffer, or premium −10 %.
-- Only if R1 − S1 ≥ 100 (NIFTY) / 250 (BANKNIFTY). Blocked when Trending OI is ≥ 40 % against the trade (Bullish
-  blocks the PE, Bearish blocks the CE). A new touch needs a candle that did not touch the level first. A candle that
-  started with a breakout setup armed is not used for range.
+- Checked in this order; the first that fails blocks the trade and is logged:
+  1. **Not on a broken level**: no Range CE at a broken S1, no Range PE at a broken R1, until it is reclaimed. Log:
+     "Range CE at S1 blocked: S1 broken at 10:25 (closed below S1 − 25), not reclaimed: a retest from below belongs to
+     the Breakdown PE setup".
+  2. **One range trade per level per day** (R1 once, S1 once). Log: "Range CE at S1 blocked: 1 range trade at S1
+     already today (max 1 per level)".
+  3. R1 − S1 ≥ 100 (NIFTY) / 250 (BANKNIFTY).
+  4. Not when Trending OI is ≥ 40 % against the trade (Bullish blocks the PE, Bearish blocks the CE).
+  5. The entry rules (window, trades per index, a win ends the day) and no room.
+- A new touch needs a candle that did not touch the level first. A candle that started with a breakout setup armed is
+  not used for range.
+- Example, 27-Oct BANKNIFTY (S1 54,500): trade 1 Range CE at 09:40, stopped at 10:25 by a close at 54,428 (below
+  54,475), which also broke S1. The 10:40 candle came back up to 54,517 and closed 54,507: before this rule it bought a
+  CE again (trade 2, stopped at 11:00); now it is blocked.
 
 ## Rule variants (`RULE_VARIANT` in algo_config.py, env `ALGO_VARIANT`; live **B** since 26-Oct-2026)
 The live variant places paper orders. The other three run as **shadows** on the same live candles and filter values:
@@ -60,6 +89,27 @@ the result is measured in index points. 23-Oct ran A live (before shadows existe
   retest from the other side is a pullback.
 - **No room** (every variant, breakout and range entries): skip when spot is already at or through the target zone
   (on 23-Oct BANKNIFTY the 09:50 breakdown closed at 54,607.7 with its S2 zone at 54,625 already passed).
+- **Retest log** (B, C, D and A): a candle that comes back within the buffer of an armed setup's level but closes on
+  the wrong side of it (CE: at or below R1, PE: at or above S1) is neither a pullback nor a cancel; it is logged as
+  "Breakdown PE retest at 10:40 not a pullback: … (a pullback closes below S1)". Log only, no rule change.
+- **A break while a position is open** (A, B, C): ignored ("break ignored (position open)"), even when that candle's
+  close also stops the open trade. *Proposal, not live (27-Oct review, point 2):* arm the setup when the break comes on
+  the very candle that stops the open trade (`ARM_ON_STOP_CANDLE`), so the retests after it are checked as pullbacks.
+  Waiting for Naveen's decision.
+
+## Replay options (not live; for comparisons over more days)
+Set only by `algo_replay.RULE_SETS` (`--rules` in `algo_replay.py`); the live values in `algo_config.py` stay as above.
+- `stop50`: BANKNIFTY spot stop 50 points beyond the level instead of 25 (the break / pullback buffer stays 25).
+- `range-toi20`: a range trade also needs Trending OI ≥ 20 % in its direction (Bullish for the CE, Bearish for the PE).
+- `arm-on-stop`: the point-2 proposal above.
+- `before-27oct`: the rules before the broken-level rule (no level state, no per-level limit), for before / after.
+
+## Real-day regression tests
+`backend/test_algo_scenarios.py` replays stored days (`backend/fixtures/scenarios/<day>.json`: locked levels, candles,
+RSI and the filter values the live algo logged) and asserts what the system must do: 23-Oct (NIFTY 09:35 break skipped
+by A; B's 09:50 pullback), 26-Oct (no entries), 27-Oct (trade 1 taken, trade 2 blocked, the retest checked as a
+Breakdown PE pullback). Every rule change must keep them passing; a new day that shows a mistake gets its own test
+(`python algo_replay.py --date <day> --export-scenario`, then a test).
 
 ## Replay
 `python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source db|dhan` (backend folder). `dhan`: historical

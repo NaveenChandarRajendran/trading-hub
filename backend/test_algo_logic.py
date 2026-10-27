@@ -33,7 +33,8 @@ def state(levels=LEVELS):
 
 
 def kinds(actions):
-    return [a.get("kind", a["type"]) for a in actions]
+    """Action kinds without the broken / reclaimed level lines (test_algo_levels.py covers those)."""
+    return [a.get("kind", a["type"]) for a in actions if a.get("kind") != "level"]
 
 
 def test_levels_locked_once_with_a_log_line():

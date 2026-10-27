@@ -49,7 +49,7 @@ def test_b_on_23_oct_nifty_enters_pe_0950_and_exits_in_the_s2_zone():
     assert (t["setup"], t["entryAt"], t["entrySpot"], t["exitAt"], t["exitSpot"]) == ("Breakdown PE", "09:50", 22661.7, "10:00", 22610.0)
     assert t["points"] == 51.7 and r["points"] == 51.7
     a = replay_index("NIFTY", D, five(), LEVELS, "A")
-    assert a["trades"] == [] and [e["kind"] for e in a["events"] if e["kind"] != "levels"] == ["skip"]
+    assert a["trades"] == [] and [e["kind"] for e in a["events"] if e["kind"] not in ("levels", "level")] == ["skip"]
 
 
 def test_target_fill_uses_the_open_when_the_market_is_already_through_it():

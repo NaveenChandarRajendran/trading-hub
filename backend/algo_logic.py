@@ -12,6 +12,9 @@ State is a plain dict (stored as JSON, so a restart resumes exactly where it was
   setups      variants B-D: armed setups per level slot {"S1": {...}, "S2": {...}}, armedLv per slot
   armed       {"CE": bool, "PE": bool}: a new break needs a close back on the other side of R1 / S1 first
   rangeArmed  {"R1": bool, "S1": bool}: a new range touch needs a candle that did not touch the level first
+  broken      {slot: {"dir": "below" | "above", "at": "HH:MM"}}: supports closed below / resistances closed above by the
+              buffer and not reclaimed yet (a broken S1 gives no Range CE, a broken R1 no Range PE)
+  rangeTaken  {"R1": n, "S1": n}: range trades taken at each level today (cfg.RANGE_TRADES_PER_LEVEL)
 Sides: CE (bullish: breakout above R1, range bounce at S1), PE (bearish: breakdown below S1, range rejection at R1).
 """
 from datetime import datetime
@@ -25,7 +28,8 @@ LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
 def new_state(symbol, day):
     return {"symbol": symbol, "day": day, "levels": None, "levelsAt": None, "trades": 0, "won": False, "open": None, "setup": None,
             "armed": {"CE": True, "PE": True}, "rangeArmed": {"R1": True, "S1": True}, "stopped": False,
-            "setups": {}, "armedLv": {}}  # setups / armedLv: variants B-D (a setup per level slot)
+            "setups": {}, "armedLv": {},  # setups / armedLv: variants B-D (a setup per level slot)
+            "broken": {}, "rangeTaken": {"R1": 0, "S1": 0}}
 
 
 def fmt(x):
@@ -73,6 +77,15 @@ def breakout_checks(side, f):
          if comp and comp.get("verdict") else f"not ready ({comp['priced']}/{comp['total']} priced)" if comp else "no data"},
     ]
     return all(c["ok"] for c in checks), checks
+
+
+def retest_text(name, side, slot, lvl, buf, c, now):
+    """Log line for a candle that came back to an armed setup's level but closed on the wrong side of it (not a
+    pullback, not a cancel): the retest was checked and not taken."""
+    bull = side == "CE"
+    return (f"{name} retest at {hm(now)} not a pullback: {'low' if bull else 'high'} "
+            f"{fmt(c['low'] if bull else c['high'])} came within {buf} of {slot} {fmt(lvl)} but closed {fmt(c['close'])} "
+            f"{'at or below' if bull else 'at or above'} it (a pullback closes {'above' if bull else 'below'} {slot})")
 
 
 def checks_text(checks):
@@ -128,10 +141,10 @@ def lock_levels(state, levels, at):
     return [event("levels", f"Levels locked at {hm(at)}: {text}", levels=dict(levels))]
 
 
-def _enter(state, side, setup, target, stop_dir, stop_price, reason, c, now, data):
+def _enter(state, side, setup, target, stop_dir, stop_price, reason, c, now, data, level):
     state["trades"] += 1
-    state["open"] = {"side": side, "setup": setup, "entrySpot": c["close"], "entryAt": hm(now), "target": target,
-                     "stop": {"dir": stop_dir, "price": stop_price}, "reason": reason}
+    state["open"] = {"side": side, "setup": setup, "level": level, "entrySpot": c["close"], "entryAt": hm(now),
+                     "target": target, "stop": {"dir": stop_dir, "price": stop_price}, "reason": reason}
     return {"type": "enter", "side": side, "setup": setup, "reason": reason, "data": {**data, "target": target,
             "spotStop": f"close {stop_dir} {fmt(stop_price)}"}}
 
@@ -164,24 +177,87 @@ def _spot_stop(state, c, candle, base, out):
                         "data": base})
 
 
+def track_levels(state, c, now, candle, base, out):
+    """Level state on each close: a support closed below it - buffer (a resistance: above it + buffer) is broken; a
+    close back beyond it by the buffer reclaims it. Every slot is tracked; R1 / S1 changes are logged (they decide the
+    range setup)."""
+    L, buf = state["levels"], cfg.BUFFER[state["symbol"]]
+    broken = state.setdefault("broken", {})
+    for slot in LEVEL_SLOTS:
+        lvl = L.get(slot)
+        if lvl is None:
+            continue
+        sup = slot[0] == "S"
+        if slot not in broken and (c["close"] < lvl - buf if sup else c["close"] > lvl + buf):
+            broken[slot] = {"dir": "below" if sup else "above", "at": hm(now)}
+            if slot in ("R1", "S1"):
+                out.append(event("level", f"{slot} {fmt(lvl)} broken: {candle} closed {'below' if sup else 'above'} "
+                                          f"{slot} {'-' if sup else '+'} {buf}. No Range {'CE' if sup else 'PE'} at "
+                                          f"{slot} until a close back {'above' if sup else 'below'} "
+                                          f"{fmt(lvl + buf if sup else lvl - buf)}", **base))
+        elif slot in broken and (c["close"] > lvl + buf if sup else c["close"] < lvl - buf):
+            del broken[slot]
+            if slot in ("R1", "S1"):
+                out.append(event("level", f"{slot} {fmt(lvl)} reclaimed: {candle} closed back "
+                                          f"{'above' if sup else 'below'} {slot} {'+' if sup else '-'} {buf}", **base))
+
+
+def holding(state):
+    """The open trade that blocks a new break, or None. With cfg.ARM_ON_STOP_CANDLE (proposal, not live) a trade being
+    stopped out on this very candle does not block it."""
+    o = state["open"]
+    return None if o and cfg.ARM_ON_STOP_CANDLE and o.get("exiting") else o
+
+
+def active_sides(state):
+    """{level slot: {sides}} of the open trade and the armed setups. One setup per level: never two sides."""
+    out = {}
+    o = state.get("open")
+    if o and not o.get("exiting") and o.get("level"):
+        out.setdefault(o["level"], set()).add(o["side"])
+    for slot, s in (state.get("setups") or {}).items():
+        out.setdefault(slot, set()).add(s["side"])
+    s = state.get("setup")
+    if s:
+        out.setdefault("R1" if s["side"] == "CE" else "S1", set()).add(s["side"])
+    return out
+
+
 def _range(state, c, now, filters, block, candle, base, out):
     """Range: rejection at R1 (PE) / bounce at S1 (CE). Returns True when it entered."""
     L, sym, buf = state["levels"], state["symbol"], cfg.BUFFER[state["symbol"]]
+    sbuf = cfg.STOP_BUFFER[sym]
     r1, s1 = L.get("R1"), L.get("S1")
     if r1 is None or s1 is None:
         return False
     width = r1 - s1
     toi = filters.get("toi")
+    broken = state.setdefault("broken", {})
+    taken = state.setdefault("rangeTaken", {"R1": 0, "S1": 0})
     for key, side, touched, name, target, stop_dir, stop_price, against in (
-            ("R1", "PE", c["high"] >= r1 and c["close"] < r1, "Range PE (R1 rejection)", s1 + buf, "above", r1 + buf,
+            ("R1", "PE", c["high"] >= r1 and c["close"] < r1, "Range PE (R1 rejection)", s1 + buf, "above", r1 + sbuf,
              "Bullish"),
-            ("S1", "CE", c["low"] <= s1 and c["close"] > s1, "Range CE (S1 bounce)", r1 - buf, "below", s1 - buf,
+            ("S1", "CE", c["low"] <= s1 and c["close"] > s1, "Range CE (S1 bounce)", r1 - buf, "below", s1 - sbuf,
              "Bearish")):
         if not touched or not state["rangeArmed"][key]:
             continue
         state["rangeArmed"][key] = False
         touch = (f"{candle}: {'high' if key == 'R1' else 'low'} {fmt(c['high'] if key == 'R1' else c['low'])} "
                  f"touched {key} {fmt(r1 if key == 'R1' else s1)}, closed back {'below' if key == 'R1' else 'above'}")
+        short = f"Range {side} at {key}"
+        b = broken.get(key)
+        if cfg.RANGE_BLOCK_BROKEN and b:
+            res = key == "R1"
+            out.append(event("skip", f"{short} blocked: {key} broken at {b['at']} (closed {b['dir']} {key} "
+                                      f"{'+' if res else '-'} {buf}), not reclaimed: a retest from "
+                                      f"{'above' if res else 'below'} belongs to the "
+                                      f"{'Breakout CE' if res else 'Breakdown PE'} setup. {touch}", **base))
+            continue
+        per_level = cfg.RANGE_TRADES_PER_LEVEL
+        if per_level is not None and taken.get(key, 0) >= per_level:
+            out.append(event("skip", f"{short} blocked: {taken[key]} range trade at {key} already today (max "
+                                      f"{per_level} per level). {touch}", **base))
+            continue
         min_w = cfg.MIN_RANGE_WIDTH[sym]
         if width < min_w:
             out.append(event("skip", f"{name} blocked: R1 - S1 = {fmt(width)} < {min_w}. {touch}", **base))
@@ -189,6 +265,12 @@ def _range(state, c, now, filters, block, candle, base, out):
         if toi and toi["sentiment"] == against and abs(toi["strength"]) >= cfg.TOI_STRENGTH_MIN:
             out.append(event("skip", f"{name} blocked: Trending OI {toi['sentiment']} {abs(toi['strength']):.1f}% "
                                       f">= {cfg.TOI_STRENGTH_MIN:.0f}% against it. {touch}", **base))
+            continue
+        need = cfg.RANGE_TOI_WITH_MIN
+        want = "Bullish" if side == "CE" else "Bearish"
+        if need is not None and not (toi and toi["sentiment"] == want and abs(toi["strength"]) >= need):
+            have = f"{toi['sentiment']} {abs(toi['strength']):.1f}%" if toi else "no data"
+            out.append(event("skip", f"{name} blocked: Trending OI {have} (need {want} >= {need:g}%). {touch}", **base))
             continue
         why = entry_block(state, now, block)
         if why:
@@ -200,7 +282,8 @@ def _range(state, c, now, filters, block, candle, base, out):
         toi_txt = (f"{toi['sentiment']} {abs(toi['strength']):.1f}%" if toi
                    else "not checked" if filters.get("oiChecked") is False else "no data")
         reason = f"{name}: {touch}. Range R1 - S1 = {fmt(width)}. Trending OI {toi_txt} (not blocking)"
-        out.append(_enter(state, side, name, target, stop_dir, stop_price, reason, c, now, base))
+        out.append(_enter(state, side, name, target, stop_dir, stop_price, reason, c, now, base, key))
+        taken[key] = taken.get(key, 0) + 1
         return True
     return False
 
@@ -208,7 +291,7 @@ def _range(state, c, now, filters, block, candle, base, out):
 def _on_candle_a(state, c, now, filters, block=""):
     """Variant A: filters checked only on the break candle."""
     L = state["levels"]
-    buf = cfg.BUFFER[state["symbol"]]
+    buf, sbuf = cfg.BUFFER[state["symbol"]], cfg.STOP_BUFFER[state["symbol"]]
     r1, s1, r2, s2 = L.get("R1"), L.get("S1"), L.get("R2"), L.get("S2")
     out = []
     candle, base = _ctx(state, c, now)
@@ -259,11 +342,16 @@ def _on_candle_a(state, c, now, filters, block=""):
                 reason = (f"{name}: break {s['breakText']}; pullback {candle}: {confirm_txt}. "
                           f"Filters at the break: {checks_text(s['checks'])}")
                 out.append(_enter(state, s["side"], name, target, "below" if bull else "above",
-                                  lvl - buf if bull else lvl + buf, reason, c, now, {**base, "checks": s["checks"]}))
+                                  lvl - sbuf if bull else lvl + sbuf, reason, c, now, {**base, "checks": s["checks"]},
+                                  "R1" if bull else "S1"))
                 entered = True
-        elif s["count"] >= cfg.PULLBACK_CANDLES:
-            state["setup"] = None
-            out.append(event("expire", f"{name} expired: no pullback within {cfg.PULLBACK_CANDLES} candles", **base))
+        else:
+            if c["low"] <= lvl + buf if s["side"] == "CE" else c["high"] >= lvl - buf:
+                out.append(event("skip", retest_text(name, s["side"], "R1" if s["side"] == "CE" else "S1", lvl, buf, c,
+                                                     now), **base))
+            if s["count"] >= cfg.PULLBACK_CANDLES:
+                state["setup"] = None
+                out.append(event("expire", f"{name} expired: no pullback within {cfg.PULLBACK_CANDLES} candles", **base))
 
     # 4. a new break above R1 / below S1
     for side, lvl, broke, name, txt in (
@@ -273,7 +361,7 @@ def _on_candle_a(state, c, now, filters, block=""):
             continue
         state["armed"][side] = False
         break_text = f"{candle} closed {txt}"
-        if state["setup"] or state["open"]:
+        if state["setup"] or holding(state):
             out.append(event("skip", f"{name} break ignored ({'setup armed' if state['setup'] else 'position open'}): "
                                       f"{break_text}", **base))
             continue
@@ -287,7 +375,9 @@ def _on_candle_a(state, c, now, filters, block=""):
                                   f"{cfg.PULLBACK_CANDLES} candles for a pullback to {'R1' if side == 'CE' else 'S1'}",
                          checks=checks, **base))
 
-    # 5. range: rejection at R1 (PE) / bounce at S1 (CE), only with no breakout setup and no position
+    # 5. broken / reclaimed levels, then range: rejection at R1 (PE) / bounce at S1 (CE), only with no breakout setup
+    # and no position
+    track_levels(state, c, now, candle, base, out)
     if not entered and not had_setup and not state["setup"] and not state["open"]:
         _range(state, c, now, filters, block, candle, base, out)
     return out
@@ -318,7 +408,7 @@ def _on_candle_v(state, c, now, filters, block, v):
     D: B + level ladder: R1..R3 / S1..S3 are all breakout levels (target: the next one); a broken level stays armed
        until a close back through it (no 6-candle expiry), so a later retest from the other side is a pullback."""
     L = state["levels"]
-    buf = cfg.BUFFER[state["symbol"]]
+    buf, sbuf = cfg.BUFFER[state["symbol"]], cfg.STOP_BUFFER[state["symbol"]]
     setups = state.setdefault("setups", {})
     armed = state.setdefault("armedLv", {})
     out = []
@@ -395,10 +485,13 @@ def _on_candle_v(state, c, now, filters, block, v):
                 continue
             reason = (f"{name} [{v}]: break {s['breakText']}; {how}. Filters now: {checks_text(checks)}")
             out.append(_enter(state, side, name, target, "below" if bull else "above",
-                              lvl - buf if bull else lvl + buf, reason, c, now, {**base, "checks": checks, "variant": v}))
+                              lvl - sbuf if bull else lvl + sbuf, reason, c, now,
+                              {**base, "checks": checks, "variant": v}, slot))
             del setups[slot]
             entered = True
             continue
+        if c["low"] <= lvl + buf if bull else c["high"] >= lvl - buf:
+            out.append(event("skip", retest_text(name, side, slot, lvl, buf, c, now), setupName=name, **base))
         if v != "D" and s["count"] >= cfg.PULLBACK_CANDLES:
             del setups[slot]
             out.append(event("expire", f"{name} expired: no entry within {cfg.PULLBACK_CANDLES} candles", setupName=name,
@@ -416,9 +509,14 @@ def _on_candle_v(state, c, now, filters, block, v):
             armed[slot] = False
             name = setup_name(side, slot)
             break_text = f"{candle} closed {'above' if bull else 'below'} {slot} {fmt(lvl)} {'+' if bull else '-'} {buf}"
-            if v != "D" and (setups or state["open"] or entered):
+            if v != "D" and (setups or holding(state) or entered):
                 why = "setup armed" if setups else "position open"
                 out.append(event("skip", f"{name} break ignored ({why}): {break_text}", setupName=name, **base))
+                continue
+            o = state["open"]
+            if o and not o.get("exiting") and o.get("level") == slot and o["side"] != side:
+                out.append(event("skip", f"{name} break not armed: {o['setup']} {o['side']} is open at {slot} (one "
+                                          f"setup per level): {break_text}", setupName=name, **base))
                 continue
             ok, checks = checks_by_side[side]
             setups[slot] = {"side": side, "slot": slot, "name": name, "level": lvl, "breakAt": hm(now), "count": 0,
@@ -430,6 +528,7 @@ def _on_candle_v(state, c, now, filters, block, v):
                                       f"Re-checked every candle {until}; entry on a pullback to {slot} while they pass"
                                       f"{extra}", setupName=name, checks=checks, **base))
 
+    track_levels(state, c, now, candle, base, out)
     if not entered and not had_setup and not setups and not state["open"]:
         _range(state, c, now, filters, block, candle, base, out)
     return out

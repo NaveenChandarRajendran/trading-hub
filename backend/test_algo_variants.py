@@ -38,7 +38,7 @@ def run(s, rows, variant):
     out = []
     for end, o, h, l, c, r in rows:
         acts = on_candle(s, {"open": o, "high": h, "low": l, "close": c}, at(end), f(r), variant=variant)
-        out += [(end, a.get("kind", a["type"]), a) for a in acts]
+        out += [(end, a.get("kind", a["type"]), a) for a in acts if a.get("kind") != "level"]
     return out
 
 
@@ -69,7 +69,7 @@ def test_b_expires_after_6_candles_and_a_close_back_through_cancels():
         assert not [a for a in on_candle(s, {"open": 22650, "high": 22660, "low": 22640, "close": 22650},
                                          at(f"10:{5 + 5 * i:02d}"), f(40), variant="B") if a.get("kind") == "expire"]
     out = on_candle(s, {"open": 22650, "high": 22660, "low": 22640, "close": 22650}, at("10:30"), f(40), variant="B")
-    assert [a["kind"] for a in out] == ["expire"]
+    assert [a["kind"] for a in out if a["kind"] != "level"] == ["expire"]
     s = state()
     on_candle(s, {"open": 22700, "high": 22702, "low": 22670, "close": 22680}, at("10:00"), f(60), variant="B")
     out = on_candle(s, {"open": 22680, "high": 22720, "low": 22678, "close": 22715}, at("10:05"), f(40), variant="B")

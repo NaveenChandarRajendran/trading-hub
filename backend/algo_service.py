@@ -41,7 +41,7 @@ from store import IST
 log = logging.getLogger("algo")
 IDX, FNO = "IDX_I", "NSE_FNO"
 # fine-grained kind -> algo_events.type (the kind stays in details.kind)
-EVENT_TYPE = {"armed": "signal", "cancel": "signal", "expire": "signal", "stale": "feed"}
+EVENT_TYPE = {"armed": "signal", "cancel": "signal", "expire": "signal", "stale": "feed", "level": "levels"}
 SUMMARY_AT = (15, 35)  # IST: algo_daily_summary is written once the session is over
 TOKEN_CHECK_AT = dtime(9, 0)  # IST: the token is checked again before the feed connects
 

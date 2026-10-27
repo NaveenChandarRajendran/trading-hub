@@ -14,6 +14,8 @@ Trending OI history exist; otherwise the run is labelled "OI not checked" (price
 Usage:
     python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source db
     python algo_replay.py --date 2026-10-23 --variants A,B,C,D --source dhan
+    python algo_replay.py --date 2026-10-27 --source db --rules before-27oct,live,stop50,range-toi20
+    python algo_replay.py --date 2026-10-27 --export-scenario   (fixtures/scenarios/<date>.json, test_algo_scenarios.py)
 Levels: the day's algo_levels rows, or --levels "NIFTY:R1=22800,R2=23000,...;BANKNIFTY:...".
 Report: logs/replay-<date>.md and .json.
 """
@@ -21,6 +23,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import algo_config as cfg
@@ -30,6 +33,29 @@ from candles import aggregate
 from store import IST
 
 LEVEL_SLOTS = ("R1", "R2", "R3", "S1", "S2", "S3")
+
+# Rule sets for comparisons (algo_config names -> values); "live" = algo_config as it is. Replay only, never live.
+RULE_SETS = {
+    "before-27oct": {"RANGE_BLOCK_BROKEN": False, "RANGE_TRADES_PER_LEVEL": None},  # before the broken-level rule
+    "live": {},
+    "stop50": {"STOP_BUFFER": {**cfg.STOP_BUFFER, "BANKNIFTY": 50}},  # BANKNIFTY spot stop 50 points beyond the level
+    "range-toi20": {"RANGE_TOI_WITH_MIN": 20.0},  # range needs Trending OI >= 20 % in its direction
+    "arm-on-stop": {"ARM_ON_STOP_CANDLE": True},  # proposal: a break on the stop-out candle still arms its setup
+}
+
+
+@contextmanager
+def rule_set(*names):
+    """Runs the block with the named RULE_SETS applied to algo_config (later names win), then restores it."""
+    over = {k: v for n in names for k, v in RULE_SETS[n].items()}
+    old = {k: getattr(cfg, k) for k in over}
+    for k, v in over.items():
+        setattr(cfg, k, v)
+    try:
+        yield
+    finally:
+        for k, v in old.items():
+            setattr(cfg, k, v)
 
 
 def at(day, hhmm):
@@ -101,6 +127,39 @@ def oi_filters_from_store(store, symbol, day, expiry=None):
     return at_end
 
 
+def export_scenario(store, day):
+    """A day as the live algo saw it: locked levels and every 5-minute candle with the RSI and filter values it was
+    evaluated with (algo_levels, algo_candles). Saved as fixtures/scenarios/<day>.json for test_algo_scenarios.py."""
+    out = {"day": day, "indices": {}}
+    for sym, lv in levels_from_db(store, day).items():
+        rows = []
+        for r in store.algo_candles(day, sym):
+            rows.append({"start": datetime.fromisoformat(r["candle_start"]).strftime("%H:%M"),
+                         **{k: r[k] for k in ("open", "high", "low", "close", "rsi", "toi_sentiment", "toi_strength",
+                                              "oi_change", "oi_change_points", "components", "components_move")}})
+        out["indices"][sym] = {"levels": lv, "candles": rows}
+    return out
+
+
+def scenario_inputs(scn, symbol):
+    """(5-minute candles, levels, filters_at) of one index of an exported scenario; the filter values are the ones the
+    live algo logged for each candle."""
+    day, ix = scn["day"], scn["indices"][symbol]
+    five, by_end = [], {}
+    for r in ix["candles"]:
+        start = at(day, r["start"])
+        five.append({"time": int(start.timestamp()), **{k: r[k] for k in ("open", "high", "low", "close", "rsi")}})
+        by_end[start + timedelta(minutes=cfg.CANDLE_MIN)] = r
+
+    def filters_at(end):
+        r = by_end.get(end) or {}
+        return {"toi": {"sentiment": r["toi_sentiment"], "strength": r["toi_strength"]} if r.get("toi_sentiment") else None,
+                "oiChange": {"verdict": r["oi_change"], "points": r["oi_change_points"]} if r.get("oi_change") else None,
+                "components": {"verdict": r["components"], "indexMove": r["components_move"] or 0.0, "priced": 1,
+                               "total": 1} if r.get("components") else None}
+    return five, ix["levels"], filters_at
+
+
 # ------------------------------------------------------------------ simulation
 def fill_at_target(o, c):
     """Spot at which a target exit fills inside candle c: the target, or the open when the candle opened already
@@ -109,10 +168,11 @@ def fill_at_target(o, c):
     return min(t, c["open"]) if o["side"] == "PE" else max(t, c["open"])
 
 
-def replay_index(symbol, day, five, levels, variant, minutes=None, option=None, filters_at=None):
+def replay_index(symbol, day, five, levels, variant, minutes=None, option=None, filters_at=None, after_candle=None):
     """Runs one index through one variant. five: the day's 5-minute candles with "rsi"; minutes: the day's 1-minute
     index candles (targets checked minute by minute; without them, on the 5-minute candles); option(side, spot, t):
-    -> {"name", "candles": {minute epoch: candle}} for premiums, or None (index points only).
+    -> {"name", "candles": {minute epoch: candle}} for premiums, or None (index points only); after_candle(state, end):
+    called after each evaluated candle (tests check invariants with it).
     Returns {"symbol", "variant", "events": [...], "trades": [...], "points"}."""
     st = new_state(symbol, day)
     events = [{"at": "09:30", "kind": "levels", "message": e["message"]} for e in lock_levels(st, levels, at(day, "09:30"))]
@@ -214,6 +274,8 @@ def replay_index(symbol, day, five, levels, variant, minutes=None, option=None, 
                                                                      f"{' · ' + o['option'] + ' @ ' + fmt(o['entryPrice']) if o.get('entryPrice') else ''}"
                                                                      f" · target {fmt(o['target'])}. {a['reason']}"})
                 o.pop("exiting", None)
+        if after_candle:
+            after_candle(st, end)
     if st["open"]:  # data ended before 15:15
         last = five[-1]
         close_trade(ist(last["time"]) + timedelta(minutes=cfg.CANDLE_MIN), last["close"], "End of data")
@@ -291,22 +353,35 @@ def main():
     ap.add_argument("--levels", default="", help='"NIFTY:R1=22800,...;BANKNIFTY:..." (default: the day\'s algo_levels)')
     ap.add_argument("--log-dir", default=cfg.LOG_DIR)
     ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--rules", default="", help=f"db source: compare rule sets ({', '.join(RULE_SETS)})")
+    ap.add_argument("--export-scenario", action="store_true", help="write fixtures/scenarios/<date>.json and stop")
     a = ap.parse_args()
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows consoles default to cp1252
     except (AttributeError, ValueError):
         pass
     pg, paper = _stores()
+    if a.export_scenario:
+        path = os.path.join("fixtures", "scenarios", f"{a.date}.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(export_scenario(paper, a.date), f, indent=1)
+        print(f"Written: {path}")
+        return
     levels = parse_levels(a.levels) if a.levels else levels_from_db(paper, a.date)
     if not levels:
         raise SystemExit("No levels: pass --levels or replay a day that has algo_levels rows.")
     variants = [v.strip().upper() for v in a.variants.split(",") if v.strip()]
     results, books = [], {}
     if a.source == "db":
-        for sym, lv in levels.items():
-            five = candles_from_db(paper, a.date, sym)
-            fa = oi_filters_from_store(pg, sym, a.date)
-            results += [replay_index(sym, a.date, five, lv, v, filters_at=fa) for v in variants]
+        for name in [r.strip() for r in a.rules.split(",") if r.strip()] or ["live"]:
+            with rule_set(name):
+                for sym, lv in levels.items():
+                    five = candles_from_db(paper, a.date, sym)
+                    fa = oi_filters_from_store(pg, sym, a.date)
+                    for v in variants:
+                        r = replay_index(sym, a.date, five, lv, v, filters_at=fa)
+                        results.append({**r, "variant": f"{v} {name}" if a.rules else v})
         source = "the live algo's stored 5-minute candles and RSI (algo_candles); index points only"
     else:
         results, books = _replay_dhan(a, levels, variants, pg, paper)

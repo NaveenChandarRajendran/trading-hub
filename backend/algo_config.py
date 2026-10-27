@@ -40,6 +40,18 @@ SHADOW_VARIANTS = tuple(v for v in VARIANTS if v != RULE_VARIANT)  # A, C, D: si
 CONTINUATION_AFTER = 3  # variant C
 MIN_RANGE_WIDTH = {"NIFTY": 100, "BANKNIFTY": 250}  # R1 - S1 for the range setup
 
+# Broken levels and setup priority (27-Oct-2026, every variant). A support closed below by the buffer (a resistance:
+# above) is "broken" until a close back beyond it by the buffer ("reclaimed"). A broken S1 gives no Range CE, a broken
+# R1 no Range PE: the level belongs to the breakdown / breakout setup.
+RANGE_BLOCK_BROKEN = True
+RANGE_TRADES_PER_LEVEL = 1  # range trades per level (R1, S1) per day; None = no limit
+
+# Replay-only options (27-Oct review): these live values keep the rules unchanged; algo_replay.RULE_SETS sets them for
+# comparisons. Change a live value only when Naveen decides.
+STOP_BUFFER = dict(BUFFER)  # spot stop distance beyond the level (review option c: BANKNIFTY 50)
+RANGE_TOI_WITH_MIN = None  # review option d: a range trade needs Trending OI >= this % in its direction
+ARM_ON_STOP_CANDLE = False  # proposal (point 2): a break on the candle that stops the open trade still arms its setup
+
 # filters on the break candle
 TOI_STRENGTH_MIN = 40.0  # Trending OI |strength %|, 5-minute rows
 TOI_INTERVAL = 5
