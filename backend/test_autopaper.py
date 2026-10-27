@@ -332,3 +332,30 @@ def test_four_pillar_and_supertrend_each_have_a_slot_on_megabull_on_any_index(tm
     assert [(tr["account"], tr["slot"]) for tr in t.state["trades"]] == [("megabull", "fourPillar"), ("megabull", "superTrend")]
     assert t.on_signal(fp, STATE) == "Position already open on this index"
     assert t.on_signal({**fp, "symbol": "BANKNIFTY"}, STATE) == "Entry sent"
+
+
+def test_target_exit_with_no_buyer_waits_for_the_fill_without_an_alert(tmp_path):
+    # owner 27-Oct-2026: a market exit with no bids stays PENDING in the paper engine; close the trade when it fills
+    t, acc, _ = make(tmp_path)
+    t.set_auto(True)
+    t.on_signal(GO, STATE)
+    wait_idle(t)
+    alerts = []
+    t.alert = lambda kind, msg: alerts.append(msg)
+
+    def pending_sell(inst, lots, qty):
+        acc.sent.append(("SELL", None))
+        acc.orders["X1"] = {"status": "OPEN", "avgPrice": None}
+        return "X1", None
+    acc.sell = pending_sell
+    acc.ltp_value = 121.0
+    t.tick()
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    assert tr["status"] == "open" and tr["exitPending"]["reason"] == "Target" and not alerts
+    t.tick()
+    assert acc.sent.count(("SELL", None)) == 1  # no second exit while the first waits
+    acc.orders["X1"] = {"status": "FILLED", "avgPrice": 120.5}
+    acc.qty = 0
+    t.tick()
+    assert tr["status"] == "closed" and tr["exitReason"] == "Target" and tr["exitPrice"] == 120.5 and "exitPending" not in tr

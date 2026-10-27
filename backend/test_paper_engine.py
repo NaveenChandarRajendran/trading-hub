@@ -372,3 +372,15 @@ def test_bad_input_raises(kwargs, msg):
     args.update(kwargs)
     with pytest.raises(ValueError, match=msg):
         engine().place_order(**args)
+
+
+def test_exit_with_no_buyers_waits_then_fills_on_the_next_bid():
+    # owner 27-Oct-2026: the Exit button used to refuse ("No buyers in the market depth")
+    e = engine()
+    bought(e)
+    e.on_tick(SID, book(95, bids=[], asks=[(95.5, 100)]), at("10:00"))
+    e.exit_position(SID, at("10:00"))
+    o = [x for x in e.orders.values() if x.side == SELL][0]
+    assert o.status == PENDING and "waiting for a buyer" in o.reason and e.positions[SID].open_qty == LOT
+    e.on_tick(SID, book(96, bids=[(96, 500)], asks=[(96.5, 500)]), at("10:00"))
+    assert o.status == FILLED and o.avg_price == 96 and e.positions[SID].open_qty == 0

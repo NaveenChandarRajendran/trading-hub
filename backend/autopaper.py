@@ -152,7 +152,10 @@ class TradingHubAccount:
             self.paper.cancel_order(order_id)
 
     def sell(self, inst, lots, qty):
+        """(order id, fill price); price None = the market SELL is waiting for a buyer (no bids this second)."""
         o = self.paper.place_order(inst["id"], "SELL", lots, "MARKET")
+        if o["status"] == "PENDING":
+            return o["id"], None
         if o["status"] != "FILLED":
             raise AccountError(f"Exit not filled: {o['status']} {o.get('reason', '')}".strip())
         return o["id"], o["avg_price"]
@@ -761,6 +764,9 @@ class AutoTrader:
                 return
             oid, price = self._try(trade["account"], "exit order", lambda: acc.sell(trade["instrument"], trade["lots"], trade["qty"]))
             trade["exitOrderId"] = oid
+            if price is None:  # waiting for a buyer: tick() closes the trade when the SELL fills
+                trade["exitPending"] = {"reason": reason, "note": note}
+                return
             self._close(trade, reason, price, note)
         except Exception as e:
             log.exception("exit failed")
@@ -799,6 +805,9 @@ class AutoTrader:
         cutoff = datetime.strptime(self.cfg.get("timeExit", "15:14"), "%H:%M").time()
         for t in [t for t in self.state["trades"] if t["status"] == "open" and not t.get("exiting")]:
             acc = self.accounts[t["account"]]
+            if t.get("exitPending"):
+                self._check_pending_exit(t, acc)
+                continue
             if now.time() >= cutoff:
                 threading.Thread(target=self._exit, args=(t, "Time"), daemon=True).start()
                 continue
@@ -823,6 +832,24 @@ class AutoTrader:
                     self._close(t, "Stop", st["avgPrice"])
                 elif t["account"] in APP and acc.position_qty(t["instrument"]) == 0:
                     self._close(t, "Time" if now.time() >= cutoff else "Manual", acc.last_sell_price(t["instrument"]))
+
+    def _check_pending_exit(self, t, acc):
+        """A market exit that had no buyer when sent: close the trade once it fills (or the 15:15 square-off sold it);
+        if it was cancelled with the position still open, clear the flag so the normal exit checks retry."""
+        p = t["exitPending"]
+        try:
+            o = acc.order(t["exitOrderId"])
+        except Exception:
+            return
+        if o and o["status"] == "FILLED":
+            t.pop("exitPending", None)
+            self._close(t, p["reason"], o["avgPrice"], p["note"])
+        elif o and o["status"] != "OPEN":
+            if acc.position_qty(t["instrument"]) == 0:
+                t.pop("exitPending", None)
+                self._close(t, p["reason"], acc.last_sell_price(t["instrument"]), p["note"])
+            else:
+                t.pop("exitPending", None)
 
     def start(self):
         def run():

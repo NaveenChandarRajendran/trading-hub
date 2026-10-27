@@ -450,10 +450,9 @@ class PaperEngine:
             raise OrderError("No open position to exit.")
         if not self.accepting_orders(now):
             raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
-        book = self.books.get(security_id)
-        if book is None or not book.bids:
-            raise OrderError("No buyers in the market depth; try again in a moment.")
-        return self._exit(pos, now, "Exit position", book)
+        # no buyers this second: the market SELL waits and fills on the next tick with bids (owner 27-Oct-2026: the
+        # Exit button used to refuse here)
+        return self._exit(pos, now, "Exit position", self.books.get(security_id), wait=True)
 
     def exit_all(self, now):
         events = []
@@ -472,7 +471,7 @@ class PaperEngine:
                 events += self._exit(pos, now, "Auto square-off 15:15", self.books.get(pos.security_id))
         return events
 
-    def _exit(self, pos, now, reason, book):
+    def _exit(self, pos, now, reason, book, wait=False):
         events = [self._cancel(o, now, f"Cancelled: {reason.lower()}.")
                   for o in self.orders.values()
                   if o.security_id == pos.security_id and o.side == SELL and o.status in OPEN_STATES]
@@ -484,6 +483,9 @@ class PaperEngine:
         self.orders[o.id] = o
         events.append(Event("order", o.to_dict()))
         w = walk_depth(book.bids, o.qty) if book else None
+        if w is None and wait:  # stays PENDING; _evaluate fills it when bids show
+            o.reason = f"{reason} · waiting for a buyer"
+            return events
         if w is None:  # square-off with no visible bids: fill at LTP and flag it
             ltp = book.ltp if book else pos.avg_buy
             w = (ltp, r2(ltp * o.qty), True)
