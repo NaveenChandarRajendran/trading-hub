@@ -9,6 +9,7 @@ _Last updated: 2026-10-23 (OI breakout algo on `feature/oi-breakout-algo`, built
 | Sensibull OI (`sensibull-oi`) | pasted Sensibull response | older styles |
 | **Dashboard** (`dashboard`, landing page) | backend `/api/dashboard/*`, `/ws/paper` candles | top of the sidebar; design system |
 | **Premium Analysis** (`premium-analysis`) | two pasted NSE option-chain-v3 JSONs | Manual group; design system |
+| **PCR Trend Analysis** (`pcr-trend`) | pasted Sensibull OI + NSE option-chain-v3 JSONs | Manual group; design system; for Naveen's father, not on the Dashboard |
 | **OI Support & Resistance** (`oi-support-resistance`) | pasted NSE option-chain-v3 JSON | new 2026-10-20; first app on the design system |
 | **Paper Trading** (`paper-trade`) | backend `/api/paper/*`, `/ws/paper` (live Dhan feed) | simulation only; design system |
 | **OI & OI Change Live** (`oi-change-live`) | backend `/api/option-chain` (Dhan) | paste app's formulas on live data; design system |
@@ -203,6 +204,28 @@ pastes (identical text).
   `backend/fixtures/` and the API body to `frontend/src/shared/dhan/__fixtures__/`. Current ones: 21-Oct-2026 after close.
 - Tests: `backend/test_chain_cache.py`, `src/shared/dhan/chainAdapter.test.ts`.
 
+## PCR Trend Analysis (branch `feature/pcr-trend-analysis`)
+Replaces the father's Excel "Trend Analysis" sheet. Manual (Paste) app only, no backend, not on the Dashboard.
+- Two paste areas (Sensibull OI response, NSE option-chain response), **Calculate**; each read paste collapses to
+  "source · time · spot ✓ · Edit". Parsers are the existing ones (`sensibull-oi/logic/sensibull.ts`,
+  `option-strategy/logic/optionChain.ts`), imported as other apps already do; their results are unchanged.
+- Rule (agreed with the sheet's author, 2026-10-25): **today's OI = yesterday's OI + today's change**. Rows per strike:
+  CE yesterday OI, CE OI chg, CE today OI, Strike PCR, PE yesterday OI, PE OI chg, PE today OI.
+  Strike PCR = PE today OI ÷ CE today OI; source PCR = Σ PE today OI ÷ Σ CE today OI; Final = average.
+- Model (`logic/sources.ts`), all in units: Sensibull today OI = `to_*_oi`, change = `to − from` (from = 09:15 =
+  yesterday's close; a chart starting later is flagged); NSE `openInterest` / `changeinOpenInterest` × lot size
+  (`config/settings.ts` LOT_SIZE: BANKNIFTY 30, NIFTY 65). Shown in lakhs like the sheet. Sensibull's `to_time`
+  after the close is capped at 15:40 IST.
+- Window (`logic/pcr.ts`): ATM (strike nearest spot, lower on a tie) ± N strike steps (step = most common strike gap;
+  N = 10, Settings). Verdict < 0.9 Down side, > 1.1 Up side, else Sideways (on the 2-decimal value shown; thresholds
+  in Settings, saved in localStorage `pcr-trend.settings`).
+- Checks: different index or expiry → error, nothing calculated; > 5 min apart → warning; ATM differs → note.
+- Verified on the real 23-Oct-2026 BANKNIFTY pastes (expiry 27-Oct-2026, 15:40, the Excel's day): NSE × 30 equals
+  Sensibull at every strike; both PCR 0.97, Final 0.97 → Sideways. The Excel showed 1.01 / 0.50 / 0.75 Down side
+  because its NSE block added the change on top of today's OI (counted twice) and had typing slips (53,600 CE,
+  54,600 / 54,700 PE, NSE 54,300 CE chg); a test pins the sheet's Sensibull cells against the paste.
+- Open: thresholds and the Excel's "Direction" box (Long Build Up, Strong Up Trend, …) still to confirm; not built.
+
 ## Premium Analysis (branch `feature/premium-analysis`)
 Replaces Naveen's Excel: which strikes' premiums moved most for the spot move between two NSE snapshots.
 Open the app, paste snapshot A (earlier) and B (later); each collapses to "A · 13:51 IST · Spot 54,725.40 ✓" (Edit to
@@ -254,7 +277,7 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
   `dhan_feed.py` (binary feed parser + reconnecting client), `paper_api.py` (service, routes, WebSocket), `pt_` tables in
   `schema.sql` / `store.py` (`data/paper.json` without `DATABASE_URL`), option list from Dhan's instrument CSV in
   `instruments.py` (lot sizes, strikes, security IDs; cached per IST day).
-- Frontend `src/apps/paper-trade/`: Trade (chain ATM ±10 with B/S, positions, open orders, order ticket),
+- Frontend `src/apps/paper-trade/`: Trade (full option chain with B/S, positions, open orders, order ticket),
   Orders (order book + fills per day, CSV), P&L (FY calendar heatmap, month table, day trades, CSV).
   Shared: `src/shared/api.ts` (also used by Trending OI), `src/shared/ui/Heatmap.tsx`, `Segmented`, `Status`,
   `--heat-*` and `--backdrop` tokens.
@@ -267,6 +290,18 @@ Run the backend (`python main.py`), open Paper Trading. Steps 1–4 of the spec 
   highlight), a live spot line with a "NIFTY 22,957.05" pill between the two strikes around spot (`logic/chain.ts`
   `itm`, `spotGapAfter`, tested), and an ITM legend in the card head. Stat tiles wrap long text (`ui.css`).
   At ~1280px the chain card is narrower than the table, so it scrolls sideways (unchanged from before).
+
+- Full option chain (2026-10-27, `fix/full-option-chain`): every strike of the expiry (`/api/paper/chain` already
+  returned them all; the page used to cut ATM ±10), opened with ATM in the middle (again on a new symbol / expiry /
+  Strikes choice, never while scrolling). "Strikes" selector ±10 / ±20 / All (default All, `paper-trade.strikes` in
+  localStorage). `OptionChain.tsx`: only the rows in view + 5 either side are rendered (spacer rows, measured row
+  height) and subscribed; the subscription follows the scroll 300 ms after it stops (the backend sends at most 100
+  instruments per feed message). Rows without a live tick show the shared option-chain cache (`GET /api/option-chain`,
+  re-read every 60 s; also gives spot before the first index tick). Open positions and pending orders always stay
+  subscribed (page + backend `_sync_feed`). Sticky header (`border-collapse: separate` for the sticky rows).
+  Shared strike helper `src/shared/chain/strikes.ts` (`strikeList`, `strikeWindow`, `visibleRange`, `centerScrollTop`)
+  for the Scalper's strike dropdowns. Tests: `shared/chain/strikes.test.ts`, `paper-trade/logic/chainFeed.test.ts`
+  (real 261-strike NIFTY chain), `test_paper_api.py::test_chain_returns_every_strike_of_the_expiry`.
 
 Known limits / open:
 - Never run against the live Dhan feed yet: record frames with `backend/capture_feed.py` on a trading day
