@@ -20,6 +20,13 @@
 .pt .pt-chain th.pt-strike, .pt .pt-chain td.pt-strike { text-align: center; font-weight: 600; background: var(--surface-2); }
 .pt .pt-chain th.pt-strike { vertical-align: middle; }
 .pt .pt-chain td.pt-itm { background: var(--itm-soft); }
+/* every strike: a scrolling body under a sticky header; only the rows in view are rendered (spacer rows hold the rest) */
+.pt .pt-chain-scroll { max-height: min(70vh, 760px); overflow: auto; }
+/* separate borders: with collapsed ones Chrome leaves the sticky header's row edges unpainted */
+.pt table.pt-chain { border-collapse: separate; border-spacing: 0; }
+.pt .pt-chain thead { position: sticky; top: 0; z-index: 2; }
+.pt .pt-chain thead th { background: var(--surface-2); }
+.pt .pt-chain tr.pt-spacer td, .pt .pt-chain tr.pt-spacer:hover td { padding: 0; border: 0; background: none; }
 /* live spot: a thin accent line between the two strikes around spot, with the value on the strike column */
 .pt .pt-chain tr.pt-spot-row td, .pt .pt-chain tr.pt-spot-row:hover td {
   height: 20px; padding: 0; border-bottom: 0;

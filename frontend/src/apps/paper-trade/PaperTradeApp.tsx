@@ -3,7 +3,8 @@ import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, Pill, Segmented, Stat, Status } from '../../shared/ui';
 import { SYMBOLS } from '../option-strategy/config/expiries';
-import { STALE_AFTER_MS, STORAGE_PREFIX } from './config/settings';
+import { STALE_AFTER_MS } from './config/settings';
+import { load, save } from './storage';
 import { longDate, rupees, signedRupees, toneOf } from './format';
 import { api, type Chain } from './logic/api';
 import { keyOf } from './logic/feed';
@@ -17,20 +18,6 @@ import './paper-trade.css';
 type View = 'trade' | 'orders' | 'pnl';
 const VIEWS = [{ value: 'trade', label: 'Trade' }, { value: 'orders', label: 'Orders' }, { value: 'pnl', label: 'P&L' }] as const;
 
-const load = (k: string) => {
-  try {
-    return localStorage.getItem(STORAGE_PREFIX + k);
-  } catch {
-    return null;
-  }
-};
-const save = (k: string, v: string) => {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + k, v);
-  } catch {
-    /* blocked storage */
-  }
-};
 
 function useNow(ms = 1000) {
   const [now, setNow] = useState(Date.now());
