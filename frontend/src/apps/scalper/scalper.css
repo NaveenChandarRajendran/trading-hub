@@ -1,0 +1,40 @@
+/* Power Scalper: full-height workspace (no page scroll at 1920x1080). Layout only; colours and sizes are tokens. */
+.sc { display: flex; flex-direction: column; gap: var(--sp-3); height: calc(100vh - 52px - 2 * var(--sp-5)); min-height: 640px; }
+.sc.sc-reports { height: auto; }
+.sc .sc-top { padding: var(--sp-2) var(--sp-4); }
+.sc .sc-alerts { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.sc .sc-spot-box { display: flex; align-items: baseline; gap: var(--sp-2); align-self: flex-end; padding-bottom: var(--sp-1); }
+.sc .sc-spot { font-size: var(--fs-lg); font-weight: 600; }
+.sc .sc-small { font-size: var(--fs-sm); margin: 0; }
+
+/* charts ~70%, Trade panel ~30% */
+.sc .sc-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr); gap: var(--sp-3); }
+.sc .sc-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-3); min-height: 0; }
+.sc .sc-chart-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: var(--sp-2) var(--sp-3); }
+.sc .sc-chart-card.sc-index { grid-row: 1 / span 2; }
+.sc .sc-chart-head { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); margin-bottom: var(--sp-1); min-width: 0; }
+.sc .sc-chart-title { font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.sc .sc-ltp { font-weight: 600; }
+.sc .sc-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc .sc-chart { flex: 1 1 auto; min-height: 0; }
+
+.sc .sc-panel { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; overflow: auto; }
+.sc .sc-panel-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+.sc .sc-leg { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.sc .sc-leg-head { display: flex; align-items: center; gap: var(--sp-2); font-weight: 600; }
+.sc .sc-leg-quote { display: flex; flex-wrap: wrap; gap: var(--sp-3); font-size: var(--fs-sm); }
+
+/* account strip */
+.sc .sc-bottom { flex: 0 0 200px; display: flex; flex-direction: column; min-height: 0; padding: var(--sp-2) var(--sp-4); }
+.sc .sc-bottom-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); flex-wrap: wrap; }
+.sc .sc-bottom-stat { font-size: var(--fs-sm); color: var(--text-2); }
+.sc .sc-bottom-stat:first-of-type { margin-left: auto; }
+.sc .sc-table { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.sc table.t td, .sc table.t th { white-space: nowrap; }
+.sc .sc-reason { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+
+/* reports */
+.sc .sc-report { display: flex; flex-direction: column; gap: var(--sp-4); }
+.sc .sc-report-split { align-items: start; }
+.sc tr.sc-click { cursor: pointer; }
+.sc .sc-presets, .sc .sc-inline { display: inline-flex; gap: var(--sp-2); }

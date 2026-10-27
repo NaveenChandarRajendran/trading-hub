@@ -125,6 +125,14 @@ export const apps: AppEntry[] = [
     icon: '⚙',
     component: lazy(() => import('./algo/AlgoApp')),
   },
+  {
+    id: 'scalper',
+    group: 'live',
+    name: 'Power Scalper',
+    path: '/scalper',
+    icon: '↯',
+    component: lazy(() => import('./scalper/ScalperApp')),
+  },
 ];
 
 /** Apps per sidebar section, keeping registry order inside each section. Empty sections are dropped. */
