@@ -4,11 +4,12 @@
 import { useEffect, useRef } from 'react';
 import { CandlestickSeries, HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import { useTheme } from '../../shared/theme';
-import { candleColors, chartOptions, ohlc, themeOptions, volumePoint } from './chartTheme';
+import { candleColors, chartOptions, compactVolume, ohlc, pricePriceFormat, themeOptions, volumePoint } from './chartTheme';
 import { isCandle, type Bar } from './logic/series';
 import type { ChartSync, SyncableChart } from './logic/sync';
 
 const INITIAL_BARS = 90; // bars in view when a chart first loads (scroll back for more)
+const VOLUME_PANE_PX = 56;
 
 export function ScalperChart({ id, bars, sync, resetKey }: {
   id: string; // "index" | "ce" | "pe": the sync member id
@@ -26,10 +27,13 @@ export function ScalperChart({ id, bars, sync, resetKey }: {
 
   useEffect(() => {
     const c = createChart(box.current!, chartOptions());
-    const s = c.addSeries(CandlestickSeries, candleColors());
-    const v = c.addSeries(HistogramSeries, { priceScaleId: 'volume', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false });
-    c.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    s.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.22 } });
+    const s = c.addSeries(CandlestickSeries, { ...candleColors(), priceFormat: pricePriceFormat });
+    // volume in its own small pane, so the price scale never stretches below 0 to make room for it
+    const v = c.addSeries(HistogramSeries, {
+      priceFormat: { type: 'custom', formatter: compactVolume, minMove: 1 }, priceLineVisible: false, lastValueVisible: false,
+    }, 1);
+    c.panes()[1]?.setHeight(VOLUME_PANE_PX);
+    s.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.04 } });
     chart.current = c;
     candles.current = s;
     vol.current = v;

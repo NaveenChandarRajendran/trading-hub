@@ -59,6 +59,18 @@ export function withFutureVolume(index: Candle[], future: Candle[]): Candle[] {
   return vol.size ? index.map((c) => (vol.has(c.time) ? { ...c, volume: vol.get(c.time) } : c)) : index;
 }
 
+const istDay = (t: number) => Math.floor((t + 19800) / 86400);
+
+/** Close of the last 1-minute candle of the session before the newest one (the history has both): the index's
+ *  previous close, since index ticks don't carry it. Null with one session only. */
+export function previousClose(minutes: Candle[]): number | null {
+  const last = minutes[minutes.length - 1];
+  if (!last) return null;
+  const today = istDay(last.time);
+  for (let i = minutes.length - 1; i >= 0; i--) if (istDay(minutes[i].time) < today) return minutes[i].close;
+  return null;
+}
+
 export type Leg = NonNullable<Chain['rows'][number]['ce']>;
 
 /** CE and PE of the strike nearest spot (the starting strikes; the Trade tab changes them). */

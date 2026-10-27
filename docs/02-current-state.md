@@ -56,12 +56,16 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
-PAPER ONLY, in progress (step 1 of 5 done, 27-Oct-2026). Backend: a third paper account "Scalper" (`scalper_service.py`,
+PAPER ONLY, in progress (steps 1-2 of 5 done, 27-Oct-2026). Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills
 (`scalper_reports.py`: round trips, day rows, tiles), `scalper_daily_summary` at 15:35 IST. OCO target / stop in
 `paper_engine.set_protection` (`pt_orders.oco_group`; fixes "target rejected after a stop"). P&L calendar account
 filter: Manual / Algo / Scalper / All (`/api/paper/pnl|trades?account=`). Tests: `test_paper_oco.py`,
-`test_scalper.py` (incl. Manual / Algo unchanged), `test_paper_store.py` (Postgres). No Scalper page yet (step 2).
+`test_scalper.py` (incl. Manual / Algo unchanged), `test_paper_store.py` (Postgres).
+Step 2 done: page Live → Power Scalper (`src/apps/scalper/`): `/ws/scalper` live ticks / candles / volume, option
+history `/api/scalper/candles`, index + ATM CE / PE charts on one synced time grid (volume pane), Trade panel
+(tickets: step 3), Positions / Orders strip, Reports view. Candle helpers moved to `src/shared/chart/candles.ts`.
+Tests: `scalper/logic/*.test.ts`.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

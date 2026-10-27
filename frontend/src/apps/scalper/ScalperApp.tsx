@@ -11,7 +11,7 @@ import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { BottomStrip } from './BottomStrip';
 import { DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe } from './config/settings';
 import { api, type Chain, type ScalperTick } from './logic/api';
-import { alignSeries, atmLegs, pageStatus, withFutureVolume, type Bar, type Leg } from './logic/series';
+import { alignSeries, atmLegs, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
 import { ChartSync } from './logic/sync';
 import { Reports } from './Reports';
 import { ScalperChart } from './ScalperChart';
@@ -209,8 +209,10 @@ export default function ScalperApp() {
   ]), [indexMinutes, futureMinutes, ceMinutes, peMinutes, interval]);
   const [indexBars, ceBars, peBars] = aligned.series;
 
-  const spotTick = spotKey ? sc.ticks.get(spotKey) : undefined;
-  const spotChg = spotTick?.ltp != null && spotTick.close ? spotTick.ltp - spotTick.close : null;
+  // index ticks carry no previous close: take it from the history (last candle of the previous session)
+  const prevClose = spotKey ? sc.ticks.get(spotKey)?.close || previousClose(indexMinutes) : null;
+  const spotTick = spotKey ? { ...sc.ticks.get(spotKey), ltp: spot ?? 0, close: prevClose ?? undefined } as ScalperTick : undefined;
+  const spotChg = spot != null && prevClose ? spot - prevClose : null;
   const legName = (leg: Leg | null | undefined, side: 'CE' | 'PE') =>
     leg && legs ? `${symbol} ${inr(0)(legs.strike)} ${side}${chain ? ` · ${longDate(chain.expiry)}` : ''}` : `${side}: waiting for spot`;
 
@@ -226,8 +228,8 @@ export default function ScalperApp() {
           <div className="sc-spot-box">
             <span className="muted">{symbol}</span>
             <span className="num sc-spot">{spot != null ? inr(2)(spot) : '–'}</span>
-            {spotChg != null && spotTick?.close ? (
-              <span className={`num ${toneOf(spotChg)}`}>{`${spotChg > 0 ? '+' : spotChg < 0 ? '−' : ''}${inr(2)(Math.abs(spotChg))} (${pct((spotChg / spotTick.close) * 100)})`}</span>
+            {spotChg != null && prevClose ? (
+              <span className={`num ${toneOf(spotChg)}`}>{`${spotChg > 0 ? '+' : spotChg < 0 ? '−' : ''}${inr(2)(Math.abs(spotChg))} (${pct((spotChg / prevClose) * 100)})`}</span>
             ) : null}
           </div>
           <label className="field">Expiry

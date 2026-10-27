@@ -13,7 +13,12 @@ Dhan's order APIs.
 
 ## Build steps
 1. **Done** — Scalper account, OCO, reports, `scalper_daily_summary`, P&L calendar filter Manual / Algo / Scalper / All.
-2. Layout + three synced charts with live candles.
+2. **Done** — Layout + three synced charts with live candles: `/ws/scalper` (ticks with day high / low, live
+   1-minute candles and per-minute volume for what the page shows, Scalper account events), option history
+   `GET /api/scalper/candles` (Dhan 1-minute, today + previous session, cached 60 s), the page (top bar, index chart
+   full height + ATM CE / PE charts on one time grid with synced scroll / zoom / crosshair, volume in its own pane,
+   Trade panel with Phase 2 tabs disabled, Positions / Orders strip, Reports view with tiles, day-wise table, day
+   trades, CSV and capital / fresh start). Shared: `src/shared/chart/candles.ts` (moved from the Dashboard).
 3. Trade tab tickets + full strike dropdowns + positions.
 4. Chart position lines + draggable TP / SL.
 5. Hotkeys + states, both themes.

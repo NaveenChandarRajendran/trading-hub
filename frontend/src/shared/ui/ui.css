@@ -38,6 +38,7 @@
 .ds .seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--r-md); height: var(--control-h); }
 .ds .seg button { border: 0; background: none; color: var(--text-2); padding: 0 var(--sp-3); border-radius: var(--r-sm); cursor: pointer; font: inherit; font-weight: 500; }
 .ds .seg button.on { background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--border); }
+.ds .seg button:disabled { color: var(--text-3); cursor: not-allowed; }
 
 .ds .pill { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 1px var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; white-space: nowrap; }
 .ds .pill.up { background: var(--up-soft); color: var(--up); }

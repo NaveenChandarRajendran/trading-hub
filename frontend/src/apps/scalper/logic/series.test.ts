@@ -1,7 +1,7 @@
 // Power Scalper chart data: one time grid for the three charts, live candles / volume for option instruments.
 import { describe, expect, it } from 'vitest';
 import { aggregate, type Candle } from '../../../shared/chart/candles';
-import { alignSeries, emptySeries, isCandle, withFutureVolume, withHistory, withLiveCandle, withLiveVolume } from './series';
+import { alignSeries, emptySeries, isCandle, previousClose, withFutureVolume, withHistory, withLiveCandle, withLiveVolume } from './series';
 
 const T0 = Date.UTC(2026, 9, 21, 3, 45) / 1000; // 21-Oct-2026 09:15 IST
 const m = (i: number, close: number, volume?: number): Candle =>
@@ -42,6 +42,13 @@ describe('live candles for option instruments', () => {
     s = withLiveVolume(s, { time: T0 + 180, volume: 260 });
     expect(s.minutes[0].volume).toBe(260);
     expect(withHistory(s, [m(0, 1), m(1, 1)]).minutes.map((c) => c.time)).toEqual([T0, T0 + 60, T0 + 180]);
+  });
+
+  it("previous close = the last candle of the previous session (index ticks don't carry it)", () => {
+    const yesterday = { ...m(0, 22700), time: T0 - 86400 + 374 * 60 }; // 20-Oct 15:29
+    expect(previousClose([yesterday, m(0, 22750), m(1, 22760)])).toBe(22700);
+    expect(previousClose([m(0, 22750)])).toBeNull();
+    expect(previousClose([])).toBeNull();
   });
 
   it('the index chart takes its future volume minute by minute', () => {

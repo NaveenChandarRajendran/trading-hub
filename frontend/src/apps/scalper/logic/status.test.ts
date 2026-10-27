@@ -33,6 +33,13 @@ describe('page status', () => {
   });
 });
 
+describe('volume axis', () => {
+  it('Indian units', async () => {
+    const { compactVolume } = await import('../chartTheme');
+    expect([650, 6500, 250000, 40000000, 123456789].map(compactVolume)).toEqual(['650', '6.5K', '2.5L', '4.0Cr', '12Cr']);
+  });
+});
+
 describe('reports', () => {
   it('default range and CSV with plain numbers', () => {
     expect(defaultRange('2026-10-27', 30)).toEqual(['2026-09-27', '2026-10-27']);

@@ -37,11 +37,21 @@ export function chartOptions() {
     },
     localization: {
       locale: 'en-IN',
+      // prices are formatted per series (candles: inr, volume: compactVolume); a chart-wide formatter would override both
       timeFormatter: (time: Time) => fmtTime(time, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-      priceFormatter: (p: number) => inr(2)(p),
     },
     crosshair: { mode: 0 },
   };
+}
+
+/** Volume axis labels in Indian units: 650, 6.5K, 2.5L, 4Cr. */
+export function compactVolume(v: number): string {
+  const a = Math.abs(v);
+  const fmt = (x: number, unit: string) => `${inr(x < 10 ? 1 : 0)(x)}${unit}`;
+  if (a >= 1e7) return fmt(v / 1e7, 'Cr');
+  if (a >= 1e5) return fmt(v / 1e5, 'L');
+  if (a >= 1e3) return fmt(v / 1e3, 'K');
+  return inr(0)(v);
 }
 
 export const candleColors = () => {
@@ -49,6 +59,7 @@ export const candleColors = () => {
   const down = cssVar('--down');
   return { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false };
 };
+export const pricePriceFormat = { type: 'custom' as const, formatter: (p: number) => inr(2)(p), minMove: 0.05 };
 
 export const ohlc = (b: Bar) => (isCandle(b)
   ? { time: b.time as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close }
