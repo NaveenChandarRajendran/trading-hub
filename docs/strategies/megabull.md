@@ -45,11 +45,17 @@ OFF until the key is saved, the read-only check and one test order have run.
 Volume Oscillator (5, 10): record only.
 
 ## SuperTrend Nifty (NIFTY), checked on the confirmation candle
+Owner 27-Oct-2026 (after the 12:45 NIFTY 22800 CE stop-out): wait one more candle. The setup below is read on the
+confirmation candle; the next 5-minute candle must CLOSE beyond the band, and the entry is at the open after it. If it
+closes back inside the bands, no trade. 5-year backtest (both indices, -10/+20, costs + 0.5 % slippage): -Rs 3.90 L
+(1,491 trades) before, -Rs 1.10 L (583 trades) with the wait; still a loss, reviewed 15 Nov 2026.
+
 | pillar | call | put |
 |---|---|---|
 | 1 SuperTrend (10, 2) | green, close above the line | red, close below the line |
 | 2 RSI 14 | > 55 | < 45; 45–55 = no trade |
 | 3 Bollinger (20, 2) | the candle's high touches or breaks the upper band | the low touches or breaks the lower band |
+| Wait for band close (owner 27-Oct-2026, setting `superTrendWaitBandClose`) | the candle AFTER the confirmation candle closes at or above the upper band; entry at the open after it | that candle closes at or below the lower band |
 | 4 Pivot | close above the pivot, and the next pivot level above (R1, R2 …) is at least 50 pts away (guess, setting `pivotRoom`; "no call right under R1") | close below the pivot, next level below ≥ 50 pts away |
 
 ## Filters (Rules and Data Log, agreed working list), both setups
