@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { breakevens, netPremium } from './payoff';
 import {
-  MAX_LEGS, addFromChain, duplicateLeg, heldOn, marginRequest, shortExpiry, tabFromDraft, tabFromPositions, tabSnapshot, unsaved, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
+  MAX_LEGS, addFromChain, basketRequest, tabFromOptionPositions, duplicateLeg, heldOn, marginRequest, shortExpiry, tabFromDraft, tabFromPositions, tabSnapshot, unsaved, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
 } from './legs';
 import { buildTemplate, TEMPLATES } from './templates';
 
@@ -171,5 +171,28 @@ describe('drafts and Analyze positions', () => {
     expect(marginRequest(legs, 2)).toEqual([{ securityId: 41001, side: 'S', qty: 130, price: 19.2 }]);
     expect(marginRequest([{ ...legs[0], securityId: null }], 1)).toBeNull();
     expect(marginRequest([legs[1]], 1)).toBeNull();
+  });
+});
+
+describe('paper trading a design (options strategies)', () => {
+  it('the basket: ticked legs only, lots × multiplier; none while a security ID is missing', () => {
+    const legs = [
+      { include: true, side: 'S' as const, lots: 1, securityId: 9101 },
+      { include: false, side: 'B' as const, lots: 1, securityId: 9103 },
+      { include: true, side: 'B' as const, lots: 2, securityId: 9104 },
+    ];
+    expect(basketRequest(legs, 3)).toEqual([{ securityId: 9101, side: 'S', lots: 3 }, { securityId: 9104, side: 'B', lots: 6 }]);
+    expect(basketRequest([{ ...legs[0], securityId: null }], 1)).toBeNull();
+    expect(basketRequest([legs[1]], 1)).toBeNull();
+  });
+
+  it('held legs (shorts too) open as a locked tab at their average', () => {
+    const pos = (security_id: number, qty: number, strike: number, optionType: 'CE' | 'PE', avg: number) => ({
+      security_id, name: 'x', symbol: 'NIFTY', expiry: '2026-11-03', strike, optionType, lot_size: 65, qty, lots: qty / 65, avg,
+      ltp: null, realized: 0, unrealized: 0, settlementPending: false });
+    const { tab } = tabFromOptionPositions([pos(1, -65, 21950, 'PE', 19.2), pos(2, 130, 21700, 'PE', 8.85)], 'Weekly IC', 2);
+    expect(tab.legs.map((l) => [l.side, l.strike, l.lots, l.priceOverride, l.locked])).toEqual([['S', 21950, 1, 19.2, true], ['B', 21700, 2, 8.85, true]]);
+    expect(tab.source).toBe('Positions of Weekly IC');
+    expect(unsaved(tab)).toBe(false);
   });
 });

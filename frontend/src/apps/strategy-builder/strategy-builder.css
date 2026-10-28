@@ -26,6 +26,17 @@
   font: inherit; background: none; border: 0; color: var(--text); cursor: pointer; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); }
 .ds .sb-list-main:hover { background: var(--surface-2); }
 
+/* Paper trade dialog (PaperTradeDialog.tsx) and Paper positions (OptionsPositions.tsx) */
+.ds .modal.sb-trade { width: min(560px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
+.ds .sb-trade-row { display: flex; gap: var(--sp-2); align-items: flex-end; flex-wrap: wrap; }
+.ds .sb-trade-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin: 0; }
+.ds .sb-trade-sum dt { font-size: var(--fs-xs); color: var(--text-3); }
+.ds .sb-trade-sum dd { margin: 0; font-weight: 600; }
+.ds .sb-trade-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.ds .sb-op .card-head { gap: var(--sp-3); flex-wrap: wrap; }
+.ds .sb-op-nums { margin-left: auto; display: flex; gap: var(--sp-4); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-2); }
+.ds .sb-op-actions { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; margin-top: var(--sp-2); }
+
 /* legs and payoff side by side, half each (stacked below 1200 px) */
 .ds .sb-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-3); align-items: start; }
 .ds .sb-left, .ds .sb-right { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }

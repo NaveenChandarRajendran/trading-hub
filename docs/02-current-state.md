@@ -96,7 +96,8 @@ returns `chargeRates`. Option chain for picking legs. Step 4 done: Dhan basket m
 Part B of the Strategy Builder: an `options` strategy kind with short legs, overnight positions and expiry settlement
 (15:30 spot; STT on ITM longs; Dhan basket margin, refused without it). Step 1 done (28-Oct): pure engine
 `backend/options_engine.py` + 10 tests. Step 2 done: service, routes, settlement timer, options kind, records in the
-report tables (585 backend tests incl. Postgres). Not merged; nothing live (needs a backend restart once merged).
+report tables (585 backend tests incl. Postgres). Step 3 done: Builder "Paper trade" dialog + "Paper positions" panel.
+Not merged; nothing live (needs a backend restart once merged).
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

@@ -1,6 +1,6 @@
 // Strategy Builder legs and tabs (pure): what the legs table edits, the live price of a leg (mid of bid / ask), strike
 // stepping, and turning table rows into the maths model (payoff.ts) with prices, lot size and IV filled in.
-import type { Draft, DraftLeg, PositionLeg } from './api';
+import type { Draft, DraftLeg, OptionPosition, PositionLeg } from './api';
 import type { OptionType } from './blackScholes';
 import type { Leg, Side } from './payoff';
 
@@ -168,4 +168,24 @@ export function marginRequest(legs: { include: boolean; side: Side; lots: number
   const on = legs.filter((l) => l.include && l.lots > 0);
   if (!on.length || on.some((l) => l.securityId == null)) return null;
   return on.map((l) => ({ securityId: l.securityId!, side: l.side, qty: l.lots * l.lotSize * multiplier, price: l.price }));
+}
+
+/** The Paper trade basket: ticked legs, lots × multiplier; null while a leg has no security ID. */
+export function basketRequest(legs: { include: boolean; side: Side; lots: number; securityId: number | null }[], multiplier: number):
+  { securityId: number; side: Side; lots: number }[] | null {
+  const on = legs.filter((l) => l.include && l.lots > 0);
+  if (!on.length || on.some((l) => l.securityId == null)) return null;
+  return on.map((l) => ({ securityId: l.securityId!, side: l.side, lots: l.lots * multiplier }));
+}
+
+/** An options strategy's open legs (long or short) as a tab, locked at their average price (like Analyze positions). */
+export function tabFromOptionPositions(rows: OptionPosition[], strategyName: string, n: number): { tab: Tab; skipped: number } {
+  const symbol = rows[0]?.symbol ?? 'NIFTY';
+  const mine = rows.filter((r) => r.symbol === symbol).slice(0, MAX_LEGS);
+  const legs = mine.map((r) => newLeg(r.expiry, r.strike, {
+    side: r.qty < 0 ? 'S' : 'B', type: r.optionType, lots: Math.abs(r.qty) / r.lot_size, priceOverride: r.avg, locked: true,
+  }));
+  const tab: Tab = { id: newId('T'), name: String(n), symbol, expiry: mine[0]?.expiry ?? '', multiplier: 1, legs, draftId: null,
+    saved: null, source: `Positions of ${strategyName}` };
+  return { tab: { ...tab, saved: tabSnapshot(tab) }, skipped: rows.length - mine.length };
 }

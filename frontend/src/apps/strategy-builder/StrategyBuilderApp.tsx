@@ -1,6 +1,7 @@
 // Strategy Builder: design multi-leg NIFTY / BANKNIFTY option positions on live chain prices (PAPER ONLY: nothing here
 // places an order). Up to 6 tabs keep designs open in this browser; Save stores one to your account as a draft (Drafts
-// menu: open, rename, delete). Analyze positions loads a strategy's open positions. Legs are picked on the option chain
+// menu: open, rename, delete). Analyze positions loads a strategy's open positions. Paper trade places the design
+// into an options strategy (all-or-nothing, PAPER ONLY; ADR 0010) and Paper positions below shows / exits what is held. Legs are picked on the option chain
 // (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary with Dhan basket
 // margin, and Greeks on the right.
 import { useEffect, useMemo, useState } from 'react';
@@ -12,10 +13,12 @@ import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { longDate, pct, rupees, toneOf } from '../paper-trade/format';
 import { SYMBOLS, TABS_KEY } from './config/settings';
 import {
-  MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, priceLegs, tabFromDraft, tabFromPositions, tabSnapshot,
+  MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, priceLegs, tabFromDraft, tabFromOptionPositions, tabFromPositions, tabSnapshot,
   toDraftLegs, unsaved, type BuilderLeg, type ChainPick, type Tab,
 } from './logic/legs';
-import { builderApi, type Draft, type Margin, type PositionLeg } from './logic/api';
+import { builderApi, type Draft, type Margin, type OptionBook, type PositionLeg } from './logic/api';
+import { OptionsPositions } from './OptionsPositions';
+import { PaperTradeDialog } from './PaperTradeDialog';
 import { AnalyzeMenu, DraftsMenu } from './BuilderMenus';
 import { yearsToExpiry } from './logic/blackScholes';
 import { summarize } from './logic/summary';
@@ -55,6 +58,8 @@ export default function StrategyBuilderApp() {
   const [range, setRange] = useState<StrikeRange>('10');
   const [notice, setNotice] = useState('');
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const [trading, setTrading] = useState(false);
+  const [placed, setPlaced] = useState<{ strategyId: number; nonce: number } | null>(null);
   const [margin, setMargin] = useState<{ state: 'idle' | 'loading' | 'ok' | 'error'; m?: Margin; why?: string }>({ state: 'idle' });
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
@@ -143,6 +148,18 @@ export default function StrategyBuilderApp() {
     const { tab: t, skipped } = tabFromPositions(rows, name, n);
     openTab(t);
     say('info', `Loaded ${t.legs.length} position${t.legs.length === 1 ? '' : 's'} of ${name} at their average price${skipped ? ` (${skipped} on another index left out)` : ''}.`);
+  };
+  const openHeld = (book: OptionBook) => {
+    const n = tabCount(nextTabNumber(tabs));
+    if (n == null) { say('error', `Up to ${MAX_TABS} tabs: close one first.`); return; }
+    const { tab: t, skipped } = tabFromOptionPositions(book.positions, book.strategy.name, n);
+    openTab(t);
+    if (skipped) say('info', `${skipped} leg(s) on another index left out of the tab.`);
+  };
+  const onPlaced = (strategyId: number, book: OptionBook & { fills?: { realized: number }[] }) => {
+    setTrading(false);
+    setPlaced({ strategyId, nonce: Date.now() });
+    say('info', `Placed in ${book.strategy.name}: ${book.fills?.length ?? 0} legs filled (paper). Margin blocked ${rupees(book.funds.blockedMargin)}.`);
   };
   const saveAs = async () => {
     const suggestion = tab.draftId || !Number.isNaN(Number(tab.name)) ? '' : tab.name;
@@ -252,9 +269,11 @@ export default function StrategyBuilderApp() {
               onRenamed={(d) => setTabs((ts) => ts.map((t) => (t.draftId === d.id ? { ...t, name: d.name } : t)))}
               onDeleted={(id) => setTabs((ts) => ts.map((t) => (t.draftId === id ? { ...t, draftId: null, saved: null } : t)))} />
             <AnalyzeMenu onLoad={loadPositions} onError={(m) => say('error', m)} disabled={tabs.length >= MAX_TABS} />
+            <button type="button" className="btn primary" disabled={!on.length || !!tab.source} onClick={() => setTrading(true)}
+              title={tab.source ? 'These are held positions: exit them below' : 'Place this design into an options strategy (paper)'}>Paper trade</button>
           </div>
         </div>
-        {tab.source && <p className="muted sb-small">{tab.source}: prices are the positions' average buy (locked), so the payoff is the live P&amp;L of what is held.</p>}
+        {tab.source && <p className="muted sb-small">{tab.source}: prices are the positions' average price (locked), so the payoff is the live P&amp;L of what is held.</p>}
         {message && <Alert kind={message.kind}>{message.text} <button type="button" className="btn ghost" onClick={() => setMessage(null)}>×</button></Alert>}
         {market.error && <Alert kind="error">{market.error}</Alert>}
       </section>
@@ -303,6 +322,12 @@ export default function StrategyBuilderApp() {
           )}
         </section>
       </div>
+      <OptionsPositions show={placed} onOpenInTab={openHeld} onMessage={say} />
+      {trading && (
+        <PaperTradeDialog legs={priced.legs} multiplier={tab.multiplier} quoteOf={(l) => market.quoteOf(l.expiry, l.strike, l.type)}
+          securityOf={(l) => market.securityOf(l.expiry, l.strike, l.type)} net={summary?.net ?? 0} charges={summary?.charges ?? null}
+          margin={margin.state === 'ok' ? margin.m ?? null : null} onClose={() => setTrading(false)} onPlaced={onPlaced} />
+      )}
     </div>
   );
 }

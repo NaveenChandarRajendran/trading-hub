@@ -1,7 +1,7 @@
 // The signed-in user's strategies (backend strategies_api.py). Someone else's strategy is a 404 from the backend.
 import { API_BASE, requestJson } from '../api';
 
-export type StrategyKind = 'manual' | 'algo';
+export type StrategyKind = 'manual' | 'algo' | 'options'; // options: Strategy Builder baskets held to expiry (ADR 0010)
 export type Tool = 'paper' | 'scalper';
 
 export interface Strategy {
@@ -25,8 +25,8 @@ export const strategyApi = {
     requestJson<{ strategies: Strategy[] }>(API_BASE, `/api/strategies?archived=${archived}`, { signal }).then((r) => r.strategies),
   summary: (archived = false, signal?: AbortSignal) =>
     requestJson<{ rows: StrategyNumbers[] }>(API_BASE, `/api/strategies/summary?archived=${archived}`, { signal }).then((r) => r.rows),
-  create: (name: string, capital?: number, description = '') =>
-    requestJson<{ strategy: Strategy }>(API_BASE, '/api/strategies', { method: 'POST', body: { name, capital, description } }).then(one),
+  create: (name: string, capital?: number, description = '', kind: 'manual' | 'options' = 'manual') =>
+    requestJson<{ strategy: Strategy }>(API_BASE, '/api/strategies', { method: 'POST', body: { name, capital, description, kind } }).then(one),
   edit: (id: number, body: Partial<Pick<Strategy, 'name' | 'description' | 'notes'>>) =>
     requestJson<{ strategy: Strategy }>(API_BASE, `/api/strategies/${id}`, { method: 'PATCH', body }).then(one),
   archive: (id: number) => requestJson<{ strategy: Strategy }>(API_BASE, `/api/strategies/${id}/archive`, { method: 'POST' }).then(one),
@@ -40,6 +40,10 @@ export const strategyApi = {
 /** Strategies a tool can trade into: active manual ones, by name. */
 export const tradable = (list: Strategy[]) =>
   list.filter((s) => s.kind === 'manual' && !s.archivedAt).sort((a, b) => a.name.localeCompare(b.name));
+
+/** Strategies the Strategy Builder can paper trade into: active options ones, by name. */
+export const optionStrategies = (list: Strategy[]) =>
+  list.filter((s) => s.kind === 'options' && !s.archivedAt).sort((a, b) => a.name.localeCompare(b.name));
 
 /** ?strategy=<id> appended to a backend path (keeps an existing query string). */
 export const withStrategy = (path: string, id: number | null) =>

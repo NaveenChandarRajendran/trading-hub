@@ -25,7 +25,10 @@ let them settle at expiry. Options strategies only; Manual / Scalper / the algo 
      before 15:30; else Dhan's 15:29 one-minute close; else pending, shown on the positions).
    - Routes: `POST /api/options/basket`, `POST /api/options/exit`, `GET /api/options/positions` (own options
      strategy only).
-3. Builder: "Paper trade" (pick an options strategy, confirm legs / net premium / margin), and an Options positions
-   panel with live P&L, exit leg / exit all.
+3. Builder — done. "Paper trade" (`PaperTradeDialog.tsx`): pick an options strategy (or create one there), the legs
+   with estimated fills (sells at the bid, buys at the ask), net premium, Dhan margin, entry charges, available funds;
+   places the ticked legs × multiplier all-or-nothing. "Paper positions" (`OptionsPositions.tsx`, re-read every 5 s):
+   live P&L, booked, margin, available; per leg avg / LTP / P&L / Exit; Exit all; "Open in a tab" (held legs, shorts
+   too, locked at their average: the live payoff); "settlement pending" badge. Exits 09:15-15:15 IST.
 4. Strategies page: create an Options strategy; its card numbers, P&L calendar and Growth Plan tracker (they read the
    same tables, checked end to end); docs, both themes, all checks.
