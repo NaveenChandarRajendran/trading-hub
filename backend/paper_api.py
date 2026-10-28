@@ -802,6 +802,7 @@ def register(app, svc, strategies):
         slim = lambda leg: {"securityId": leg["securityId"], "name": leg["name"]} if leg else None  # noqa: E731
         lot = next((r[k]["lotSize"] for r in rows for k in ("ce", "pe") if r[k]), None)
         return {"meta": svc.meta(), "symbol": symbol, "expiry": expiry, "expiries": expiries, "lotSize": lot,
+                "chargeRates": CHARGE_RATES,  # the Strategy Builder estimates charges with the engine's own rates
                 "spot": {"segment": "IDX_I", "securityId": SPOT_IDS[symbol]},
                 "rows": [{"strike": r["strike"], "ce": slim(r["ce"]), "pe": slim(r["pe"])} for r in rows]}
 

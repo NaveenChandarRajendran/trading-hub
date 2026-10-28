@@ -87,7 +87,9 @@ Split A (Builder) / B (options paper engine: short legs, margin, overnight, expi
 Step 1 of A done (28-Oct): maths library `src/apps/strategy-builder/logic/` — Black–Scholes + Greeks + implied vol,
 expiry payoff / breakevens / max profit-loss with "unlimited", T+0 value, position Greeks, lognormal POP; 25 tests incl.
 the 3 Nov iron condor checked against Dhan. Step 2 done: Live → Strategy Builder page (legs table, templates around
-ATM, live mid prices + IV, tabs, quick numbers). Not merged.
+ATM, live mid prices + IV, tabs). Step 3 done: SVG payoff chart (expiry + target-date curves, breakevens, weekly
+bands, zoom / pan, what-if sliders), summary (POP, reward : risk, charges) and Greeks. `/api/paper/chain` now also
+returns `chargeRates` (needs a backend restart once merged). Not merged.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

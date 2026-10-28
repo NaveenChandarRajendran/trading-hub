@@ -37,7 +37,13 @@ what a strategy already holds.
    multiplier, tabs 1–6 (this browser until drafts). Data: `/api/paper/chain` (strikes / IDs / lot size),
    `/api/option-chain` cache (IV, last prices; every 60 s), `/ws/paper` ticks (spot + legs). The strike dropdown
    (`scalper/StrikePicker.tsx`) now has its own stylesheet and is shared with Power Scalper.
-3. Payoff chart + summary + Greeks.
+3. Payoff chart + summary + Greeks — done. `PayoffChart.tsx` (plain SVG; `logic/chart.ts`): expiry payoff with
+   profit / loss shading (--up-soft / --down-soft), dashed target-date curve, spot and breakeven lines with % labels,
+   hover readout, wheel zoom / drag pan / double-click reset (±10 % of spot), weekly 95 % (−3.73 / +4.31 %) and 90 %
+   (±3 %) bands toggle. Sliders: target date (now → nearest expiry, hourly) and IV shift (±10 points).
+   `SummaryPanel.tsx` (`logic/summary.ts`): max profit / loss, reward : risk, POP (ATM IV of the nearest expiry; method
+   in the tooltip), net premium, charges for entry + exit (rates from `/api/paper/chain` `chargeRates`, the engine's
+   own), Greeks (Δ ₹/pt, Γ, Θ ₹/day, vega ₹/pt) and a per-leg table. Margin is a "step 4" placeholder.
 4. Margin (`POST /v2/margincalculator/multi`, one live check after market close with Naveen's OK) + drafts
    (`th_builder_drafts`) + Analyze positions.
 

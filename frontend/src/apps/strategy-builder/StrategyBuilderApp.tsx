@@ -1,16 +1,19 @@
 // Strategy Builder: design multi-leg NIFTY / BANKNIFTY option positions on live chain prices (PAPER ONLY: nothing here
 // places an order). Up to 6 tabs keep designs open (this browser until drafts are saved per user, step 4). Legs on the
-// left; the payoff chart, summary and Greeks come in step 3 (a quick check of the numbers shows meanwhile).
+// left; payoff chart (target date and IV what-if sliders, weekly bands), summary and Greeks on the right.
 import { useEffect, useMemo, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Status } from '../../shared/ui';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
-import { longDate, pct, rupees, signedRupees, toneOf } from '../paper-trade/format';
+import { longDate, pct, toneOf } from '../paper-trade/format';
 import { SYMBOLS, TABS_KEY } from './config/settings';
 import { MAX_TABS, newTab, nextTabNumber, priceLegs, type BuilderLeg, type Tab } from './logic/legs';
-import { breakevens, extremes, netPremium, type Extreme } from './logic/payoff';
+import { yearsToExpiry } from './logic/blackScholes';
+import { summarize } from './logic/summary';
 import { TEMPLATES, buildTemplate, type TemplateId } from './logic/templates';
 import { LegsTable } from './LegsTable';
+import { PayoffChart } from './PayoffChart';
+import { SummaryPanel } from './SummaryPanel';
 import { useMarket } from './useMarket';
 import './strategy-builder.css';
 
@@ -22,13 +25,26 @@ function loadTabs(): Tab[] {
   return [newTab(1, 'NIFTY', '')];
 }
 
-const money = (v: Extreme) => (v === 'unlimited' ? 'Unlimited' : signedRupees(v));
+const HOUR = 3_600_000;
+const IST = 'Asia/Kolkata';
+/** "Fri 31 Oct 12:00" (IST) for the target-date slider. */
+const whenLabel = (ms: number) => new Date(ms).toLocaleString('en-IN', {
+  timeZone: IST, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+});
 
 export default function StrategyBuilderApp() {
   const [tabs, setTabs] = useState<Tab[]>(loadTabs);
   const [activeId, setActiveId] = useState(() => tabs[0].id);
   const tab = tabs.find((t) => t.id === activeId) ?? tabs[0];
   const market = useMarket(tab.symbol);
+  const [now, setNow] = useState(() => Date.now());
+  const [targetHours, setTargetHours] = useState(0); // the target date: hours after now (0 = T+0)
+  const [ivShift, setIvShift] = useState(0); // volatility points added to every leg
+  const [bands, setBands] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); } catch { /* not remembered */ }
@@ -49,10 +65,17 @@ export default function StrategyBuilderApp() {
   useEffect(() => market.watch(keys), [keys.join(','), market.watch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const priced = priceLegs(tab.legs, (l) => market.quoteOf(l.expiry, l.strike, l.type), market.lotSizeOf);
-  const numbers = useMemo(() => {
-    if (!priced.legs.some((l) => l.include)) return null;
-    return { net: netPremium(priced.legs, tab.multiplier), ...extremes(priced.legs, tab.multiplier), be: breakevens(priced.legs, tab.multiplier) };
-  }, [JSON.stringify(priced.legs), tab.multiplier]); // eslint-disable-line react-hooks/exhaustive-deps
+  const legsKey = JSON.stringify(priced.legs);
+  const on = priced.legs.filter((l) => l.include && l.lots > 0);
+  const nearest = on.map((l) => l.expiry).sort()[0] ?? expiry;
+  const maxHours = Math.max(0, Math.floor(yearsToExpiry(nearest, now) * 365 * 24));
+  const hours = Math.min(targetHours, maxHours);
+  const targetMs = now + hours * HOUR;
+  const hasIv = on.some((l) => l.iv != null);
+  const whatIf = useMemo(() => ({ nowMs: targetMs, ivShift }), [targetMs, ivShift]);
+  const summary = useMemo(() => summarize(priced.legs, market.spot, tab.multiplier, market.atmIvOf(nearest), now, market.chargeRates),
+    [legsKey, market.spot, tab.multiplier, nearest, now, market.chargeRates]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chartLegs = useMemo(() => priced.legs, [legsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTemplate = (id: TemplateId) => {
     const legs = buildTemplate(id, market.strikesOf(expiry), market.spot, expiry);
@@ -139,14 +162,31 @@ export default function StrategyBuilderApp() {
           {priced.missingIv.length > 0 && <p className="muted sb-small">IV missing for {priced.missingIv.length} leg(s): the target-date curve values them at intrinsic.</p>}
         </section>
         <section className="card sb-right">
-          <div className="card-head"><span className="card-title">Payoff</span><span className="muted sb-small">Chart, summary and Greeks: step 3</span></div>
-          {!numbers ? <EmptyState>Add legs to see the numbers.</EmptyState> : (
-            <dl className="sb-quick">
-              <div><dt>{numbers.net >= 0 ? 'Net credit' : 'Net debit'}</dt><dd className="num">{rupees(Math.abs(numbers.net))}</dd></div>
-              <div><dt>Max profit</dt><dd className={`num ${numbers.maxProfit === 'unlimited' ? 'up' : toneOf(numbers.maxProfit)}`}>{money(numbers.maxProfit)}</dd></div>
-              <div><dt>Max loss</dt><dd className={`num ${numbers.maxLoss === 'unlimited' ? 'down' : toneOf(numbers.maxLoss)}`}>{money(numbers.maxLoss)}</dd></div>
-              <div><dt>Breakevens</dt><dd className="num">{numbers.be.length ? numbers.be.map((b) => inr(2)(b)).join(' / ') : '–'}</dd></div>
-            </dl>
+          <div className="card-head">
+            <span className="card-title">Payoff</span>
+            <label className="sb-check"><input type="checkbox" checked={bands} onChange={(e) => setBands(e.target.checked)} /> Weekly 95 % / 90 % bands</label>
+          </div>
+          {!summary || market.spot == null ? <EmptyState>Add legs to see the payoff.</EmptyState> : (
+            <>
+              <PayoffChart legs={chartLegs} multiplier={tab.multiplier} spot={market.spot} whatIf={hasIv ? whatIf : null}
+                targetLabel={hours === 0 ? 'now (T+0)' : whenLabel(targetMs)} bands={bands} resetKey={`${tab.id}|${tab.symbol}`} />
+              <div className="sb-sliders">
+                <label className="sb-slider">
+                  <span>Target date <b>{hours === 0 ? 'now (T+0)' : whenLabel(targetMs)}</b></span>
+                  <input type="range" min={0} max={maxHours} step={1} value={hours} disabled={!hasIv || maxHours === 0}
+                    onChange={(e) => setTargetHours(Number(e.target.value))} aria-label="Target date" />
+                  <span className="muted sb-small">today → expiry {longDate(nearest)}</span>
+                </label>
+                <label className="sb-slider">
+                  <span>IV shift <b className="num">{ivShift > 0 ? '+' : ''}{ivShift} pts</b></span>
+                  <input type="range" min={-10} max={10} step={1} value={ivShift} disabled={!hasIv}
+                    onChange={(e) => setIvShift(Number(e.target.value))} aria-label="IV shift" />
+                  <span className="muted sb-small">{hasIv ? 'what if volatility moves' : 'no IV from the chain: expiry line only'}</span>
+                </label>
+              </div>
+              <SummaryPanel s={summary} legs={priced.legs} spot={market.spot} whatIf={whatIf} multiplier={tab.multiplier}
+                margin={<span className="muted" title="Dhan basket margin comes in step 4">step 4</span>} />
+            </>
           )}
         </section>
       </div>

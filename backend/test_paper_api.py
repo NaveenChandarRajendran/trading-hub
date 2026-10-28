@@ -332,6 +332,7 @@ def test_chain_from_instrument_list(env):
     r = c.get("/api/paper/chain?symbol=nifty").json()
     assert (r["expiry"], r["expiries"], r["lotSize"]) == ("2026-10-27", ["2026-10-27", "2026-11-03"], 65)
     assert r["spot"] == {"segment": "IDX_I", "securityId": 13}
+    assert r["chargeRates"]["sttSell"] == 0.0015 and r["chargeRates"]["brokeragePerOrder"] == 20.0  # for the Builder
     assert r["rows"] == [{"strike": 25100.0, "ce": {"securityId": CE, "name": "NIFTY 27 OCT 25100 CALL"},
                           "pe": {"securityId": PE, "name": "NIFTY 27 OCT 25100 PUT"}}]
     assert c.get("/api/paper/chain?symbol=NIFTY&expiry=2026-11-03").status_code == 404

@@ -4,11 +4,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, requestJson } from '../../shared/api';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
-import type { Chain, Tick } from '../paper-trade/logic/api';
+import type { ChargeRates, Chain as PaperChain, Tick } from '../paper-trade/logic/api';
 import { PaperFeed, keyOf, type ConnState, type InstrumentKey } from '../paper-trade/logic/feed';
 import { BUILDER_API, PRICES_WS, QUOTES_REFRESH_MS, STALE_AFTER_MS } from './config/settings';
 import type { OptionType } from './logic/blackScholes';
-import type { Quote } from './logic/legs';
+import { nearestStrike, type Quote } from './logic/legs';
+
+type Chain = PaperChain & { chargeRates?: ChargeRates };
 
 export interface Market {
   expiries: string[];
@@ -17,6 +19,9 @@ export interface Market {
   lotSizeOf: (expiry: string) => number | null;
   quoteOf: (expiry: string, strike: number, type: OptionType) => Quote | null;
   securityOf: (expiry: string, strike: number, type: OptionType) => number | null;
+  /** ATM implied volatility (%) of an expiry: the mean of the CE and PE IV at the strike nearest spot. */
+  atmIvOf: (expiry: string) => number | null;
+  chargeRates: ChargeRates | null;
   spot: number | null;
   spotChange: number | null; // % vs the previous close
   marketOpen: boolean | null;
@@ -150,8 +155,19 @@ export function useMarket(symbol: string): Market {
   const marketOpen = anyChain ? anyChain.meta.marketOpen : cacheAny ? cacheAny.meta.marketOpen : null;
   const stale = !!marketOpen && ((conn === 'open' && now - lastTickAt > STALE_AFTER_MS) || !!cacheAny?.meta.stale);
 
+  const atmIvOf = (expiry: string) => {
+    const rows = caches.get(expiry)?.rows;
+    if (!rows?.length || spot == null) return null;
+    const k = nearestStrike(rows.map((r) => r.strike), spot);
+    const row = rows.find((r) => r.strike === k);
+    const ivs = [row?.ce?.implied_volatility, row?.pe?.implied_volatility].filter((v): v is number => v != null && v > 0);
+    return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : null;
+  };
+
   return {
     expiries,
+    atmIvOf,
+    chargeRates: anyChain?.chargeRates ?? null,
     chainOf: (ex) => chains.get(ex),
     strikesOf: (ex) => chains.get(ex)?.rows.map((r) => r.strike) ?? [],
     lotSizeOf: (ex) => chains.get(ex)?.lotSize ?? null,
