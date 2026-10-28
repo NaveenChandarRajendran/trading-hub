@@ -10,7 +10,7 @@ import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi, type Logic
 import { inr } from '../../shared/grid';
 import { cssVar } from './chartTheme';
 import type { Position } from './logic/api';
-import { dropResult, lineLabel, onBox, pnlAt, roundTick, type Level } from './logic/drag';
+import { dropResult, lineLabel, onBox, placeGrips, pnlAt, roundTick, type Level } from './logic/drag';
 import { timeToLogical } from './logic/drawings';
 import { EXIT_PCTS, exitTitle, trailLabel } from './logic/exitPlan';
 import { zoneBands } from './logic/zones';
@@ -29,6 +29,7 @@ export interface ChartPosition {
 
 const GRIP_HALF_PX = 10; // a grip's half height: kept inside the price pane when its line is at the edge
 const GRIP_LEFT_PX = 8; // grips sit at the left edge (older candles), never over the newest ones by the price axis
+const COMPACT_BELOW_PX = 720; // a price pane narrower than this (the small charts): compact label and grips
 
 type Drag = { kind: Level; from: 'label' | 'line'; y: number; price: number | null };
 
@@ -49,6 +50,9 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
 }) {
   const root = useRef<HTMLDivElement>(null);
   const label = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState(false); // compact label expanded (hover)
+  const labelW = useRef(0); // the label's width when not expanded: grips are placed against it
+  const gripW = useRef<Record<string, number>>({});
   const [drag, setDrag] = useState<Drag | null>(null);
   const lines = useRef<{ entry?: IPriceLine; tp?: IPriceLine; sl?: IPriceLine; ghost?: IPriceLine }>({});
   const latest = useRef({ pos, onProtect, onError }); // the drop uses the newest LTP / lines, not the ones at drag start
@@ -136,16 +140,20 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
   };
 
   const labelY = series.priceToCoordinate(pos.avg);
-  // a grip level with the position label moves just right of it
-  const labelBox = label.current?.getBoundingClientRect();
-  const gripLeft = (y: number) => {
-    if (!labelBox || labelY == null || Math.abs(y - labelY) > labelBox.height / 2 + GRIP_HALF_PX) return GRIP_LEFT_PX;
-    return labelBox.right - (root.current?.getBoundingClientRect().left ?? 0) + 6;
-  };
+  const compact = chart.timeScale().width() < COMPACT_BELOW_PX;
+  if (label.current && !hover) labelW.current = label.current.offsetWidth;
   const pnl = pos.ltp != null ? pnlAt(pos.ltp, pos.avg, pos.qty) : null;
   const yOf = (p: number | null) => (p == null ? null : series.priceToCoordinate(p));
   const tpY = drag?.kind === 'tp' && drag.from === 'line' ? null : yOf(pos.target);
   const slY = drag?.kind === 'sl' && drag.from === 'line' ? null : yOf(pos.stop);
+  // grips at the left, side by side when level with the label or each other (small charts squeeze the prices together)
+  const paneH = chart.panes()[0]?.getHeight() ?? 0;
+  const gripTop = (y: number) => Math.min(Math.max(y, GRIP_HALF_PX), paneH - GRIP_HALF_PX);
+  const grips = ([['tp', tpY, pos.target], ['sl', slY, pos.stop]] as const)
+    .filter(([, y, level]) => y != null && level != null) as unknown as [Level, number, number][];
+  const lefts = placeGrips(grips.map(([kind, y]) => ({ key: kind, y: gripTop(y), w: gripW.current[kind] ?? 90 })),
+    labelY == null ? null : { left: GRIP_LEFT_PX, right: GRIP_LEFT_PX + labelW.current, top: labelY - GRIP_HALF_PX, bottom: labelY + GRIP_HALF_PX },
+    2 * GRIP_HALF_PX, GRIP_LEFT_PX);
 
   // zones: from the opening buy's candle to the right edge; a dragged line moves its zone live
   const dragged = drag?.price != null ? roundTick(drag.price) : null;
@@ -172,11 +180,14 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
     <div className="sc-overlay" ref={root}>
       {zones}
       {labelY != null && (
-        <div className="sc-pos-label" ref={label} style={{ top: labelY }}>
+        <div className={`sc-pos-label ${compact ? 'is-compact' : ''}`} ref={label} style={{ top: labelY }}
+          onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
           <span className="num">{pos.qty}</span>
           <span className={`num ${pnl == null ? '' : pnl > 0 ? 'up' : pnl < 0 ? 'down' : ''}`}>
             {pnl == null ? '–' : `${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${inr(2)(Math.abs(pnl))} INR`}
           </span>
+          {compact && <span className="sc-more" aria-hidden="true" title="TP, SL, partial exits, trailing, exit">⋯</span>}
+          <span className="sc-label-actions">
           <button type="button" className="sc-handle up" disabled={!enabled} title="Drag onto the chart to set a target" onPointerDown={start('tp', 'label')}>TP</button>
           <button type="button" className="sc-handle down" disabled={!enabled} title="Drag onto the chart to set a stop" onPointerDown={start('sl', 'label')}>SL</button>
           {'trail' in pos.raw && ( // a backend with partial exits / trailing (older ones would sell everything)
@@ -190,14 +201,19 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
             </>
           )}
           <button type="button" className="sc-x" disabled={!enabled} title="Exit all at market" aria-label="Exit all at market" onClick={onExit}>✕</button>
+          </span>
         </div>
       )}
-      {([['tp', tpY, pos.target], ['sl', slY, pos.stop]] as const).map(([kind, y, level]) => y != null && level != null && (
-        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: Math.min(Math.max(y, GRIP_HALF_PX), (chart.panes()[0]?.getHeight() ?? y) - GRIP_HALF_PX), left: gripLeft(y) }}
-          disabled={!enabled} title="Drag to move · drop on the position label to cancel" onPointerDown={start(kind, 'line')}>
-          {lineLabel(kind, level, pos.avg, pos.qty)}{kind === 'sl' && pos.raw.trail ? ` · ${trailLabel(pos.raw.trail)}` : ''} ⋮
-        </button>
-      ))}
+      {grips.map(([kind, y, level]) => {
+        const full = `${lineLabel(kind, level, pos.avg, pos.qty)}${kind === 'sl' && pos.raw.trail ? ` · ${trailLabel(pos.raw.trail)}` : ''}`;
+        return (
+          <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: gripTop(y), left: lefts[kind] }}
+            ref={(el) => { if (el) gripW.current[kind] = el.offsetWidth; }}
+            disabled={!enabled} title={`${full} · drag to move, drop on the position label to cancel`} onPointerDown={start(kind, 'line')}>
+            {compact ? `${kind === 'tp' ? 'TP' : 'SL'} ${level.toFixed(2)}${kind === 'sl' && pos.raw.trail ? ' · trail' : ''}` : full} ⋮
+          </button>
+        );
+      })}
     </div>
   );
 }

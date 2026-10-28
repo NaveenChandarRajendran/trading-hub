@@ -133,6 +133,9 @@ stronger green "locked" band; a dragged line moves its zone live. Drawn behind t
 is now transparent and the zones sit in `.sc-zones` under the canvas (portal from `PositionOverlay.tsx`).
 TP / SL grips moved to the left edge (28-Oct): at the right (by the price axis) their text covered the newest candles; a
 grip level with the position label sits just right of it.
+Compact position label on the small charts (28-Oct): price pane < 720 px → label "390 −1,389 INR ⋯" opens its buttons on
+hover / focus; grips show "TP 217.75" (full P&L in the tooltip and in the maximised view); grips placed side by side
+when level with the label or each other (`logic/drag.ts` `placeGrips`).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

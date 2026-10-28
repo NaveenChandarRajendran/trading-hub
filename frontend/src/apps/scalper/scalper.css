@@ -66,6 +66,13 @@
 .sc .sc-handle.up, .sc .sc-grip.up { color: var(--up); }
 .sc .sc-handle.down, .sc .sc-grip.down { color: var(--down); }
 .sc .sc-x { color: var(--text-2); cursor: pointer; border-color: var(--border); }
+/* small charts: the label shows qty + P&L + ⋯ and opens its buttons on hover (or while one has focus, e.g. Trail) */
+.sc .sc-label-actions { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.sc .sc-more { color: var(--text-3); }
+.sc .sc-pos-label.is-compact .sc-label-actions { display: none; }
+.sc .sc-pos-label.is-compact:hover .sc-label-actions, .sc .sc-pos-label.is-compact:focus-within .sc-label-actions { display: inline-flex; }
+.sc .sc-pos-label.is-compact:hover .sc-more, .sc .sc-pos-label.is-compact:focus-within .sc-more { display: none; }
+.sc .sc-pos-label { z-index: 1; }
 .sc .sc-grip { position: absolute; transform: translateY(-50%); pointer-events: auto; white-space: nowrap; }
 .sc .sc-handle:disabled, .sc .sc-grip:disabled, .sc .sc-x:disabled { color: var(--text-3); cursor: not-allowed; }
 

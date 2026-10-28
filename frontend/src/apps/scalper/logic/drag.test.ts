@@ -1,6 +1,6 @@
 // TP / SL drag on the chart: rounding, P&L at a price, validation and snap-back, and drop -> create / modify / cancel.
 import { describe, expect, it } from 'vitest';
-import { dropResult, lineLabel, onBox, pnlAt, roundTick, validateLevel } from './drag';
+import { dropResult, lineLabel, onBox, placeGrips, pnlAt, roundTick, validateLevel } from './drag';
 
 const base = { kind: 'tp' as const, price: 52.33, onLabel: false, existing: null, ltp: 33.75, other: null };
 
@@ -56,5 +56,19 @@ describe('drop', () => {
     expect(dropResult({ ...base, price: 31 })).toEqual({ action: 'invalid', message: 'Target must be above LTP 33.75.' });
     expect(dropResult({ ...base, kind: 'sl', price: 36 })).toEqual({ action: 'invalid', message: 'Stop must be below LTP 33.75.' });
     expect(dropResult({ ...base, price: null })).toEqual({ action: 'none' }); // off the chart
+  });
+});
+
+describe('grip placement (small charts: entry, TP and SL a few pixels apart)', () => {
+  const label = { left: 8, right: 140, top: 90, bottom: 110 }; // compact label on the entry line at y 100
+
+  it('far from the label and each other: all at the left edge', () => {
+    expect(placeGrips([{ key: 'tp', y: 20, w: 90 }, { key: 'sl', y: 180, w: 90 }], label)).toEqual({ tp: 8, sl: 8 });
+  });
+
+  it('level with the label: just right of it; level with each other too: side by side', () => {
+    expect(placeGrips([{ key: 'tp', y: 95, w: 90 }], label)).toEqual({ tp: 146 });
+    expect(placeGrips([{ key: 'tp', y: 92, w: 90 }, { key: 'sl', y: 108, w: 90 }], label)).toEqual({ tp: 146, sl: 242 });
+    expect(placeGrips([{ key: 'tp', y: 30, w: 90 }, { key: 'sl', y: 40, w: 90 }], null)).toEqual({ tp: 8, sl: 104 });
   });
 });

@@ -60,3 +60,27 @@ export const lineLabel = (kind: Level, price: number, avg: number, qty: number) 
   const pnl = pnlAt(price, avg, qty);
   return `${kind === 'tp' ? 'TP' : 'SL'} ${price.toFixed(2)} · ${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${inr(2)(Math.abs(pnl))}`;
 };
+
+export interface Span { left: number; right: number; top: number; bottom: number }
+
+/**
+ * Left offsets for the TP / SL grips (pixels): each starts at `start` and moves right past anything already placed on
+ * the same height (the position label, the other grip), so nothing overlaps and all stay at the chart's left side.
+ */
+export function placeGrips(grips: { key: string; y: number; w: number }[], label: Span | null, h = 20, start = 8, gap = 6): Record<string, number> {
+  const placed: Span[] = label ? [label] : [];
+  const out: Record<string, number> = {};
+  for (const g of grips) {
+    const top = g.y - h / 2;
+    const bottom = g.y + h / 2;
+    let left = start;
+    for (let guard = 0; guard < 10; guard++) {
+      const hit = placed.find((p) => top < p.bottom && bottom > p.top && left < p.right + gap && left + g.w + gap > p.left);
+      if (!hit) break;
+      left = hit.right + gap;
+    }
+    out[g.key] = left;
+    placed.push({ left, right: left + g.w, top, bottom });
+  }
+  return out;
+}
