@@ -14,7 +14,10 @@
 body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 Inter, system-ui, sans-serif; }
 .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 .shell.collapsed { grid-template-columns: 56px 1fr; }
-.sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 12px 8px; position: sticky; top: 0; height: 100vh; }
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 12px 8px; position: sticky; top: 0; height: 100vh;
+  box-sizing: border-box; display: flex; flex-direction: column; }
+/* the menu scrolls under the fixed title when every section is open on a short screen */
+.sidebar nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 .brand { font-weight: 600; font-size: 15px; padding: 8px 10px 16px; color: var(--accent); }
 .nav-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 6px; color: var(--text); text-decoration: none; }
 .nav-item:hover { background: var(--bg); }
