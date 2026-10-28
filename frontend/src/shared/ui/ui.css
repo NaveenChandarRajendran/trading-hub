@@ -82,6 +82,8 @@
 .ds .toast button { border: 0; background: none; color: var(--text-3); cursor: pointer; font: inherit; }
 
 .ds .empty { text-align: center; color: var(--text-3); padding: var(--sp-6) var(--sp-4); border: 1px dashed var(--border); border-radius: var(--r-lg); }
+.ds .empty a { color: var(--accent); text-decoration: none; }
+.ds .empty a:hover { text-decoration: underline; }
 
 .ds .split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr); gap: var(--sp-4); }
 @media (max-width: 1000px) { .ds .split { grid-template-columns: 1fr; } }

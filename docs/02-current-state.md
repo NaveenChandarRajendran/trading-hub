@@ -136,6 +136,8 @@ grip level with the position label sits just right of it.
 Compact position label on the small charts (28-Oct): price pane < 720 px → label "390 −1,389 INR ⋯" opens its buttons on
 hover / focus; grips show "TP 217.75" (full P&L in the tooltip and in the maximised view); grips placed side by side
 when level with the label or each other (`logic/drag.ts` `placeGrips`).
+Strategy view header (28-Oct): "← All strategies" link on top, name (xl) + kind pill, description below; Total / Unbooked /
+Booked / Capital as label-over-value on the right. Links inside empty states use the accent colour (`ui.css`).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

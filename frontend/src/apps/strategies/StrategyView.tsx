@@ -28,25 +28,27 @@ export function StrategyView({ id }: { id: number }) {
     return () => ctrl.abort();
   }, [id]);
 
-  if (error) return <div className="ds sts"><Link to="/strategies">← Strategies</Link><Alert kind="error">{error}</Alert></div>;
+  if (error) return <div className="ds sts"><Link to="/strategies" className="sts-back">← All strategies</Link><Alert kind="error">{error}</Alert></div>;
   if (!st) return <p className="muted">Loading…</p>;
   const money = (v: number | undefined) => <b className={`num ${toneOf(v ?? 0)}`}>{v == null ? '–' : signedRupees(v)}</b>;
   return (
     <div className="ds sts">
-      <section className="card">
-        <div className="toolbar">
-          <Link to="/strategies" className="btn ghost">← Strategies</Link>
-          <span className="sts-title">{st.name}</span>
-          <Pill tone={st.kind === 'algo' ? 'accent' : 'neutral'}>{st.kind === 'algo' ? 'ALGO' : 'MANUAL'}</Pill>
-          {st.archivedAt && <Pill tone="warn">ARCHIVED</Pill>}
-          <div className="toolbar-end sts-head-nums">
-            <span>Total {money(nums?.total)}</span>
-            <span>Unbooked {money(nums?.unbooked)}</span>
-            <span>Booked {money(nums?.booked)}</span>
-            <span className="muted">Capital {rupees(st.capital, 0)}</span>
+      <section className="card sts-view-head">
+        <div className="sts-view-id">
+          <Link to="/strategies" className="sts-back">← All strategies</Link>
+          <div className="sts-title-row">
+            <span className="sts-title">{st.name}</span>
+            <Pill tone={st.kind === 'algo' ? 'accent' : 'neutral'}>{st.kind === 'algo' ? 'ALGO' : 'MANUAL'}</Pill>
+            {st.archivedAt && <Pill tone="warn">ARCHIVED</Pill>}
           </div>
+          {st.description && <p className="muted sts-small">{st.description}</p>}
         </div>
-        {st.description && <p className="muted sts-small">{st.description}</p>}
+        <dl className="sts-head-nums">
+          <div><dt>Total</dt><dd>{money(nums?.total)}</dd></div>
+          <div><dt>Unbooked</dt><dd>{money(nums?.unbooked)}</dd></div>
+          <div><dt>Booked</dt><dd>{money(nums?.booked)}</dd></div>
+          <div><dt>Capital</dt><dd className="num">{rupees(st.capital, 0)}</dd></div>
+        </dl>
       </section>
       <section className="card">
         <div className="card-head">

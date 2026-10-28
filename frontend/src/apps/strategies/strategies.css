@@ -14,5 +14,15 @@
 .ds .sts-small { font-size: var(--fs-sm); margin: 0; }
 .ds .sts-name a { color: inherit; text-decoration: none; }
 .ds .sts-name a:hover { color: var(--accent); }
-.ds .sts-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; align-self: center; }
-.ds .sts-head-nums { gap: var(--sp-4); font-size: var(--fs-md); }
+.ds .sts-title { margin: 0; font-size: var(--fs-xl); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* strategy view header: back link, name + kind, description on the left; the P&L figures as label-over-value on the right */
+.ds .sts-view-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3) var(--sp-6); flex-wrap: wrap; }
+.ds .sts-view-id { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.ds .sts-back { align-self: flex-start; font-size: var(--fs-sm); color: var(--text-2); text-decoration: none; }
+.ds .sts-back:hover { color: var(--accent); }
+.ds .sts-title-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.ds .sts-head-nums { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6); margin: 0; }
+.ds .sts-head-nums dt { font-size: var(--fs-sm); color: var(--text-3); }
+.ds .sts-head-nums dd { margin: 0; font-size: var(--fs-lg); font-weight: 600; text-align: right; }
+.ds .sts-head-nums div { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
