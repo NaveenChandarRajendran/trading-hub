@@ -1,5 +1,6 @@
 // Chart TP / SL dragging (pure): price rounding to the 0.05 tick, P&L at a price, validation for a long position,
 // and what a drop means (set / move, cancel when dropped back on the position label, or nothing).
+import { inr } from '../../../shared/grid';
 
 export interface Box { left: number; top: number; right: number; bottom: number }
 
@@ -54,8 +55,8 @@ export function dropResult(a: {
   return { action: 'set', body: a.kind === 'tp' ? { target: price } : { stop: price } };
 }
 
-/** "TP 52.30 · +245.00" for a line's label. */
+/** "TP 204.90 · +1,034.00" for a line's grip (P&L in Indian grouping). */
 export const lineLabel = (kind: Level, price: number, avg: number, qty: number) => {
   const pnl = pnlAt(price, avg, qty);
-  return `${kind === 'tp' ? 'TP' : 'SL'} ${price.toFixed(2)} · ${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${Math.abs(pnl).toFixed(2)}`;
+  return `${kind === 'tp' ? 'TP' : 'SL'} ${price.toFixed(2)} · ${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${inr(2)(Math.abs(pnl))}`;
 };

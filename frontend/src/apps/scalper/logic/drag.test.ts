@@ -10,6 +10,7 @@ describe('prices and P&L', () => {
     expect(pnlAt(37.55, 33.55, 65)).toBe(260);
     expect(lineLabel('tp', 37.55, 33.55, 65)).toBe('TP 37.55 · +260.00');
     expect(lineLabel('sl', 30.2, 33.55, 65)).toBe('SL 30.20 · −217.75');
+    expect(lineLabel('tp', 204.9, 185, 52)).toBe('TP 204.90 · +1,034.80');
   });
 });
 

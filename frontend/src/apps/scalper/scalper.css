@@ -58,7 +58,7 @@
 .sc .sc-handle.up, .sc .sc-grip.up { color: var(--up); }
 .sc .sc-handle.down, .sc .sc-grip.down { color: var(--down); }
 .sc .sc-x { color: var(--text-2); cursor: pointer; border-color: var(--border); }
-.sc .sc-grip { position: absolute; transform: translateY(-50%); pointer-events: auto; }
+.sc .sc-grip { position: absolute; transform: translateY(-50%); pointer-events: auto; white-space: nowrap; }
 .sc .sc-handle:disabled, .sc .sc-grip:disabled, .sc .sc-x:disabled { color: var(--text-3); cursor: not-allowed; }
 
 .sc .sc-panel { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; min-width: 0; overflow: hidden auto; }

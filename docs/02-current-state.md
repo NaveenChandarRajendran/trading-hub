@@ -119,6 +119,8 @@ the feed built (history adds open / wider high-low / missed minutes). The Dashbo
 TP / SL near the entry (28-Oct): the "drop on the position label = cancel" zone was a full-width ±12 px band around the
 entry line, so a stop dropped just below the entry was ignored (new) or cancelled (existing). Now only the label's own
 box (+6 px) cancels (`logic/drag.ts` `onBox`).
+TP / SL labels (28-Oct): the price-line titles were drawn under the TP / SL grips and got covered; the grips now carry the
+whole text ("TP 204.90 · +1,034.80 ⋮", P&L in Indian grouping) and the lines have no title.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

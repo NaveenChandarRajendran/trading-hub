@@ -53,8 +53,9 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
       }
     };
     put('entry', pos.avg, cssVar('--accent'), '');
-    put('tp', drag?.kind === 'tp' && drag.from === 'line' ? null : pos.target, cssVar('--up'), pos.target != null ? lineLabel('tp', pos.target, pos.avg, pos.qty) : '');
-    put('sl', drag?.kind === 'sl' && drag.from === 'line' ? null : pos.stop, cssVar('--down'), pos.stop != null ? lineLabel('sl', pos.stop, pos.avg, pos.qty) : '');
+    // no line titles: the grips carry "TP 204.90 · +1,034.00" (a title is drawn under the grip and gets covered)
+    put('tp', drag?.kind === 'tp' && drag.from === 'line' ? null : pos.target, cssVar('--up'), '');
+    put('sl', drag?.kind === 'sl' && drag.from === 'line' ? null : pos.stop, cssVar('--down'), '');
   }, [series, pos.avg, pos.qty, pos.target, pos.stop, drag?.kind, drag?.from]);
 
   useEffect(() => () => {
@@ -136,10 +137,10 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
           <button type="button" className="sc-x" disabled={!enabled} title="Exit at market" aria-label="Exit at market" onClick={onExit}>✕</button>
         </div>
       )}
-      {[['tp', tpY], ['sl', slY]].map(([kind, y]) => y != null && (
-        <button key={kind as string} type="button" className={`sc-grip ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: y as number, right: right + 4 }}
-          disabled={!enabled} title={`Drag to move · drop on the position label to cancel`} onPointerDown={start(kind as Level, 'line')}>
-          {kind === 'tp' ? 'TP' : 'SL'} ⋮
+      {([['tp', tpY, pos.target], ['sl', slY, pos.stop]] as const).map(([kind, y, level]) => y != null && level != null && (
+        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: y, right: right + 4 }}
+          disabled={!enabled} title="Drag to move · drop on the position label to cancel" onPointerDown={start(kind, 'line')}>
+          {lineLabel(kind, level, pos.avg, pos.qty)} ⋮
         </button>
       ))}
     </div>
