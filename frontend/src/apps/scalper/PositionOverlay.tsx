@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { cssVar } from './chartTheme';
-import { dropResult, lineLabel, pnlAt, roundTick, type Level } from './logic/drag';
+import { dropResult, lineLabel, onBox, pnlAt, roundTick, type Level } from './logic/drag';
 
 export interface ChartPosition {
   securityId: number;
@@ -30,6 +30,7 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
   onError: (message: string) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const label = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const lines = useRef<{ entry?: IPriceLine; tp?: IPriceLine; sl?: IPriceLine; ghost?: IPriceLine }>({});
   const latest = useRef({ pos, onProtect, onError }); // the drop uses the newest LTP / lines, not the ones at drag start
@@ -89,9 +90,9 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
       const { pos: p, onProtect: protect, onError: fail } = latest.current;
       const y = yOf(e);
       const price = series.coordinateToPrice(y);
-      const labelY = series.priceToCoordinate(p.avg);
+      const onLabel = onBox(e.clientX, e.clientY, label.current?.getBoundingClientRect());
       const existing = drag.kind === 'tp' ? p.target : p.stop;
-      const r = dropResult({ kind: drag.kind, price, y, labelY, existing, ltp: p.ltp, other: drag.kind === 'tp' ? p.stop : p.target });
+      const r = dropResult({ kind: drag.kind, price, onLabel, existing, ltp: p.ltp, other: drag.kind === 'tp' ? p.stop : p.target });
       setDrag(null);
       if (r.action === 'invalid') fail(r.message);
       else if (r.action === 'set' || r.action === 'cancel') void protect(r.body);
@@ -125,7 +126,7 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
   return (
     <div className="sc-overlay" ref={root}>
       {labelY != null && (
-        <div className="sc-pos-label" style={{ top: labelY }}>
+        <div className="sc-pos-label" ref={label} style={{ top: labelY }}>
           <span className="num">{pos.qty}</span>
           <span className={`num ${pnl == null ? '' : pnl > 0 ? 'up' : pnl < 0 ? 'down' : ''}`}>
             {pnl == null ? '–' : `${pnl > 0 ? '+' : pnl < 0 ? '−' : ''}${inr(2)(Math.abs(pnl))} INR`}

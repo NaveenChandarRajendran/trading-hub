@@ -116,6 +116,9 @@ Chart gap fix (28-Oct): the minute-by-minute history refresh (Dhan intraday, new
 up to 60 s) replaced complete live minutes with stale copies, so the bar before a bucket boundary stayed cut (a gap to
 the next bar; seen at 13:00, NIFTY really closed 12:59 at 22,761). `withHistory` now keeps the live close of minutes
 the feed built (history adds open / wider high-low / missed minutes). The Dashboard loads history once: not affected.
+TP / SL near the entry (28-Oct): the "drop on the position label = cancel" zone was a full-width ±12 px band around the
+entry line, so a stop dropped just below the entry was ignored (new) or cancelled (existing). Now only the label's own
+box (+6 px) cancels (`logic/drag.ts` `onBox`).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

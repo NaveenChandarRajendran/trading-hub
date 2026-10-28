@@ -1,9 +1,15 @@
 // Chart TP / SL dragging (pure): price rounding to the 0.05 tick, P&L at a price, validation for a long position,
 // and what a drop means (set / move, cancel when dropped back on the position label, or nothing).
 
+export interface Box { left: number; top: number; right: number; bottom: number }
+
+/** The drop point is on the position label's box (padded). Only the box: right beside the entry line is a price. */
+export const onBox = (x: number, y: number, b: Box | null | undefined, pad = LABEL_PAD_PX) =>
+  !!b && x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad;
+
 export type Level = 'tp' | 'sl';
 export const TICK = 0.05;
-export const LABEL_BAND_PX = 12; // dropping a line within this many pixels of the position label cancels it
+export const LABEL_PAD_PX = 6; // a drop this close to the position label's box still counts as on it (cancel)
 
 /** Nearest 0.05, as the paper engine requires (avoids 0.1 + 0.2 style float noise). */
 export const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) / 100;
@@ -33,10 +39,10 @@ export type DropResult =
  * snaps back). Otherwise validate and set (new) or move (existing). Unchanged price: nothing.
  */
 export function dropResult(a: {
-  kind: Level; price: number | null; y: number; labelY: number | null; existing: number | null; ltp: number | null | undefined;
+  kind: Level; price: number | null; onLabel: boolean; existing: number | null; ltp: number | null | undefined;
   other: number | null | undefined;
 }): DropResult {
-  const onLabel = a.labelY != null && Math.abs(a.y - a.labelY) <= LABEL_BAND_PX;
+  const { onLabel } = a;
   if (onLabel || a.price == null) {
     if (onLabel && a.existing != null) return { action: 'cancel', body: a.kind === 'tp' ? { target: null } : { stop: null } };
     return { action: 'none' };
