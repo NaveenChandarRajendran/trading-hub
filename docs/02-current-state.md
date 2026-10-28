@@ -89,7 +89,8 @@ expiry payoff / breakevens / max profit-loss with "unlimited", T+0 value, positi
 the 3 Nov iron condor checked against Dhan. Step 2 done: Live → Strategy Builder page (legs table, templates around
 ATM, live mid prices + IV, tabs). Step 3 done: SVG payoff chart (expiry + target-date curves, breakevens, weekly
 bands, zoom / pan, what-if sliders), summary (POP, reward : risk, charges) and Greeks. `/api/paper/chain` now also
-returns `chargeRates` (needs a backend restart once merged). Not merged.
+returns `chargeRates`. Option chain for picking legs. Step 4 done: Dhan basket margin, drafts per user
+(`th_builder_drafts`), Analyze positions. Needs a backend restart once merged (new routes + table). Not merged.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

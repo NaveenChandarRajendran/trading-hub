@@ -1,14 +1,22 @@
 // Strategy Builder: design multi-leg NIFTY / BANKNIFTY option positions on live chain prices (PAPER ONLY: nothing here
-// places an order). Up to 6 tabs keep designs open (this browser until drafts are saved per user, step 4). Legs are picked
-// on the option chain (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary and Greeks on the right.
+// places an order). Up to 6 tabs keep designs open in this browser; Save stores one to your account as a draft (Drafts
+// menu: open, rename, delete). Analyze positions loads a strategy's open positions. Legs are picked on the option chain
+// (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary with Dhan basket
+// margin, and Greeks on the right.
 import { useEffect, useMemo, useState } from 'react';
+import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Status } from '../../shared/ui';
 import { strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
-import { longDate, pct, toneOf } from '../paper-trade/format';
+import { longDate, pct, rupees, toneOf } from '../paper-trade/format';
 import { SYMBOLS, TABS_KEY } from './config/settings';
-import { MAX_LEGS, MAX_TABS, addFromChain, newTab, nextTabNumber, priceLegs, type BuilderLeg, type Pick, type Tab } from './logic/legs';
+import {
+  MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, priceLegs, tabFromDraft, tabFromPositions, tabSnapshot,
+  toDraftLegs, unsaved, type BuilderLeg, type ChainPick, type Tab,
+} from './logic/legs';
+import { builderApi, type Draft, type Margin, type PositionLeg } from './logic/api';
+import { AnalyzeMenu, DraftsMenu } from './BuilderMenus';
 import { yearsToExpiry } from './logic/blackScholes';
 import { summarize } from './logic/summary';
 import { TEMPLATES, buildTemplate, type TemplateId } from './logic/templates';
@@ -46,6 +54,8 @@ export default function StrategyBuilderApp() {
   const [chainExpiry, setChainExpiry] = useState(''); // '' = the toolbar's expiry
   const [range, setRange] = useState<StrikeRange>('10');
   const [notice, setNotice] = useState('');
+  const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
+  const [margin, setMargin] = useState<{ state: 'idle' | 'loading' | 'ok' | 'error'; m?: Margin; why?: string }>({ state: 'idle' });
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
@@ -89,8 +99,72 @@ export default function StrategyBuilderApp() {
     [legsKey, market.spot, tab.multiplier, nearest, now, market.chargeRates]); // eslint-disable-line react-hooks/exhaustive-deps
   const chartLegs = useMemo(() => priced.legs, [legsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Dhan basket margin for the ticked legs: asked 1 s after the design stops changing (the backend caches 30 s)
+  const marginReq = marginRequest(priced.legs.map((l) => ({ ...l, securityId: market.securityOf(l.expiry, l.strike, l.type) })), tab.multiplier);
+  const marginKey = JSON.stringify(marginReq);
+  useEffect(() => {
+    if (!marginReq) { setMargin({ state: 'idle' }); return; }
+    setMargin((m) => ({ ...m, state: 'loading' }));
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      builderApi.margin(marginReq, ctrl.signal)
+        .then((m) => setMargin({ state: 'ok', m }))
+        .catch((e) => { if (e.name !== 'AbortError') setMargin({ state: 'error', why: e instanceof ApiError ? e.message : 'Margin unavailable.' }); });
+    }, 1000);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [marginKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const marginCell = margin.state === 'ok' && margin.m ? (
+    <span title={`Dhan basket margin (NRML)${margin.m.span != null ? ` · SPAN ${rupees(margin.m.span)}` : ''}${margin.m.exposure != null ? ` · exposure ${rupees(margin.m.exposure)}` : ''}`}>
+      {rupees(margin.m.total)}
+      {margin.m.hedgeBenefit ? <span className="muted sb-small"> · hedge benefit {rupees(margin.m.hedgeBenefit)}</span> : null}
+    </span>
+  ) : margin.state === 'error' ? <span className="muted" title={margin.why}>Margin unavailable</span>
+    : margin.state === 'loading' ? <span className="muted">…</span> : <span className="muted">–</span>;
+
+  // ---- drafts (saved to the account) and Analyze positions
+  const tabCount = (n: number | null) => (n == null || tabs.length >= MAX_TABS ? null : n);
+  const say = (kind: 'info' | 'error', text: string) => setMessage({ kind, text });
+  const openTab = (t: Tab) => {
+    setTabs((ts) => [...ts, t]);
+    setActiveId(t.id);
+  };
+  const openDraft = (d: Draft) => {
+    const already = tabs.find((t) => t.draftId === d.id);
+    if (already) { setActiveId(already.id); return; }
+    const n = tabCount(nextTabNumber(tabs));
+    if (n == null) { say('error', `Up to ${MAX_TABS} tabs: close one to open "${d.name}".`); return; }
+    openTab(tabFromDraft(d, n));
+    say('info', `Opened "${d.name}" (prices are live now).`);
+  };
+  const loadPositions = (name: string, rows: PositionLeg[]) => {
+    if (!rows.length) { say('info', `${name} has no open positions.`); return; }
+    const n = tabCount(nextTabNumber(tabs));
+    if (n == null) { say('error', `Up to ${MAX_TABS} tabs: close one first.`); return; }
+    const { tab: t, skipped } = tabFromPositions(rows, name, n);
+    openTab(t);
+    say('info', `Loaded ${t.legs.length} position${t.legs.length === 1 ? '' : 's'} of ${name} at their average price${skipped ? ` (${skipped} on another index left out)` : ''}.`);
+  };
+  const saveAs = async () => {
+    const suggestion = tab.draftId || !Number.isNaN(Number(tab.name)) ? '' : tab.name;
+    const name = window.prompt('Name this design', suggestion || tab.source || '')?.trim();
+    if (!name) return;
+    try {
+      const d = await builderApi.saveDraft({ name, symbol: tab.symbol, multiplier: tab.multiplier, legs: toDraftLegs(tab.legs) });
+      update({ draftId: d.id, name: d.name, saved: tabSnapshot(tab), source: null });
+      say('info', `Saved "${d.name}" to your account.`);
+    } catch (e) { say('error', e instanceof ApiError ? e.message : 'Save failed.'); }
+  };
+  const save = async () => {
+    if (!tab.draftId) return saveAs();
+    try {
+      await builderApi.updateDraft(tab.draftId, { symbol: tab.symbol, multiplier: tab.multiplier, legs: toDraftLegs(tab.legs) });
+      update({ saved: tabSnapshot(tab) });
+      say('info', `Saved "${tab.name}".`);
+    } catch (e) { say('error', e instanceof ApiError ? e.message : 'Save failed.'); }
+  };
+
   // from the latest legs (quick clicks never overwrite each other)
-  const pick = (p: Pick) => setTabs((ts) => ts.map((t) => {
+  const pick = (p: ChainPick) => setTabs((ts) => ts.map((t) => {
     if (t.id !== tab.id) return t;
     const r = addFromChain(t.legs, p);
     setNotice(r.full ? `Up to ${MAX_LEGS} legs: remove one first (⋯ → Delete).` : '');
@@ -103,15 +177,13 @@ export default function StrategyBuilderApp() {
     setLegs(legs);
   };
   const addTab = () => {
-    const n = nextTabNumber(tabs);
+    const n = tabCount(nextTabNumber(tabs));
     if (n == null) return;
-    const t = newTab(n, tab.symbol, expiry);
-    setTabs((ts) => [...ts, t].sort((a, b) => Number(a.name) - Number(b.name)));
-    setActiveId(t.id);
+    openTab(newTab(n, tab.symbol, expiry));
   };
   const closeTab = (id: string) => {
     const t = tabs.find((x) => x.id === id);
-    if (!t || (t.legs.length && !window.confirm(`Close tab ${t.name} and its ${t.legs.length} legs?`))) return;
+    if (!t || (unsaved(t) && !window.confirm(`Close "${t.name}"? Its changes aren't saved${t.draftId ? '' : ' (it was never saved)'}.`))) return;
     const rest = tabs.filter((x) => x.id !== id);
     const next = rest.length ? rest : [newTab(1, tab.symbol, expiry)];
     setTabs(next);
@@ -158,17 +230,32 @@ export default function StrategyBuilderApp() {
           </div>
           <div className="toolbar-end"><Status kind={status.kind}>{status.text}</Status></div>
         </div>
-        <div className="sb-tabs" role="tablist" aria-label="Designs">
-          {tabs.map((t) => (
-            <span key={t.id} className={`sb-tab ${t.id === tab.id ? 'on' : ''}`}>
-              <button type="button" role="tab" aria-selected={t.id === tab.id} onClick={() => setActiveId(t.id)}>
-                {t.name}{t.legs.length ? <span className="muted"> · {t.symbol} {t.legs.length}L</span> : null}
-              </button>
-              <button type="button" className="sb-tab-x" aria-label={`Close tab ${t.name}`} onClick={() => closeTab(t.id)}>×</button>
-            </span>
-          ))}
-          {tabs.length < MAX_TABS && <button type="button" className="btn ghost sb-tab-add" onClick={addTab}>+ Tab</button>}
+        <div className="sb-tabs-row">
+          <div className="sb-tabs" role="tablist" aria-label="Designs">
+            {tabs.map((t) => (
+              <span key={t.id} className={`sb-tab ${t.id === tab.id ? 'on' : ''}`}>
+                <button type="button" role="tab" aria-selected={t.id === tab.id} onClick={() => setActiveId(t.id)}
+                  title={t.source ?? (t.draftId ? 'Saved draft' : 'Not saved')}>
+                  {unsaved(t) && <span className="sb-dirty" aria-label="unsaved changes">●</span>}
+                  {t.name}{t.legs.length ? <span className="muted"> · {t.symbol} {t.legs.length}L</span> : null}
+                </button>
+                <button type="button" className="sb-tab-x" aria-label={`Close tab ${t.name}`} onClick={() => closeTab(t.id)}>×</button>
+              </span>
+            ))}
+            {tabs.length < MAX_TABS && <button type="button" className="btn ghost sb-tab-add" onClick={addTab}>+ Tab</button>}
+          </div>
+          <div className="sb-actions">
+            <button type="button" className="btn primary" disabled={!tab.legs.length || (!!tab.draftId && !unsaved(tab))} onClick={save}
+              title={tab.draftId ? `Save the changes to "${tab.name}"` : 'Save this design to your account'}>{tab.draftId ? 'Save' : 'Save draft'}</button>
+            {tab.draftId && <button type="button" className="btn" disabled={!tab.legs.length} onClick={saveAs}>Save as new</button>}
+            <DraftsMenu currentId={tab.draftId} onOpen={openDraft} onError={(m) => say('error', m)}
+              onRenamed={(d) => setTabs((ts) => ts.map((t) => (t.draftId === d.id ? { ...t, name: d.name } : t)))}
+              onDeleted={(id) => setTabs((ts) => ts.map((t) => (t.draftId === id ? { ...t, draftId: null, saved: null } : t)))} />
+            <AnalyzeMenu onLoad={loadPositions} onError={(m) => say('error', m)} disabled={tabs.length >= MAX_TABS} />
+          </div>
         </div>
+        {tab.source && <p className="muted sb-small">{tab.source}: prices are the positions' average buy (locked), so the payoff is the live P&amp;L of what is held.</p>}
+        {message && <Alert kind={message.kind}>{message.text} <button type="button" className="btn ghost" onClick={() => setMessage(null)}>×</button></Alert>}
         {market.error && <Alert kind="error">{market.error}</Alert>}
       </section>
 
@@ -211,7 +298,7 @@ export default function StrategyBuilderApp() {
                 </label>
               </div>
               <SummaryPanel s={summary} legs={priced.legs} spot={market.spot} whatIf={whatIf} multiplier={tab.multiplier}
-                margin={<span className="muted" title="Dhan basket margin comes in step 4">step 4</span>} />
+                margin={marginCell} />
             </>
           )}
         </section>

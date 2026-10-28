@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { breakevens, netPremium } from './payoff';
 import {
-  MAX_LEGS, addFromChain, duplicateLeg, heldOn, shortExpiry, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
+  MAX_LEGS, addFromChain, duplicateLeg, heldOn, marginRequest, shortExpiry, tabFromDraft, tabFromPositions, tabSnapshot, unsaved, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
 } from './legs';
 import { buildTemplate, TEMPLATES } from './templates';
 
@@ -132,5 +132,44 @@ describe('templates around ATM (spot 22,912 -> ATM 22,900)', () => {
     const strike = (side: string, type: string) => legs.find((l) => l.side === side && l.type === type)!.strike;
     expect(strike('B', 'CE')).toBeGreaterThan(strike('S', 'CE'));
     expect(strike('B', 'PE')).toBeLessThan(strike('S', 'PE'));
+  });
+});
+
+describe('drafts and Analyze positions', () => {
+  const draft = { id: 7, name: 'IC A 3 Nov', symbol: 'NIFTY', multiplier: 2, createdAt: '', updatedAt: '',
+    legs: [{ side: 'S' as const, type: 'PE' as const, expiry: '2026-11-03', strike: 21950, lots: 1, include: true, priceOverride: null }] };
+
+  it('a draft opens as a saved tab; any edit makes it unsaved, undoing it makes it saved again', () => {
+    const t = tabFromDraft(draft, 2);
+    expect((({ name, symbol, multiplier, draftId }) => ({ name, symbol, multiplier, draftId }))(t))
+      .toEqual({ name: 'IC A 3 Nov', symbol: 'NIFTY', multiplier: 2, draftId: 7 });
+    expect(unsaved(t)).toBe(false);
+    const edited = { ...t, legs: t.legs.map((l) => ({ ...l, lots: 3 })) };
+    expect(unsaved(edited)).toBe(true);
+    expect(unsaved({ ...edited, legs: t.legs })).toBe(false);
+    expect(tabSnapshot(t)).not.toContain('"id"'); // leg ids are not part of what is saved
+  });
+
+  it("a strategy's positions: one index, locked at their average price", () => {
+    const rows = [
+      { securityId: 1, name: 'a', symbol: 'NIFTY', expiry: '2026-11-03', strike: 23000, type: 'CE' as const, side: 'B' as const, lots: 2, lotSize: 65, price: 100.5 },
+      { securityId: 2, name: 'b', symbol: 'BANKNIFTY', expiry: '2026-11-25', strike: 55000, type: 'PE' as const, side: 'B' as const, lots: 1, lotSize: 30, price: 300 },
+    ];
+    const { tab, skipped } = tabFromPositions(rows, 'Manual', 3);
+    expect(tab.symbol).toBe('NIFTY');
+    expect(skipped).toBe(1);
+    expect(tab.source).toBe('Positions of Manual');
+    expect(unsaved(tab)).toBe(false); // a view of what is held, not an unsaved design
+    expect(tab.legs.map((l) => [l.side, l.strike, l.type, l.lots, l.priceOverride, l.locked])).toEqual([['B', 23000, 'CE', 2, 100.5, true]]);
+  });
+
+  it('margin request: ticked legs in units × multiplier; none while a leg has no security ID', () => {
+    const legs = [
+      { include: true, side: 'S' as const, lots: 1, lotSize: 65, price: 19.2, securityId: 41001 },
+      { include: false, side: 'B' as const, lots: 1, lotSize: 65, price: 8.85, securityId: 41002 },
+    ];
+    expect(marginRequest(legs, 2)).toEqual([{ securityId: 41001, side: 'S', qty: 130, price: 19.2 }]);
+    expect(marginRequest([{ ...legs[0], securityId: null }], 1)).toBeNull();
+    expect(marginRequest([legs[1]], 1)).toBeNull();
   });
 });

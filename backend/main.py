@@ -13,6 +13,7 @@ Endpoints:
     POST /api/auth/login | /api/auth/logout, GET /api/auth/me   (auth_api.py)
     /api/strategies[/{id}[/capital|reset|archive|unarchive]]   (the user's own strategies; strategies_api.py)
     /api/plans[/{id}], /api/strategies/{id}/plan               (growth plans + tracker inputs; growth_plans_api.py)
+    /api/builder/drafts|margin|positions                      (Strategy Builder; builder_api.py)
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
@@ -53,6 +54,7 @@ import scalper_api
 import algo_config
 import dashboard_api
 import dashboard_levels_api
+import builder_api
 import growth_plans_api
 from algo_filters import load_constituents
 from algo_service import AlgoData, AlgoService
@@ -67,6 +69,7 @@ from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
 from envfile import load_env_file
 from store import IST, PaperPgStore, PgStore
+from builder import Drafts
 from growth_plans import Plans
 from strategies import Strategies, bootstrap
 from tracker import Tracker
@@ -404,6 +407,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         live = lambda st: strategy_live(paper, algo, st)  # noqa: E731
         strategies_api.register(app, strategies, live=live)
         growth_plans_api.register(app, Plans(paper.store, strategies, paper.clock), live=live)
+        builder_api.register(app, Drafts(paper.store, paper.clock), paper, strategies,
+                             margin_multi=getattr(tracker.client, "margin_multi", None))
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo

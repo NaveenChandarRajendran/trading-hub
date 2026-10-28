@@ -434,3 +434,16 @@ CREATE TABLE IF NOT EXISTS th_capital_events (
     capital_after  double precision NOT NULL
 );
 CREATE INDEX IF NOT EXISTS th_capital_events_strategy ON th_capital_events (strategy_id, at);
+
+-- Strategy Builder drafts (builder.py): a named design per user; legs as JSON. Designs only, never orders.
+CREATE TABLE IF NOT EXISTS th_builder_drafts (
+    id          serial      PRIMARY KEY,
+    user_id     integer     NOT NULL REFERENCES th_users(id),
+    name        text        NOT NULL,
+    symbol      text        NOT NULL CHECK (symbol IN ('NIFTY', 'BANKNIFTY')),
+    multiplier  integer     NOT NULL DEFAULT 1,
+    legs        jsonb       NOT NULL,
+    created_at  timestamptz NOT NULL,
+    updated_at  timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS th_builder_drafts_user ON th_builder_drafts (user_id);

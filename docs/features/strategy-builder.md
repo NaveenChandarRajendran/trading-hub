@@ -49,8 +49,18 @@ what a strategy already holds.
    same click again adds a lot (`logic/legs.ts` `addFromChain`, max 8 legs); held lots shown on the strike and the used
    B / S button filled; ATM row and ITM cells marked; its own expiry (follows the toolbar's) and ±10 / ±20 / All strikes;
    live ticks for ±20 strikes around ATM at most. Templates still fill the legs too.
-4. Margin (`POST /v2/margincalculator/multi`, one live check after market close with Naveen's OK) + drafts
-   (`th_builder_drafts`) + Analyze positions.
+4. Margin + drafts + Analyze positions — done.
+   - Margin: `POST /api/builder/margin` -> `DhanClient.margin_multi` -> Dhan `/v2/margincalculator/multi`, cached 30 s
+     per basket, asked 1 s after the design stops changing; failures show "Margin unavailable" (the design still works).
+     Live check 28-Oct-2026 (after close, a calculator, nothing ordered): the body needs `dhanClientId` and `scripList`
+     (as in Dhan's cURL example, not its field table); the answer is camelCase (`totalMargin`, `spanMargin`,
+     `exposure`, `hedgeBenefit`). Dhan reported hedgeBenefit 0 for a hedged NIFTY condor (total ₹76,406.98 for 1 lot):
+     the page shows Dhan's figures as they come. `clientId` in the answer is never passed on.
+   - Drafts: `th_builder_drafts` (Postgres + JSON), `builder.py` rules, `/api/builder/drafts` CRUD, private per user.
+     Page: Save draft (asks a name) / Save (overwrite) / Save as new, Drafts menu (open in a tab, rename, delete), a ●
+     on tabs with unsaved changes. Tabs still live in this browser; a saved draft opens anywhere.
+   - Analyze positions: `GET /api/builder/positions?strategy=` (your own manual strategies) -> a tab with the open
+     positions at their average buy, prices locked (one index per tab; others counted). The algo is on its own page.
 
 ## Open questions
 - Iron Condor A (95 %) / B (90 %): short-strike rule (% from spot for CE / PE), rounding direction, wing width, expiry.

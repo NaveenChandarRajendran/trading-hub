@@ -555,6 +555,33 @@ class PaperJsonStore:
         self.d["plans"] = [p for p in self.d.get("plans", []) if p["id"] != pid]
         self._write()
 
+    # ---- Strategy Builder drafts (builder.py)
+    def add_builder_draft(self, user_id, name, symbol, multiplier, legs, now):
+        rows = self.d.setdefault("builder_drafts", [])
+        d = {"id": max((r["id"] for r in rows), default=0) + 1, "user_id": user_id, "name": name, "symbol": symbol,
+             "multiplier": int(multiplier), "legs": legs, "created_at": now.isoformat(), "updated_at": now.isoformat()}
+        rows.append(d)
+        self._write()
+        return json.loads(json.dumps(d))
+
+    def builder_drafts(self, user_id):
+        return [json.loads(json.dumps(d)) for d in self.d.get("builder_drafts", []) if d["user_id"] == user_id]
+
+    def builder_draft(self, did):
+        d = next((d for d in self.d.get("builder_drafts", []) if d["id"] == did), None)
+        return json.loads(json.dumps(d)) if d else None
+
+    def update_builder_draft(self, did, now, **fields):
+        d = next(d for d in self.d["builder_drafts"] if d["id"] == did)
+        d.update({k: v for k, v in fields.items() if k in ("name", "symbol", "multiplier", "legs")})
+        d["updated_at"] = now.isoformat()
+        self._write()
+        return json.loads(json.dumps(d))
+
+    def delete_builder_draft(self, did):
+        self.d["builder_drafts"] = [d for d in self.d.get("builder_drafts", []) if d["id"] != did]
+        self._write()
+
     def apply_plan(self, strategy_id, plan_id, initial_capital, now):
         rows = self.d.setdefault("strategy_plans", [])
         for m in rows:
@@ -914,6 +941,47 @@ class PaperPgStore:
         with self.pg._cursor() as cur:
             cur.execute("DELETE FROM th_strategy_plans WHERE plan_id=%s", (pid,))
             cur.execute("DELETE FROM th_growth_plans WHERE id=%s", (pid,))
+
+    # ---- Strategy Builder drafts (th_builder_drafts, builder.py)
+    _DRAFT_COLS = "id, user_id, name, symbol, multiplier, legs, created_at, updated_at"
+
+    @staticmethod
+    def _draft(r):
+        d = dict(zip(("id", "user_id", "name", "symbol", "multiplier", "legs", "created_at", "updated_at"), r))
+        d["legs"] = d["legs"] if isinstance(d["legs"], list) else json.loads(d["legs"])
+        for k in ("created_at", "updated_at"):
+            d[k] = d[k].astimezone(IST).isoformat()
+        return d
+
+    def add_builder_draft(self, user_id, name, symbol, multiplier, legs, now):
+        with self.pg._cursor() as cur:
+            cur.execute(f"INSERT INTO th_builder_drafts (user_id, name, symbol, multiplier, legs, created_at, updated_at) "
+                        f"VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING {self._DRAFT_COLS}",
+                        (user_id, name, symbol, multiplier, json.dumps(legs), now, now))
+            return self._draft(cur.fetchone())
+
+    def builder_drafts(self, user_id):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._DRAFT_COLS} FROM th_builder_drafts WHERE user_id=%s ORDER BY id", (user_id,))
+            return [self._draft(r) for r in cur.fetchall()]
+
+    def builder_draft(self, did):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._DRAFT_COLS} FROM th_builder_drafts WHERE id=%s", (did,))
+            r = cur.fetchone()
+            return self._draft(r) if r else None
+
+    def update_builder_draft(self, did, now, **fields):
+        fields = {k: (json.dumps(v) if k == "legs" else v) for k, v in fields.items() if k in ("name", "symbol", "multiplier", "legs")}
+        sets = ", ".join([f"{k}=%s" for k in fields] + ["updated_at=%s"])
+        with self.pg._cursor() as cur:
+            cur.execute(f"UPDATE th_builder_drafts SET {sets} WHERE id=%s RETURNING {self._DRAFT_COLS}",
+                        (*fields.values(), now, did))
+            return self._draft(cur.fetchone())
+
+    def delete_builder_draft(self, did):
+        with self.pg._cursor() as cur:
+            cur.execute("DELETE FROM th_builder_drafts WHERE id=%s", (did,))
 
     @staticmethod
     def _mapping(r):

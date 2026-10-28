@@ -17,6 +17,7 @@ STRIKE_STEP = {"NIFTY": 50, "BANKNIFTY": 100}
 MIN_GAP_SECONDS = 3.1
 QUOTE_GAP_SECONDS = 1.1
 HISTORY_GAP_SECONDS = 0.25  # data API: about 4 requests / second
+MARGIN_GAP_SECONDS = 1.1  # margin calculator: a calculator call, kept to about 1 / second
 
 
 class DhanError(Exception):
@@ -129,6 +130,17 @@ class DhanClient:
             raise DhanError(f"unexpected historical response: {str(payload)[:200]}")
         return {"timestamp": ts, "close": close}
 
+    def margin_multi(self, scripts):
+        """Basket margin for orders that are not placed (Dhan /margincalculator/multi; a calculator, nothing is ordered).
+        scripts: [{securityId, transactionType BUY|SELL, quantity (units), price}], NSE_FNO, MARGIN product.
+        Returns {total, span, exposure, hedgeBenefit} (see parse_margin). Field names checked live on 28-Oct-2026: the
+        body needs dhanClientId and scripList (as in Dhan's cURL example, not its field table)."""
+        body = {"dhanClientId": self.client_id, "includePosition": False, "includeOrders": False, "scripList": [
+            {"exchangeSegment": "NSE_FNO", "transactionType": s["transactionType"], "quantity": int(s["quantity"]),
+             "productType": "MARGIN", "securityId": str(s["securityId"]), "price": float(s["price"]), "triggerPrice": 0}
+            for s in scripts]}
+        return parse_margin(self._post("/margincalculator/multi", body, gap=MARGIN_GAP_SECONDS))
+
     def intraday(self, symbol, from_dt, to_dt, interval=1, future_id=None, option_id=None):
         """1-minute (or 5/15/25/60) candles: {"timestamp": [epoch s], "open": [...], ..., "volume": [...]}.
         The index by default (no volume); with future_id, that index future (NSE_FNO / FUTIDX, with volume); with
@@ -146,6 +158,28 @@ class DhanClient:
         if not isinstance(payload, dict) or not isinstance(payload.get("timestamp"), list):
             raise DhanError(f"unexpected intraday response: {str(payload)[:200]}")
         return payload
+
+
+def parse_margin(payload):
+    """Dhan's multi-order margin answer -> {total, span, exposure, hedgeBenefit} (₹). Live it answers camelCase
+    (totalMargin, spanMargin, exposure, hedgeBenefit); the snake_case names in its docs are read too. Never passes on
+    the clientId it echoes. Raises DhanError without a total."""
+    p = payload.get("data", payload) if isinstance(payload, dict) else {}
+
+    def num(*keys):
+        for k in keys:
+            v = p.get(k)
+            if v not in (None, ""):
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    pass
+        return None
+    total = num("total_margin", "totalMargin")
+    if total is None:
+        raise DhanError(f"margin calculator answered without a total: {str(payload)[:200]}")
+    return {"total": total, "span": num("span_margin", "spanMargin"), "exposure": num("exposure", "exposure_margin", "exposureMargin"),
+            "hedgeBenefit": num("hedge_benefit", "hedgeBenefit")}
 
 
 def parse_ohlc(payload):

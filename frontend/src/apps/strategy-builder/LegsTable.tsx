@@ -81,10 +81,11 @@ export function LegsTable({ legs, onChange, market }: {
                 </td>
                 <td>
                   <span className="sb-price">
-                    <input className="num" type="number" min={0} step={0.05} aria-label="Price"
+                    <input className="num" type="number" min={0} step={0.05} aria-label="Price" disabled={l.locked}
+                      title={l.locked ? 'The average buy price of the position' : undefined}
                       value={l.priceOverride ?? (live ?? '')} placeholder="–"
                       onChange={(e) => set(l.id, { priceOverride: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })} />
-                    {l.priceOverride != null
+                    {l.priceOverride != null && !l.locked
                       ? <button type="button" className="btn ghost icon" title={`Back to live ${fmtPrice(live)}`} aria-label="Back to the live price" onClick={() => set(l.id, { priceOverride: null })}>↺</button>
                       : <span className="sb-iv muted num" title="Implied volatility from the option chain">{q?.iv ? `${inr(1)(q.iv)}%` : '–'}</span>}
                   </span>

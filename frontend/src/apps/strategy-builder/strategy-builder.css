@@ -15,6 +15,16 @@
 .ds .sb-tab .sb-tab-x { padding: 2px 6px; color: var(--text-3); }
 .ds .sb-tab .sb-tab-x:hover { color: var(--down); }
 .ds .sb-tab-add { font-size: var(--fs-sm); }
+.ds .sb-tabs-row { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.ds .sb-actions { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+.ds .sb-dirty { color: var(--warn); margin-right: 4px; font-size: var(--fs-xs); }
+.ds .sb-menu-pop.sb-list-pop { width: 380px; min-width: 0; max-height: 360px; overflow-y: auto; padding: var(--sp-2); }
+.ds .sb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ds .sb-list li { display: flex; align-items: center; gap: var(--sp-1); border-radius: var(--r-sm); }
+.ds .sb-list li.on { background: var(--accent-soft); }
+.ds .sb-list-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  font: inherit; background: none; border: 0; color: var(--text); cursor: pointer; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); }
+.ds .sb-list-main:hover { background: var(--surface-2); }
 
 /* legs and payoff side by side, half each (stacked below 1200 px) */
 .ds .sb-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-3); align-items: start; }

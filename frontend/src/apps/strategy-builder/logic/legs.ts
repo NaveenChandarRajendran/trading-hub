@@ -1,5 +1,6 @@
 // Strategy Builder legs and tabs (pure): what the legs table edits, the live price of a leg (mid of bid / ask), strike
 // stepping, and turning table rows into the maths model (payoff.ts) with prices, lot size and IV filled in.
+import type { Draft, DraftLeg, PositionLeg } from './api';
 import type { OptionType } from './blackScholes';
 import type { Leg, Side } from './payoff';
 
@@ -20,6 +21,7 @@ export interface BuilderLeg {
   strike: number;
   lots: number;
   priceOverride: number | null; // typed by the user; null = live mid
+  locked?: boolean; // Analyze positions: the price is the position's average buy, not editable
 }
 
 export interface Tab {
@@ -29,6 +31,9 @@ export interface Tab {
   expiry: string; // the toolbar's expiry: new legs and templates use it
   multiplier: number;
   legs: BuilderLeg[];
+  draftId?: number | null; // saved to the account as this draft
+  saved?: string | null; // tabSnapshot() at the last save / open: unsaved changes = it differs
+  source?: string | null; // "Positions of Manual" (Analyze positions)
 }
 
 /** One strike's market: last price, best bid / ask and implied volatility (%) — live ticks over the chain cache. */
@@ -71,13 +76,13 @@ export const duplicateLeg = (legs: BuilderLeg[], id: string): BuilderLeg[] => {
   return i < 0 ? legs : [...legs.slice(0, i + 1), { ...legs[i], id: newId() }, ...legs.slice(i + 1)];
 };
 
-export interface Pick { expiry: string; strike: number; type: OptionType; side: Side }
+export interface ChainPick { expiry: string; strike: number; type: OptionType; side: Side }
 
 /**
  * A B / S click on the option chain: one more lot on a ticked leg with the same expiry, strike, type and side, else a
  * new 1-lot leg. Returns the legs unchanged (and `full`) when a new leg would be the 9th.
  */
-export function addFromChain(legs: BuilderLeg[], p: Pick): { legs: BuilderLeg[]; full: boolean } {
+export function addFromChain(legs: BuilderLeg[], p: ChainPick): { legs: BuilderLeg[]; full: boolean } {
   const same = legs.find((l) => l.include && l.expiry === p.expiry && l.strike === p.strike && l.type === p.type && l.side === p.side);
   if (same) return { legs: legs.map((l) => (l === same ? { ...l, lots: Math.min(100, l.lots + 1) } : l)), full: false };
   if (legs.length >= MAX_LEGS) return { legs, full: true };
@@ -124,4 +129,43 @@ export function priceLegs(legs: BuilderLeg[], quoteOf: (l: BuilderLeg) => Quote 
       lots: l.lots, lotSize, price, iv });
   }
   return out;
+}
+
+// ---------- drafts and Analyze positions ----------
+
+export const toDraftLegs = (legs: BuilderLeg[]): DraftLeg[] =>
+  legs.map((l) => ({ side: l.side, type: l.type, expiry: l.expiry, strike: l.strike, lots: l.lots, include: l.include, priceOverride: l.priceOverride }));
+
+/** What a save stores, as text: a tab differs from its draft when this differs from `saved`. */
+export const tabSnapshot = (t: Pick<Tab, 'symbol' | 'multiplier' | 'legs'>) =>
+  JSON.stringify({ symbol: t.symbol, multiplier: t.multiplier, legs: toDraftLegs(t.legs) });
+
+export const unsaved = (t: Tab) => t.legs.length > 0 && t.saved !== tabSnapshot(t);
+
+/** A saved draft opened in tab number n. */
+export function tabFromDraft(d: Draft, n: number, expiry = ''): Tab {
+  const legs = d.legs.map((l) => ({ ...l, id: newId() }));
+  const t: Tab = { id: newId('T'), name: d.name, symbol: d.symbol, expiry, multiplier: d.multiplier, legs, draftId: d.id, saved: null };
+  return { ...t, saved: tabSnapshot(t) };
+}
+
+/**
+ * A strategy's open positions as a tab (one index: the first position's; the others are counted in `skipped`).
+ * Prices are the positions' average buy and locked, so the payoff is the live P&L of what is held.
+ */
+export function tabFromPositions(rows: PositionLeg[], strategyName: string, n: number): { tab: Tab; skipped: number } {
+  const symbol = rows[0]?.symbol ?? 'NIFTY';
+  const mine = rows.filter((r) => r.symbol === symbol).slice(0, MAX_LEGS);
+  const legs = mine.map((r) => newLeg(r.expiry, r.strike, { side: r.side, type: r.type, lots: r.lots, priceOverride: r.price, locked: true }));
+  const tab: Tab = { id: newId('T'), name: String(n), symbol, expiry: mine[0]?.expiry ?? '', multiplier: 1, legs, draftId: null, saved: null,
+    source: `Positions of ${strategyName}` };
+  return { tab: { ...tab, saved: tabSnapshot(tab) }, skipped: rows.length - mine.length }; // a view, not an unsaved edit
+}
+
+/** The margin request for the ticked legs, or null while a leg has no security ID or price yet. */
+export function marginRequest(legs: { include: boolean; side: Side; lots: number; lotSize: number; price: number; securityId: number | null }[],
+  multiplier: number): { securityId: number; side: Side; qty: number; price: number }[] | null {
+  const on = legs.filter((l) => l.include && l.lots > 0);
+  if (!on.length || on.some((l) => l.securityId == null)) return null;
+  return on.map((l) => ({ securityId: l.securityId!, side: l.side, qty: l.lots * l.lotSize * multiplier, price: l.price }));
 }

@@ -6,7 +6,7 @@ import { inr } from '../../shared/grid';
 import { STRIKE_RANGES, centerScrollTop, strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { price } from '../paper-trade/format';
 import type { OptionType } from './logic/blackScholes';
-import { heldOn, midPrice, shortExpiry, type BuilderLeg, type Pick } from './logic/legs';
+import { heldOn, midPrice, shortExpiry, type BuilderLeg, type ChainPick } from './logic/legs';
 import type { Side } from './logic/payoff';
 import type { Market } from './useMarket';
 
@@ -29,7 +29,7 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
   onExpiry: (e: string) => void;
   range: StrikeRange;
   onRange: (r: StrikeRange) => void;
-  onPick: (p: Pick) => void;
+  onPick: (p: ChainPick) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const list = strikeWindow(strikeList(market.strikesOf(expiry).map((strike) => ({ strike })), market.spot), range);
