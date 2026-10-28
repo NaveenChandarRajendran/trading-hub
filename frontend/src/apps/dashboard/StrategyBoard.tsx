@@ -40,7 +40,7 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
             </button>
             {symbols.map((x) => {
               if (b.only && !b.only.includes(x)) {
-                return <span key={x} className="db-cell none"><b>Not used</b><span>{INDEX_NAME[b.only[0]] ?? b.only[0]} only</span></span>;
+                return <span key={x} className="db-cell-empty" aria-hidden="true" />;  // owner 28-Oct-2026: leave the other index blank
               }
               const s = signals[x];
               const t = openTrade(s?.auto, b.key, x);
