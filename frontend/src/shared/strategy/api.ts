@@ -41,6 +41,14 @@ export const strategyApi = {
 export const tradable = (list: Strategy[]) =>
   list.filter((s) => s.kind === 'manual' && !s.archivedAt).sort((a, b) => a.name.localeCompare(b.name));
 
+/** The kind as a tag / word: MANUAL (Paper Trading, Power Scalper), ALGO (the OI breakout algo), OPTIONS (Strategy
+ *  Builder baskets held to expiry, ADR 0010). */
+export const KIND_INFO: Record<StrategyKind, { tag: string; word: string; tone: 'accent' | 'neutral' | 'warn' }> = {
+  manual: { tag: 'MANUAL', word: 'Manual', tone: 'neutral' },
+  algo: { tag: 'ALGO', word: 'Algo', tone: 'accent' },
+  options: { tag: 'OPTIONS', word: 'Options', tone: 'warn' },
+};
+
 /** Strategies the Strategy Builder can paper trade into: active options ones, by name. */
 export const optionStrategies = (list: Strategy[]) =>
   list.filter((s) => s.kind === 'options' && !s.archivedAt).sort((a, b) => a.name.localeCompare(b.name));

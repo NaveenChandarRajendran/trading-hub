@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ApiError } from '../../shared/api';
-import { strategyApi, type Strategy, type StrategyNumbers } from '../../shared/strategy/api';
+import { KIND_INFO, strategyApi, type Strategy, type StrategyNumbers } from '../../shared/strategy/api';
 import { Alert, EmptyState, Pill, Segmented } from '../../shared/ui';
 import { rupees, signedRupees, toneOf } from '../paper-trade/format';
 import { cards, type Card, type CardSort } from './logic/cards';
@@ -126,7 +126,7 @@ function StrategyCard({ c, onChanged }: { c: Card; onChanged: () => void }) {
     <section className="card sts-card">
       <div className="sts-card-head">
         <h3 className="sts-name" title={c.description || c.name}><Link to={`/strategies/${c.id}`}>{c.name}</Link></h3>
-        <Pill tone={c.kind === 'algo' ? 'accent' : 'neutral'}>{c.kind === 'algo' ? 'ALGO' : 'MANUAL'}</Pill>
+        <Pill tone={KIND_INFO[c.kind].tone}>{KIND_INFO[c.kind].tag}</Pill>
       </div>
       <dl className="sts-nums">
         <dt>Total P&amp;L</dt><dd><Money v={n?.total} strong /></dd>
@@ -135,8 +135,11 @@ function StrategyCard({ c, onChanged }: { c: Card; onChanged: () => void }) {
       </dl>
       <div className="sts-card-foot">
         <span className="muted">{n?.open ?? 0} open · capital {rupees(c.capital, 0)}</span>
-        {c.kind === 'algo' ? <Link className="btn ghost" to="/algo">Algo page</Link>
-          : <button className="btn ghost" disabled={arch.busy} onClick={arch.run}>{c.archivedAt ? 'Unarchive' : 'Archive'}</button>}
+        <span className="sts-card-actions">
+          {c.kind === 'options' && !c.archivedAt && <Link className="btn ghost" to="/strategy-builder" title="Open the Strategy Builder (paper trade, positions)">Builder</Link>}
+          {c.kind === 'algo' ? <Link className="btn ghost" to="/algo">Algo page</Link>
+            : <button className="btn ghost" disabled={arch.busy} onClick={arch.run}>{c.archivedAt ? 'Unarchive' : 'Archive'}</button>}
+        </span>
       </div>
       {arch.error && <Alert kind="error">{arch.error}</Alert>}
     </section>
@@ -159,7 +162,7 @@ function TableRow({ c, onChanged }: { c: Card; onChanged: () => void }) {
   return (
     <tr>
       <td title={c.description || c.name}><Link to={`/strategies/${c.id}`}>{c.name}</Link>{arch.error && <span className="down"> · {arch.error}</span>}</td>
-      <td>{c.kind === 'algo' ? 'Algo' : 'Manual'}</td>
+      <td>{KIND_INFO[c.kind].word}</td>
       <td><Money v={c.numbers?.total} /></td>
       <td><Money v={c.numbers?.unbooked} /></td>
       <td><Money v={c.numbers?.booked} /></td>
@@ -175,6 +178,7 @@ function CreateForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [capital, setCapital] = useState('100000');
+  const [kind, setKind] = useState<'manual' | 'options'>('manual');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e: FormEvent) => {
@@ -182,7 +186,7 @@ function CreateForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError('');
     try {
-      await strategyApi.create(name, Number(capital) || undefined, description);
+      await strategyApi.create(name, Number(capital) || undefined, description, kind);
       onDone();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the strategy.');
@@ -195,6 +199,12 @@ function CreateForm({ onDone }: { onDone: () => void }) {
       <label className="field">Name<input autoFocus value={name} maxLength={60} placeholder="SuperTrend" onChange={(e) => setName(e.target.value)} /></label>
       <label className="field">Description<input value={description} maxLength={300} placeholder="Optional" onChange={(e) => setDescription(e.target.value)} /></label>
       <label className="field">Capital (₹)<input type="number" min={10000} step={10000} value={capital} onChange={(e) => setCapital(e.target.value)} /></label>
+      <label className="field" title="Manual: Paper Trading and Power Scalper (buy only, intraday). Options: Strategy Builder baskets with short legs, held to expiry.">Kind
+        <select value={kind} onChange={(e) => setKind(e.target.value as 'manual' | 'options')}>
+          <option value="manual">Manual (Paper Trading, Power Scalper)</option>
+          <option value="options">Options (Strategy Builder, held to expiry)</option>
+        </select>
+      </label>
       <button className="btn primary" type="submit" disabled={busy || !name.trim()}>{busy ? 'Creating…' : 'Create'}</button>
       {error && <Alert kind="error">{error}</Alert>}
     </form>

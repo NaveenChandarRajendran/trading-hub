@@ -203,3 +203,23 @@ def test_capital_and_reset_need_a_flat_book(env):
     assert a.put(f"/api/strategies/{st['id']}/capital", json={"capital": 300000}).status_code == 200
     assert a.get(f"/api/options/positions?strategy={st['id']}").json()["funds"]["capital"] == 300000
     assert a.post("/api/strategies", json={"name": "Bad", "kind": "futures"}).status_code == 400
+
+
+def test_pnl_calendar_and_growth_plan_read_an_options_strategy(env):
+    """The reports read options strategies from the same tables: entry day = charges, expiry day = the credit kept."""
+    a, _, paper, clock, _, svc, st, _ = env
+    ticks(paper, clock)
+    condor(a, st)
+    entry_charges = a.get(f"/api/options/positions?strategy={st['id']}").json()["funds"]["charges"]
+    ticks(paper, clock, "15:29", day=EXP, spot=25100.0)
+    clock.now = at("15:31", EXP)
+    svc.settle_due()
+    days = {r["date"]: r for r in a.get(f"/api/paper/pnl?strategy={st['id']}&from=2026-10-01&to=2026-10-31").json()["rows"]}
+    assert days["2026-10-21"]["realized"] == 0.0 and days["2026-10-21"]["charges"] == pytest.approx(entry_charges, abs=0.02)
+    assert days[EXP]["realized"] == pytest.approx(773.5) and days[EXP]["charges"] == 0.0  # OTM settlement: no charges
+    plan = a.post("/api/plans", json={"name": "2 %", "yearlyPct": 24, "method": "compounded", "initialCapital": 200000,
+                                      "startMonth": "2026-10"}).json()["plan"]
+    assert a.post(f"/api/strategies/{st['id']}/plan", json={"planId": plan["id"]}).status_code == 200
+    t = a.get(f"/api/strategies/{st['id']}/plan").json()
+    assert t["days"] == [{"date": "2026-10-21", "net": round(-entry_charges, 2)}, {"date": EXP, "net": 773.5}]
+    assert t["strategy"]["kind"] == "options"

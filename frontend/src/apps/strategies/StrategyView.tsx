@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, API_BASE, requestJson } from '../../shared/api';
-import { strategyApi, type Strategy, type StrategyNumbers } from '../../shared/strategy/api';
+import { KIND_INFO, strategyApi, type Strategy, type StrategyNumbers } from '../../shared/strategy/api';
 import { Alert, Pill, Segmented } from '../../shared/ui';
 import { PlanTracker } from '../growth-plan/PlanTracker';
 import { rupees, signedRupees, toneOf } from '../paper-trade/format';
@@ -38,7 +38,7 @@ export function StrategyView({ id }: { id: number }) {
           <Link to="/strategies" className="sts-back">← All strategies</Link>
           <div className="sts-title-row">
             <span className="sts-title">{st.name}</span>
-            <Pill tone={st.kind === 'algo' ? 'accent' : 'neutral'}>{st.kind === 'algo' ? 'ALGO' : 'MANUAL'}</Pill>
+            <Pill tone={KIND_INFO[st.kind].tone}>{KIND_INFO[st.kind].tag}</Pill>
             {st.archivedAt && <Pill tone="warn">ARCHIVED</Pill>}
           </div>
           {st.description && <p className="muted sts-small">{st.description}</p>}

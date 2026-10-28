@@ -82,7 +82,7 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
 
-## Strategy Builder (branch `feature/strategy-builder`, spec `docs/features/strategy-builder.md`) — in progress
+## Strategy Builder (spec `docs/features/strategy-builder.md`) — live from 28-Oct-2026
 Split A (Builder) / B (options paper engine: short legs, margin, overnight, expiry) / C (Strategy Lab weekly rules).
 Step 1 of A done (28-Oct): maths library `src/apps/strategy-builder/logic/` — Black–Scholes + Greeks + implied vol,
 expiry payoff / breakevens / max profit-loss with "unlimited", T+0 value, position Greeks, lognormal POP; 25 tests incl.
@@ -92,12 +92,12 @@ bands, zoom / pan, what-if sliders), summary (POP, reward : risk, charges) and G
 returns `chargeRates`. Option chain for picking legs. Step 4 done: Dhan basket margin, drafts per user
 (`th_builder_drafts`), Analyze positions. Needs a backend restart once merged (new routes + table). Not merged.
 
-## Options paper trading (branch `feature/options-paper`, ADR 0010, spec `docs/features/options-paper.md`) — in progress
+## Options paper trading (ADR 0010, spec `docs/features/options-paper.md`) — live from 28-Oct-2026
 Part B of the Strategy Builder: an `options` strategy kind with short legs, overnight positions and expiry settlement
 (15:30 spot; STT on ITM longs; Dhan basket margin, refused without it). Step 1 done (28-Oct): pure engine
 `backend/options_engine.py` + 10 tests. Step 2 done: service, routes, settlement timer, options kind, records in the
-report tables (585 backend tests incl. Postgres). Step 3 done: Builder "Paper trade" dialog + "Paper positions" panel.
-Not merged; nothing live (needs a backend restart once merged).
+report tables (585 backend tests incl. Postgres). Step 3 done: Builder "Paper trade" dialog + "Paper positions" panel. Step 4 done: Options kind on the Strategies page,
+reports checked end to end. Merged into naveen-dev with the Strategy Builder; backend restarted 28-Oct 22:30.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

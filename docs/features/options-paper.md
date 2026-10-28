@@ -30,5 +30,7 @@ let them settle at expiry. Options strategies only; Manual / Scalper / the algo 
    places the ticked legs × multiplier all-or-nothing. "Paper positions" (`OptionsPositions.tsx`, re-read every 5 s):
    live P&L, booked, margin, available; per leg avg / LTP / P&L / Exit; Exit all; "Open in a tab" (held legs, shorts
    too, locked at their average: the live payoff); "settlement pending" badge. Exits 09:15-15:15 IST.
-4. Strategies page: create an Options strategy; its card numbers, P&L calendar and Growth Plan tracker (they read the
-   same tables, checked end to end); docs, both themes, all checks.
+4. Strategies page — done. "+ New strategy" has a Kind (Manual / Options); cards and the strategy view tag OPTIONS
+   (amber) with a "Builder" link; the P&L calendar and the Growth Plan tracker read options strategies unchanged
+   (`test_options_service.py::test_pnl_calendar_and_growth_plan_read_an_options_strategy`: entry day = charges,
+   expiry day = the credit kept). Live from 28-Oct-2026 22:30 (merged into naveen-dev, backend restarted).
