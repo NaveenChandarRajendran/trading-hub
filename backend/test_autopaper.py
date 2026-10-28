@@ -124,7 +124,9 @@ def test_watch_only_rule_sends_nothing(tmp_path):
     t, acc, _ = make(tmp_path)
     t.cfg["watchOnly"] = ["tradingHub"]
     t.set_auto(True)
-    assert t.on_signal(GO, STATE) == "Watch only (config watchOnly)"
+    r = {**GO, "blocked": []}
+    assert t.on_signal(r, STATE) == "Watch only (config watchOnly)"
+    assert r["go"] is False and r["blocked"] == ["Watch only (no paper trades)"]
     wait_idle(t)
     assert acc.sent == [] and t.state["trades"] == []
 

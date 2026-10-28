@@ -16,7 +16,7 @@ export interface Check {
 }
 
 export interface RuleResult {
-  rule: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2';
+  rule: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'reboundCall';
   name: string; // "TREND RULES" | "4 PILLAR RULES" | "SUPERTREND RULES" | "DHARANI RULES"
   setup?: string; // "4 Pillar Rules" | "SuperTrend Rules" | "Dharani Rules" (older trades: "4 Pillar", "SuperTrend Nifty")
   score?: number; // Dharani v2: how many of its conditions are true (call 5, put 8)
@@ -99,7 +99,7 @@ export interface Instrument {
 export interface AutoTrade {
   id: string;
   account: AccountKey | 'manual';
-  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2'; // the rule that took the trade
+  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'reboundCall'; // the rule that took the trade
   setup?: string;
   symbol: string;
   rule: string;
@@ -171,7 +171,7 @@ export interface SignalsState {
     problems: string[]; watcher: { running: boolean; lastRun: string | null; late: boolean };
   };
   context: (ContextRow | null)[];
-  rules: { tradingHub?: RuleResult; fourPillar?: RuleResult; superTrend?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult | null };
+  rules: { tradingHub?: RuleResult; fourPillar?: RuleResult; superTrend?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult | null; reboundCall?: RuleResult | null };
   trendingOi: ToiRow[];
   oiViews: {
     dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null;

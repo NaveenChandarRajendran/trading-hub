@@ -9,7 +9,7 @@ import { RuleCard } from './SignalPanels';
 const ruleOf = (s: SignalsState | null | undefined, k: StrategyKey): RuleResult | null | undefined =>
   k === 'fourPillar' ? s?.rules.fourPillar ?? s?.rules.megabull : s?.rules[k];
 const FALLBACK: Record<StrategyKey, string> = {
-  fourPillar: '4 PILLAR RULES', superTrend: 'SUPERTREND RULES', dharaniV2: 'DHARANI RULES', tradingHub: 'TREND RULES',
+  fourPillar: '4 PILLAR RULES', superTrend: 'SUPERTREND RULES', dharaniV2: 'DHARANI RULES', tradingHub: 'TREND RULES', reboundCall: 'REBOUND CALL',
 };
 
 export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrategy, onOpen }: {
@@ -39,6 +39,9 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
               <b>{b.name}</b><span>{b.account}</span>
             </button>
             {symbols.map((x) => {
+              if (b.only && !b.only.includes(x)) {
+                return <span key={x} className="db-cell none"><b>Not used</b><span>{INDEX_NAME[b.only[0]] ?? b.only[0]} only</span></span>;
+              }
               const s = signals[x];
               const t = openTrade(s?.auto, b.key, x);
               const c = cell(ruleOf(s, b.key), t, t && typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined);

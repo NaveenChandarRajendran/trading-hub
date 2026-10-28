@@ -3,12 +3,13 @@
 import { DEFAULT_INDICATORS, type IndicatorToggles } from '../config/settings';
 import type { AutoStatus, AutoTrade, OiView, RuleResult, TrendingView } from './signals';
 
-export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub';
-export const BOARD: { key: StrategyKey; name: string; account: string }[] = [
+export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub' | 'reboundCall';
+export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
   { key: 'dharaniV2', name: 'Dharani Rules', account: 'App · ₹1 lakh · 3-min' },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
+  { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
 ];
 
 export type CellKind = 'trade' | 'go' | 'near' | 'wait' | 'none';
@@ -96,4 +97,6 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
     note: 'SuperTrend (10, 2), Bollinger (15, 3) (the call rule; puts use 20, 2), EMA 200, RSI 14, pivot. Williams %R and CCI 20 are on the strategy box.' },
   tradingHub: { interval: 5, indicators: { ...OFF, supertrend: true, ema: true, vwap: true, bollinger: true, rsi: true, delta: true }, emaPeriod: 20,
     bb: { period: 20, mult: 2 }, note: 'SuperTrend, VWAP, EMA 20, Bollinger (20, 2), RSI 14, pivot. Trending OI is on the strategy box.' },
+  reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 },
+    note: 'EMA 200 and VWAP (BankNifty only). ATR and the 10-day average range are on the strategy box.' },
 };

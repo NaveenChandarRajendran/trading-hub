@@ -440,6 +440,8 @@ class AutoTrader:
         if slot == RB and not self.cfg.get(RB, {}).get("enabled", False):
             return "Rebound Call is off (config reboundCall.enabled)"
         if slot in self.cfg.get("watchOnly", []):  # owner 28-Oct-2026: signal is shadow-logged, no paper trade
+            result["go"] = False  # the strategy board then shows "Blocked · Watch only" instead of "GO · order sent"
+            result["blocked"] = list(result.get("blocked") or []) + ["Watch only (no paper trades)"]
             return "Watch only (config watchOnly)"
         why = self.block_reason(account, result["symbol"], slot=slot)
         if why:
