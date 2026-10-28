@@ -136,6 +136,11 @@ ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS setup text NOT NULL DEFAULT '';
 ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS variant text NOT NULL DEFAULT '';
 -- Target + stop of one position placed as an OCO pair (paper_engine.set_protection); '' for every other order.
 ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS oco_group text NOT NULL DEFAULT '';
+-- Trailing stop on the OCO stop leg (paper_engine.set_trail): points below the high, step, start-after profit, high.
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS trail_distance double precision;
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS trail_step double precision;
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS trail_after double precision;
+ALTER TABLE pt_orders ADD COLUMN IF NOT EXISTS trail_high double precision;
 
 -- ================================================================ OI breakout algo (algo_service.py)
 -- Every date column is the IST trading date written by the app (never derived from UTC timestamps).

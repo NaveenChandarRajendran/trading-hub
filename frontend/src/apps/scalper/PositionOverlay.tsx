@@ -1,12 +1,16 @@
 // An open position on its option chart: the entry line with a "65 · +13.00 INR" label (✕ exits at market), TP / SL
 // handles to drag onto the chart, and the TP / SL lines (price + P&L at that price), each draggable to move it or
 // back onto the label to cancel it. Drops place / modify / cancel the OCO pair (PUT /api/scalper/protection).
+// The label also has 25 / 50 / 75 % partial exits and the trailing stop (TrailControl.tsx).
 // Positions come from the chart's own price <-> pixel conversion (Lightweight Charts), so they follow scroll / zoom.
 import { useEffect, useRef, useState } from 'react';
 import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { cssVar } from './chartTheme';
+import type { Position } from './logic/api';
 import { dropResult, lineLabel, onBox, pnlAt, roundTick, type Level } from './logic/drag';
+import { EXIT_PCTS, exitTitle, trailLabel } from './logic/exitPlan';
+import { TrailControl } from './TrailControl';
 
 export interface ChartPosition {
   securityId: number;
@@ -15,17 +19,22 @@ export interface ChartPosition {
   ltp: number | null;
   target: number | null;
   stop: number | null;
+  raw: Position; // the backend's position (lots, trail)
 }
+
+const GRIP_HALF_PX = 10; // a grip's half height: kept inside the price pane when its line is at the edge
 
 type Drag = { kind: Level; from: 'label' | 'line'; y: number; price: number | null };
 
-export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, onProtect, onError }: {
+export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, onPartial, onTrailDone, onProtect, onError }: {
   chart: IChartApi;
   series: ISeriesApi<'Candlestick'>;
   frame: number; // bumps when the view moves, so the labels re-read their pixel positions
   pos: ChartPosition;
   enabled: boolean; // market open, live prices: dragging / exit allowed
   onExit: () => void;
+  onPartial: (pct: number) => void;
+  onTrailDone: (pos: Position, message: string) => void;
   onProtect: (body: { target?: number | null; stop?: number | null }) => Promise<void>;
   onError: (message: string) => void;
 }) {
@@ -134,13 +143,23 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
           </span>
           <button type="button" className="sc-handle up" disabled={!enabled} title="Drag onto the chart to set a target" onPointerDown={start('tp', 'label')}>TP</button>
           <button type="button" className="sc-handle down" disabled={!enabled} title="Drag onto the chart to set a stop" onPointerDown={start('sl', 'label')}>SL</button>
-          <button type="button" className="sc-x" disabled={!enabled} title="Exit at market" aria-label="Exit at market" onClick={onExit}>✕</button>
+          {'trail' in pos.raw && ( // a backend with partial exits / trailing (older ones would sell everything)
+            <>
+              <span className="sc-sep" />
+              {EXIT_PCTS.map((pct) => (
+                <button key={pct} type="button" className="sc-handle sc-pct" disabled={!enabled} title={exitTitle(pos.raw.open_lots, pct)}
+                  onClick={() => onPartial(pct)}>{pct}%</button>
+              ))}
+              <TrailControl pos={pos.raw} ltp={pos.ltp} enabled={enabled} compact onDone={onTrailDone} onError={onError} />
+            </>
+          )}
+          <button type="button" className="sc-x" disabled={!enabled} title="Exit all at market" aria-label="Exit all at market" onClick={onExit}>✕</button>
         </div>
       )}
       {([['tp', tpY, pos.target], ['sl', slY, pos.stop]] as const).map(([kind, y, level]) => y != null && level != null && (
-        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: y, right: right + 4 }}
+        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: Math.min(Math.max(y, GRIP_HALF_PX), (chart.panes()[0]?.getHeight() ?? y) - GRIP_HALF_PX), right: right + 4 }}
           disabled={!enabled} title="Drag to move · drop on the position label to cancel" onPointerDown={start(kind, 'line')}>
-          {lineLabel(kind, level, pos.avg, pos.qty)} ⋮
+          {lineLabel(kind, level, pos.avg, pos.qty)}{kind === 'sl' && pos.raw.trail ? ` · ${trailLabel(pos.raw.trail)}` : ''} ⋮
         </button>
       ))}
     </div>

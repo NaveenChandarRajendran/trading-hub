@@ -143,3 +143,15 @@ def test_oco_group_is_stored_with_the_order(store):
     r = PaperEngine(100_000)
     r.restore(store.orders(acc, "2026-10-21"), store.trades(acc, "2026-10-21"))
     assert [x.price or x.trigger_price for x in r.protection(SID)] == [120.0, 90.0]
+
+
+def test_trailing_stop_is_stored_with_the_order(store):
+    acc = store.create_account(100_000, at("09:00"))["id"]
+    e = PaperEngine(100_000, day=at("09:20").date())
+    e.on_tick(SID, Book(100, [(99.95, 500)], [(100, 500)]), at("09:20"))
+    save_events(store, acc, "2026-10-21", e.place_order(SID, BUY, 1, LOT, MARKET, at("09:30"))[1])
+    save_events(store, acc, "2026-10-21", e.set_trail(SID, at("09:31"), 10, step=2, after=0))
+    r = PaperEngine(100_000)
+    r.restore(store.orders(acc, "2026-10-21"), store.trades(acc, "2026-10-21"))
+    s = r.protection(SID)[1]
+    assert (s.trigger_price, s.trail_distance, s.trail_step, s.trail_after, s.trail_high) == (90.0, 10, 2, 0, 100)

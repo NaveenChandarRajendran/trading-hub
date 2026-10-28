@@ -9,6 +9,7 @@ import { candleColors, chartOptions, compactVolume, ohlc, pricePriceFormat, them
 import { isCandle, type Bar } from './logic/series';
 import type { ChartSync, SyncableChart } from './logic/sync';
 import { DrawingLayer } from './DrawingLayer';
+import type { Position } from './logic/api';
 import type { Drawing, Tool } from './logic/drawings';
 import { PositionOverlay, type ChartPosition } from './PositionOverlay';
 
@@ -19,6 +20,8 @@ export interface PositionProps {
   pos: ChartPosition;
   enabled: boolean;
   onExit: () => void;
+  onPartial: (pct: number) => void;
+  onTrailDone: (pos: Position, message: string) => void;
   onProtect: (body: { target?: number | null; stop?: number | null }) => Promise<void>;
   onError: (message: string) => void;
 }

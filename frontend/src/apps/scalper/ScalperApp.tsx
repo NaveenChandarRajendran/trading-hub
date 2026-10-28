@@ -317,12 +317,21 @@ function ScalperPage({ into }: { into: TradingInto }) {
     const p = leg ? sc.positions.get(leg.securityId) : undefined;
     if (!leg || !p || p.open_qty <= 0) return null;
     return {
-      pos: { securityId: leg.securityId, qty: p.open_qty, avg: p.avg_buy, ltp: tickOf(side)?.ltp ?? p.ltp, target: p.target, stop: p.stop },
+      pos: { securityId: leg.securityId, qty: p.open_qty, avg: p.avg_buy, ltp: tickOf(side)?.ltp ?? p.ltp, target: p.target, stop: p.stop, raw: p },
       enabled: tradingOn,
       onExit: () => {
         api.exit(leg.securityId)
           .then(() => setNotice({ kind: 'info', text: `Exit sent for ${p.name}.` }))
           .catch((e) => setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Exit failed.' }));
+      },
+      onPartial: (pct) => {
+        api.exit(leg.securityId, pct)
+          .then(() => setNotice({ kind: 'info', text: `Sold ${pct}% of ${p.name} (paper).` }))
+          .catch((e) => setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : 'Partial exit failed.' }));
+      },
+      onTrailDone: (pos, text) => {
+        sc.putPosition(pos);
+        setNotice({ kind: 'info', text });
       },
       onProtect: async (body) => {
         try {
@@ -421,7 +430,7 @@ function ScalperPage({ into }: { into: TradingInto }) {
                     tick={tickOf(side)} check={checkOf(side)} busy={busy}
                     onBuy={() => place(side, 'BUY')} onSell={() => place(side, 'SELL')} />
                 ))}
-                <PositionsBox sc={sc} onNotice={(kind, text) => setNotice({ kind, text })} />
+                <PositionsBox sc={sc} enabled={tradingOn} onNotice={(kind, text) => setNotice({ kind, text })} />
               </div>
             </aside>
           </div>

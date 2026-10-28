@@ -97,7 +97,25 @@
 /* trade panel positions */
 .sc .sc-positions { display: flex; flex-direction: column; gap: var(--sp-2); }
 .sc .sc-positions-head { display: flex; justify-content: space-between; align-items: baseline; }
-.sc .sc-pos-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm); }
+.sc .sc-pos-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--sp-1) var(--sp-2); align-items: center; font-size: var(--fs-sm); }
+.sc .sc-pos-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-1); }
+.sc .btn.sc-pct { padding: 0 var(--sp-2); min-width: 0; }
+
+/* partial exits and the trailing stop on the chart label / Positions rows (TrailControl.tsx) */
+.sc .sc-sep { width: 1px; align-self: stretch; background: var(--border); }
+.sc .sc-handle.sc-pct { color: var(--text-2); cursor: pointer; }
+.sc .sc-trail { position: relative; display: inline-flex; }
+.sc .sc-handle.sc-trail-btn { color: var(--text-2); cursor: pointer; }
+.sc .sc-trail-btn.is-on { color: var(--accent); border-color: var(--accent); }
+.sc .sc-trail-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 260px; padding: var(--sp-3); display: flex;
+  flex-direction: column; gap: var(--sp-2); box-shadow: var(--shadow-pop); font-weight: 400; cursor: default; }
+.sc .sc-positions .sc-trail-pop { left: auto; right: 0; }
+.sc .sc-trail-title { font-weight: 600; font-size: var(--fs-sm); }
+.sc .sc-trail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.sc .sc-trail-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); color: var(--text-2); }
+.sc .sc-trail-field:last-child { grid-column: 1 / -1; }
+.sc .sc-trail-field input { width: 100%; }
+.sc .sc-trail-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 .sc .sc-pos-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc .sc-pos-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: var(--sp-2); font-size: var(--fs-sm); }
 

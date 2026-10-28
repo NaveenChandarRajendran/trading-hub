@@ -9,7 +9,9 @@ capital routes below are kept for the page and do the same.
   POST /api/scalper/account/reset?strategy= {capital?}      new capital period, history kept
   GET  /api/scalper/positions?strategy= | /api/scalper/orders?strategy=&date=
   POST /api/scalper/orders?strategy= {securityId, side, lots}   MARKET order in one click
-  POST /api/scalper/exit/{securityId}?strategy= | /api/scalper/exit-all?strategy=
+  POST /api/scalper/exit/{securityId}?strategy= {pct?}   at market: all, or 25 / 50 / 75 % of the open lots
+                                                        (rounded down, at least 1 lot) | /api/scalper/exit-all?strategy=
+  PUT  /api/scalper/trail/{securityId}?strategy= {distance, step?, after?}   trailing stop in points; distance null = off
   PUT  /api/scalper/protection/{securityId}?strategy= {target?, stop?}   OCO target / stop; null cancels, absent keeps
   GET  /api/scalper/reports?strategy=&from=&to=  tiles + day-wise table
   GET  /api/scalper/day?strategy=&date=          round trips and fills of one day
@@ -43,6 +45,16 @@ class CapitalBody(BaseModel):
 
 class ResetBody(BaseModel):
     capital: float | None = None
+
+
+class ExitBody(BaseModel):
+    pct: int = 100
+
+
+class TrailBody(BaseModel):
+    distance: float | None = None
+    step: float = 1.0
+    after: float | None = None
 
 
 class ProtectionBody(BaseModel):
@@ -113,10 +125,20 @@ def register(app, svc, strategies):
         return {"order": order, "funds": paper.funds(b)}
 
     @app.post("/api/scalper/exit/{security_id}")
-    def exit_one(security_id: int, request: Request, strategy: str = ""):
+    def exit_one(security_id: int, request: Request, body: ExitBody | None = None, strategy: str = ""):
         b = book(request, strategy, trade=True)
-        run(svc.exit_position, b, security_id)
+        pct = body.pct if body else 100
+        if pct == 100:
+            run(svc.exit_position, b, security_id)
+        else:
+            run(svc.exit_partial, b, security_id, pct)
         return positions_body(b)
+
+    @app.put("/api/scalper/trail/{security_id}")
+    def trail(security_id: int, body: TrailBody, request: Request, strategy: str = ""):
+        b = book(request, strategy, trade=True)
+        pos = run(svc.set_trail, b, security_id, body.distance, body.step, body.after)
+        return {"position": pos, "orders": [o for o in paper.orders(b) if o["security_id"] == security_id]}
 
     @app.post("/api/scalper/exit-all")
     def exit_all(request: Request, strategy: str = ""):

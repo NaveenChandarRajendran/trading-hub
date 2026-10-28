@@ -270,7 +270,9 @@ class PaperService:
 
     def _position(self, book, sid, p):
         t, s = book.engine.protection(sid)
-        pos = self._with_instrument({**p.to_dict(book.engine._ltp(sid)),
+        trail = ({"distance": s.trail_distance, "step": s.trail_step, "after": s.trail_after, "high": s.trail_high}
+                 if s and s.trail_distance else None)
+        pos = self._with_instrument({**p.to_dict(book.engine._ltp(sid)), "trail": trail,
                                      "target": t.price if t else None, "targetOrderId": t.id if t else None,
                                      "stop": s.trigger_price if s else None, "stopOrderId": s.id if s else None})
         return self._with_zone(book, pos)
@@ -578,6 +580,17 @@ class PaperService:
     def exit_all(self, book, source="manual"):
         with self.lock:
             self._publish(book, book.engine.exit_all(self.clock()), source)
+
+    def exit_partial(self, book, security_id, pct, source="manual"):
+        """Sells pct (25 / 50 / 75 / 100) of a position's open lots at market (paper_engine.exit_partial)."""
+        with self.lock:
+            self._publish(book, book.engine.exit_partial(security_id, pct, self.clock()), source)
+
+    def set_trail(self, book, security_id, distance, step=1.0, after=None, source="scalper"):
+        """Trailing stop on (distance in points) or off (None) for a position (paper_engine.set_trail)."""
+        with self.lock:
+            self._publish(book, book.engine.set_trail(security_id, self.clock(), distance, step, after), source)
+            return next(p for p in self.positions(book) if p["security_id"] == security_id)
 
     def set_protection(self, book, security_id, target=KEEP, stop=KEEP, source="scalper"):
         """Target / stop of an open position as an OCO pair (None cancels a leg, KEEP leaves it)."""

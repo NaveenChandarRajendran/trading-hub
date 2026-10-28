@@ -1,13 +1,20 @@
-// Trade panel positions: each open Scalper position with its live P&L and Exit, and Exit all with the total.
+// Trade panel positions: each open Scalper position with its live P&L, 25 / 50 / 75 % partial exits, Exit and the
+// trailing stop, and Exit all with the total.
 import { useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { EmptyState, Pill } from '../../shared/ui';
 import { shortName, signedRupees, toneOf } from '../paper-trade/format';
-import { liveUnrealized } from './BottomStrip';
+import { liveLtp, liveUnrealized } from './BottomStrip';
 import { api, type Position } from './logic/api';
+import { EXIT_PCTS, exitTitle } from './logic/exitPlan';
+import { TrailControl } from './TrailControl';
 import type { Scalper } from './useScalper';
 
-export function PositionsBox({ sc, onNotice }: { sc: Scalper; onNotice: (kind: 'info' | 'error', text: string) => void }) {
+export function PositionsBox({ sc, enabled, onNotice }: {
+  sc: Scalper;
+  enabled: boolean; // market open, live prices
+  onNotice: (kind: 'info' | 'error', text: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const open = [...sc.positions.values()].filter((p) => p.open_qty > 0);
   const pnl = (p: Position) => p.realized + liveUnrealized(sc, p);
@@ -35,7 +42,19 @@ export function PositionsBox({ sc, onNotice }: { sc: Scalper; onNotice: (kind: '
               <Pill tone="accent">B</Pill>
               <span className="sc-pos-name" title={p.name}>{shortName(p)} <span className="muted num">× {p.open_qty}</span></span>
               <b className={`num ${toneOf(pnl(p))}`}>{signedRupees(pnl(p))}</b>
-              <button className="btn" disabled={busy} onClick={() => run(() => api.exit(p.security_id), `Exit sent for ${p.name}.`)}>Exit</button>
+              <span className="sc-pos-actions">
+                {'trail' in p && ( // a backend with partial exits / trailing (older ones would sell everything)
+                  <>
+                    {EXIT_PCTS.map((pct) => (
+                      <button key={pct} className="btn sc-pct" disabled={busy || !enabled} title={exitTitle(p.open_lots, pct)}
+                        onClick={() => run(() => api.exit(p.security_id, pct), `Sold ${pct}% of ${p.name} (paper).`)}>{pct}%</button>
+                    ))}
+                    <TrailControl pos={p} ltp={liveLtp(sc, p)} enabled={enabled && !busy}
+                      onDone={(pos, text) => { sc.putPosition(pos); onNotice('info', text); }} onError={(text) => onNotice('error', text)} />
+                  </>
+                )}
+                <button className="btn" disabled={busy} onClick={() => run(() => api.exit(p.security_id), `Exit sent for ${p.name}.`)}>Exit</button>
+              </span>
             </div>
           ))}
           <div className="sc-pos-foot">

@@ -729,7 +729,7 @@ class PaperPgStore:
     kind = "postgres"
     _ORDER_COLS = ("id", "security_id", "side", "order_type", "lots", "lot_size", "price", "trigger_price", "status",
                    "avg_price", "slippage_capped", "reason", "blocked", "created_at", "updated_at", "filled_at",
-                   "source", "setup", "variant", "oco_group")
+                   "source", "setup", "variant", "oco_group", "trail_distance", "trail_step", "trail_after", "trail_high")
     _ORDER_DEFAULTS = {"source": "manual", "setup": "", "variant": "", "oco_group": ""}
 
     def __init__(self, pg):

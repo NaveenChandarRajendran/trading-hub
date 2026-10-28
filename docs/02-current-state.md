@@ -121,6 +121,12 @@ entry line, so a stop dropped just below the entry was ignored (new) or cancelle
 box (+6 px) cancels (`logic/drag.ts` `onBox`).
 TP / SL labels (28-Oct): the price-line titles were drawn under the TP / SL grips and got covered; the grips now carry the
 whole text ("TP 204.90 · +1,034.80 ⋮", P&L in Indian grouping) and the lines have no title.
+Partial exits + trailing SL (28-Oct, `feature/scalper-partial-trail`, rules in `docs/features/scalper.md`): 25 / 50 / 75 %
+exits (round down, ≥ 1 lot) and a points-based trailing stop run by the paper engine (`paper_engine.exit_partial` /
+`set_trail` / `_trail`, `pt_orders.trail_*`), routes `POST /api/scalper/exit/{id} {pct}`, `PUT /api/scalper/trail/{id}`;
+UI on the chart label and Positions rows (`TrailControl.tsx`, `logic/exitPlan.ts`). Tests: `test_paper_trail.py`,
+`test_scalper.py`, `test_paper_store.py`, `exitPlan.test.ts`. Needs a backend restart; the buttons only show when the
+backend sends `trail` on positions (an old backend ignores `pct` and would sell everything).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

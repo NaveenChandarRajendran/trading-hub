@@ -56,3 +56,18 @@ Phase 2: Option Chain, Depth, OI Insights tabs.
 - Tiles: net P&L, trades, win rate, average win / loss (per trade, net), best / worst day (day net).
 - Day net = realized − charges of the day's fills (identical to the Paper Trading P&L calendar).
 - After "Reset account" the reports show the new account only; the old one's history stays in the tables.
+
+## Partial exits and trailing stop-loss (28-Oct, Naveen's rules)
+- **Partial exit** 25 / 50 / 75 % (100 % = ✕ / Exit): that share of the open lots at market, **rounded down, at least
+  1 lot**; when that is every lot it is a full exit. 4 lots: 1 / 2 / 3; 3 lots: 1 / 1 / 2. The OCO TP / SL legs shrink
+  to the remaining lots (existing rule). `POST /api/scalper/exit/{id} {pct}`; the button's tooltip shows the lots.
+- **Trailing stop** in option **points**: distance (default 10), step (default 1), optional "start after profit" (points
+  above the average buy; default: straight away). On: the stop is placed / raised to LTP − distance (down to the 0.05
+  tick) unless the start-after profit isn't reached yet (then the existing stop holds; one is required). Then, on every
+  tick, highest LTP since on − distance becomes the stop when it is at least one step above the current stop. Only
+  ever up. Dragging the SL keeps trailing at the new gap (distance = LTP − new stop). Ends when the stop is cancelled /
+  filled or the position closes. Runs in the backend paper engine (works with the page closed), stored on the stop
+  order (`pt_orders.trail_*`), so a restart keeps it. `PUT /api/scalper/trail/{id} {distance, step?, after?}`;
+  `{distance: null}` = off. Positions carry `trail`.
+- Screen: chart position label `qty P&L │ TP SL │ 25% 50% 75% │ Trail │ ✕`; SL grip "SL 173.80 · −582.40 · trail 10";
+  the same buttons on each Positions row. Last Trail values remembered in this browser.

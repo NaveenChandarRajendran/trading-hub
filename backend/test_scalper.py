@@ -176,6 +176,22 @@ def test_protection_create_modify_cancel_and_validation(env):
     assert rows[0]["open_qty"] == 0 and rows[0]["stop"] is None
 
 
+def test_partial_exit_and_trailing_stop_routes(env):
+    c, paper, _, clock, *_ = env
+    tick(paper, clock, "09:30")
+    order(c, "BUY", lots=4)
+    rows = c.post(f"/api/scalper/exit/{CE}", json={"pct": 25}).json()["rows"]
+    assert rows[0]["open_qty"] == 3 * 65  # 1 of 4 lots sold
+    assert c.post(f"/api/scalper/exit/{CE}", json={"pct": 30}).status_code == 409
+    pos = c.put(f"/api/scalper/trail/{CE}", json={"distance": 10}).json()["position"]
+    assert pos["stop"] == 90.0 and pos["trail"] == {"distance": 10.0, "step": 1.0, "after": None, "high": 100.0}
+    tick(paper, clock, "09:35", ltp=104.0, bid=104.0, ask=104.05)
+    assert c.get("/api/scalper/positions").json()["rows"][0]["stop"] == 94.0
+    pos = c.put(f"/api/scalper/trail/{CE}", json={"distance": None}).json()["position"]
+    assert pos["trail"] is None and pos["stop"] == 94.0
+    assert c.post(f"/api/scalper/exit/{CE}").json()["rows"][0]["open_qty"] == 0  # no body: everything
+
+
 # ---------- reports ----------
 def fill(sid, side, qty, value, t, charges=20.0, i=[0]):
     i[0] += 1

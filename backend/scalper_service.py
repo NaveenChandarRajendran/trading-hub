@@ -214,6 +214,12 @@ class ScalperService:
     def set_protection(self, book, security_id, target=KEEP, stop=KEEP):
         return self.paper.set_protection(book, security_id, target=target, stop=stop, source=SOURCE)
 
+    def exit_partial(self, book, security_id, pct):
+        self.paper.exit_partial(book, security_id, pct, source=SOURCE)
+
+    def set_trail(self, book, security_id, distance, step=1.0, after=None):
+        return self.paper.set_trail(book, security_id, distance, step, after, source=SOURCE)
+
 
 def default_range(today, days=30):
     return (today - timedelta(days=days)).isoformat(), today.isoformat()

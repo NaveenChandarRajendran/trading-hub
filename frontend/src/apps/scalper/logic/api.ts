@@ -4,6 +4,7 @@ import { withStrategy } from '../../../shared/strategy/api';
 import type { Candle } from '../../../shared/chart/candles';
 import type { Chain, Funds, Meta, Order, Position as PaperPosition, Tick, Trade } from '../../paper-trade/logic/api';
 import { SCALPER_API } from '../config/settings';
+import type { Trail } from './exitPlan';
 
 export type { Chain, Funds, Meta, Order, Tick, Trade };
 
@@ -12,6 +13,7 @@ export interface Position extends PaperPosition {
   targetOrderId: string | null;
   stop: number | null; // OCO stop (SL-M SELL) trigger
   stopOrderId: string | null;
+  trail: Trail | null; // trailing stop on the stop leg (exitPlan.ts)
 }
 
 /** A Scalper tick also carries the day's open / high / low (Full packets). */
@@ -100,7 +102,12 @@ export const api = {
     requestJson<Account>(SCALPER_API, st('/api/scalper/account/reset'), { method: 'POST', body: capital ? { capital } : {} }),
   place: (securityId: number, side: 'BUY' | 'SELL', lots: number) =>
     requestJson<{ order: Order; funds: Funds }>(SCALPER_API, st('/api/scalper/orders'), { method: 'POST', body: { securityId, side, lots } }),
-  exit: (securityId: number) => requestJson<{ rows: Position[] }>(SCALPER_API, st(`/api/scalper/exit/${securityId}`), { method: 'POST' }),
+  /** pct 25 / 50 / 75 sells that share of the open lots (rounded down, at least 1); none or 100 = everything. */
+  exit: (securityId: number, pct?: number) =>
+    requestJson<{ rows: Position[] }>(SCALPER_API, st(`/api/scalper/exit/${securityId}`), { method: 'POST', ...(pct && pct !== 100 ? { body: { pct } } : {}) }),
+  /** Trailing stop on ({distance, step, after}) or off ({distance: null}). */
+  trail: (securityId: number, body: { distance: number | null; step?: number; after?: number | null }) =>
+    requestJson<{ position: Position; orders: Order[] }>(SCALPER_API, st(`/api/scalper/trail/${securityId}`), { method: 'PUT', body }),
   exitAll: () => requestJson<{ rows: Position[] }>(SCALPER_API, st('/api/scalper/exit-all'), { method: 'POST' }),
   protection: (securityId: number, body: { target?: number | null; stop?: number | null }) =>
     requestJson<{ position: Position; orders: Order[] }>(SCALPER_API, st(`/api/scalper/protection/${securityId}`), { method: 'PUT', body }),

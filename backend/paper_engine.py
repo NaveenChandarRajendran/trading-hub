@@ -22,7 +22,15 @@ Rules (docs/features/paper-trade.md):
   oco_group. The legs never count against each other or against other sells (a manual partial sell is always
   allowed). After every fill on the instrument both legs are resized to the open quantity (buying more grows them);
   when one leg fills, the other is cancelled; when the position closes, both are cancelled.
+- Partial exit (exit_partial): 25 / 50 / 75 / 100 % of the open lots at market, rounded down, at least 1 lot; a
+  partial exit that would leave nothing is a full exit. The OCO legs follow the rest (above).
+- Trailing stop (set_trail), on the OCO stop leg: distance and step in option points, optional start after a profit
+  of `after` points. While active, the highest LTP since it was switched on minus the distance (rounded down to the
+  tick) becomes the stop whenever that is at least `step` above the current stop. Only ever up. A manual move of the
+  stop keeps trailing at the new gap (distance = LTP - new stop). It ends with the stop (cancelled, filled, position
+  closed).
 """
+import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time
 
@@ -37,6 +45,7 @@ OPEN_STATES = (PENDING, TRIGGERED)
 KEEP = object()  # set_protection: leave this leg as it is
 
 TICK_SIZE = 0.05
+EXIT_PCTS = (25, 50, 75, 100)
 SESSION_OPEN = time(9, 15)
 SQUARE_OFF = time(15, 15)
 
@@ -47,6 +56,16 @@ class OrderError(ValueError):
 
 def _on_tick_grid(p):
     return abs(round(p / TICK_SIZE) * TICK_SIZE - p) < 1e-6
+
+
+def _tick_down(p):
+    """Down to the 0.05 grid (a stop is never above the price it trails)."""
+    return round(math.floor(round(p / TICK_SIZE, 6)) * TICK_SIZE, 2)
+
+
+def partial_lots(open_lots, pct):
+    """Lots a pct exit sells: rounded down, at least 1, never more than open."""
+    return min(open_lots, max(1, math.floor(open_lots * pct / 100)))
 
 
 def walk_depth(levels, qty):
@@ -106,6 +125,10 @@ class Order:
     reason: str = ""
     blocked: float = 0.0  # funds held for a pending BUY
     oco_group: str = ""  # target + stop of one position (set_protection); "" for every other order
+    trail_distance: float | None = None  # trailing stop (the OCO stop leg only): points below the high
+    trail_step: float | None = None  # move only when the new stop is at least this much higher
+    trail_after: float | None = None  # start once LTP >= avg buy + this; None = straight away
+    trail_high: float | None = None  # highest LTP since trailing started (or since the last manual move)
 
     @property
     def qty(self):
@@ -402,7 +425,7 @@ class PaperEngine:
                         key=lambda o: o.created_at):
             if o.status in OPEN_STATES:  # an OCO fill earlier in this loop may have cancelled it
                 events += self._evaluate(o, book, now)
-        return events
+        return events + self._trail(security_id, book, now)
 
     def on_time(self, now):
         """Timer hook (call every few seconds): runs the 15:15 square-off even when no tick arrives."""
@@ -518,6 +541,9 @@ class PaperEngine:
             elif cur:
                 events += self.modify_order(cur.id, now, lots=lots if cur.lot_size == lot_size else None,
                                             **({"price": value} if order_type == LIMIT else {"trigger_price": value}))
+                if order_type == SLM and cur.trail_distance and cur.status == PENDING:  # trailing at the new gap
+                    cur.trail_distance, cur.trail_high = round(book.ltp - value, 2), book.ltp
+                    events.append(Event("order", cur.to_dict()))
             else:
                 kw = {"price": value} if order_type == LIMIT else {"trigger_price": value}
                 o, evs = self.place_order(security_id, SELL, lots, lot_size, order_type, now, oco_group=group, **kw)
@@ -526,7 +552,85 @@ class PaperEngine:
                 events += evs
         return events
 
+    # ---------- trailing stop ----------
+    def set_trail(self, security_id, now, distance, step=1.0, after=None):
+        """Switches trailing on (distance in points) or off (distance None) for the position's stop. On: the stop is
+        placed / raised to LTP - distance at once unless `after` (profit points) isn't reached yet; then the existing
+        stop holds (one is required). Raises OrderError (nothing changed) when it can't be applied."""
+        pos = self.positions.get(security_id)
+        if pos is None or pos.open_qty <= 0:
+            raise OrderError("No open position to trail.")
+        _, stop = self.protection(security_id)
+        if distance is None:
+            if not stop or not stop.trail_distance:
+                return []
+            stop.trail_distance = stop.trail_step = stop.trail_after = stop.trail_high = None
+            stop.updated_at = now
+            return [Event("order", stop.to_dict())]
+        if not self.accepting_orders(now):
+            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+        book = self.books.get(security_id)
+        if book is None:
+            raise OrderError("No live price for this instrument yet.")
+        if not distance > 0 or not _on_tick_grid(distance):
+            raise OrderError(f"Trail distance must be above 0 and a multiple of {TICK_SIZE}.")
+        if step is None or not step > 0:
+            raise OrderError("Trail step must be above 0.")
+        if after is not None and after < 0:
+            raise OrderError("Start-after profit can't be negative.")
+        if stop and stop.status == TRIGGERED:
+            raise OrderError("The stop has already triggered.")
+        active = after is None or book.ltp >= pos.avg_buy + after
+        level = _tick_down(book.ltp - distance)
+        events = []
+        if active and (stop is None or level > stop.trigger_price):
+            if level <= 0:
+                raise OrderError(f"Trail distance {distance:g} is more than the price {book.ltp:g}.")
+            events += self.set_protection(security_id, now, stop=level)
+            _, stop = self.protection(security_id)
+        if stop is None:
+            raise OrderError("Set a stop first: trailing waits for the profit, and your stop holds until then.")
+        stop.trail_distance, stop.trail_step, stop.trail_after, stop.trail_high = distance, step, after, book.ltp
+        stop.updated_at = now
+        return events + [Event("order", stop.to_dict())]
+
+    def _trail(self, security_id, book, now):
+        """Raises a trailing stop after a new high (call after the tick's orders ran)."""
+        _, stop = self.protection(security_id)
+        if not stop or not stop.trail_distance or stop.status != PENDING:
+            return []
+        pos = self.positions.get(security_id)
+        if pos is None or pos.open_qty <= 0:
+            return []
+        stop.trail_high = max(stop.trail_high or book.ltp, book.ltp)
+        if stop.trail_after is not None and stop.trail_high < pos.avg_buy + stop.trail_after:
+            return []
+        level = _tick_down(stop.trail_high - stop.trail_distance)
+        if level < stop.trigger_price + (stop.trail_step or TICK_SIZE) - 1e-9 or level >= book.ltp or level <= 0:
+            return []
+        stop.trigger_price, stop.updated_at = level, now
+        return [Event("order", stop.to_dict())]
+
     # ---------- exits ----------
+    def exit_partial(self, security_id, pct, now):
+        """Sells pct (25 / 50 / 75 / 100) of the open lots at market (partial_lots). All of it = exit_position."""
+        if pct not in EXIT_PCTS:
+            raise OrderError(f"Exit percent must be one of {', '.join(map(str, EXIT_PCTS))}.")
+        pos = self.positions.get(security_id)
+        if pos is None or pos.open_qty <= 0:
+            raise OrderError("No open position to exit.")
+        open_lots = pos.open_qty // pos.lot_size
+        lots = partial_lots(open_lots, pct)
+        if lots >= open_lots or pos.open_qty % pos.lot_size:
+            return self.exit_position(security_id, now)
+        if not self.accepting_orders(now):
+            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+        o, events = self.place_order(security_id, SELL, lots, pos.lot_size, MARKET, now)
+        if o.status == REJECTED:
+            raise OrderError(o.reason)
+        o.reason = f"Partial exit {pct}%"
+        return [Event("order", o.to_dict()) if e.kind == "order" and e.data["id"] == o.id else e for e in events]
+
     def exit_position(self, security_id, now):
         """Sells the whole open quantity at market. Pending SELLs for the instrument are cancelled first."""
         pos = self.positions.get(security_id)
