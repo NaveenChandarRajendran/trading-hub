@@ -102,6 +102,8 @@ TP / SL display fix (28-Oct, live market): setting a target / stop placed the OC
 updated position, so no TP / SL lines and empty Target / Stop columns. The page now applies the position the PUT returns
 (live on refresh, 28-Oct); `paper_api._publish` re-sends a position when its orders change without a position event
 (live after the next backend restart).
+Ticket "Need ₹…" (28-Oct): next to Lots / Qty, ask × qty for the chosen lots (charges extra), red when above the
+available funds (`checkTicket` `cost` / `short`).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

@@ -33,6 +33,8 @@ export function sideHeld(side: Side, symbol: string, positions: Iterable<Positio
 export interface TicketCheck {
   qty: number;
   openQty: number; // units a Sell may close
+  cost: number | null; // amount a Buy needs now: ask × qty (charges not included); null without a price
+  short: boolean; // cost above the available funds
   buy: string; // '' = allowed, else why not
   sell: string;
 }
@@ -43,6 +45,8 @@ export function checkTicket(a: {
   available: number | null | undefined; openQty: number; hasInstrument: boolean;
 }): TicketCheck {
   const qty = a.lotSize ? a.lots * a.lotSize : 0;
+  const cost = a.ask && qty ? Math.round(a.ask * qty * 100) / 100 : null;
+  const short = cost != null && a.available != null && cost > a.available;
   const base = !a.hasInstrument ? 'Pick a strike.'
     : a.status === 'closed' ? 'Market closed: orders from 09:15 IST.'
     : a.status === 'token' ? 'Dhan token expired: send a new one (POST /api/token).'
@@ -53,13 +57,13 @@ export function checkTicket(a: {
     : '';
   let buy = base;
   if (!buy && !a.ask) buy = 'No sellers in the depth yet.';
-  if (!buy && a.available != null && a.ask && a.ask * qty > a.available) {
-    buy = `Insufficient funds: about ₹${Math.round(a.ask * qty).toLocaleString('en-IN')} needed, ₹${Math.round(a.available).toLocaleString('en-IN')} available.`;
+  if (!buy && short) {
+    buy = `Insufficient funds: about ₹${Math.round(cost!).toLocaleString('en-IN')} needed, ₹${Math.round(a.available!).toLocaleString('en-IN')} available.`;
   }
   let sell = base;
   if (!sell && a.openQty <= 0) sell = 'Nothing to sell: Sell only closes an open position (no short selling).';
   else if (!sell && qty > a.openQty) sell = `Sell quantity ${qty} exceeds the open ${a.openQty}.`;
-  return { qty, openQty: a.openQty, buy, sell };
+  return { qty, openQty: a.openQty, cost, short, buy, sell };
 }
 
 /** Where LTP sits in the day's range, 0-100 (null when the range is unknown). */

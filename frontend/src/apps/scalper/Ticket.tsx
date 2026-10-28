@@ -1,5 +1,6 @@
 // One Power Scalper ticket (CE or PE): strike dropdown, Follow ATM, lots stepper, one-click MARKET Buy / Sell (no
 // confirmation; PAPER ONLY), best bid / ask with quantities and the day's range.
+import { inr } from '../../shared/grid';
 import { Pill } from '../../shared/ui';
 import { price } from '../paper-trade/format';
 import { MAX_LOTS } from './config/settings';
@@ -48,6 +49,9 @@ export function Ticket({ side, title, strike, picker, onStrike, follow, onFollow
       </div>
       <div className="sc-ticket-meta num">
         <span>Lots {lots} · Qty {check.qty || '–'}</span>
+        <span className={check.short ? 'down' : undefined} title="Ask × quantity: what a Buy at market needs now (charges extra)">
+          Need {check.cost == null ? '–' : `₹${inr(0)(check.cost)}`}
+        </span>
         {check.openQty > 0 && <span>Open {check.openQty}</span>}
       </div>
       <div className="sc-book num">

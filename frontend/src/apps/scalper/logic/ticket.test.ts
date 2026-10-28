@@ -71,7 +71,14 @@ describe('ticket checks', () => {
   const base = { status: 'live' as const, acceptingOrders: true, lots: 1, lotSize: 65, ask: 33.55, available: 5000, openQty: 0, hasInstrument: true };
 
   it('qty = lots x lot size; Buy allowed when live with funds', () => {
-    expect(checkTicket(base)).toEqual({ qty: 65, openQty: 0, buy: '', sell: 'Nothing to sell: Sell only closes an open position (no short selling).' });
+    expect(checkTicket(base)).toEqual({ qty: 65, openQty: 0, cost: 2180.75, short: false, buy: '', sell: 'Nothing to sell: Sell only closes an open position (no short selling).' });
+  });
+
+  it('amount needed = ask x qty, flagged when above the available funds', () => {
+    expect(checkTicket({ ...base, lots: 3 })).toMatchObject({ cost: 6542.25, short: true }); // 195 x 33.55 > 5,000
+    expect(checkTicket({ ...base, lots: 3, available: null }).short).toBe(false); // funds not loaded yet
+    expect(checkTicket({ ...base, ask: null }).cost).toBeNull(); // no sellers: no price yet
+    expect(checkTicket({ ...base, lotSize: null }).cost).toBeNull();
   });
 
   it('sell only closes, never more than the open quantity', () => {
