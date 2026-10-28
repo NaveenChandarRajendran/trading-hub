@@ -50,7 +50,9 @@ export function Status({ kind, children }: { kind: 'live' | 'stale' | 'error' | 
 }
 
 export { CopyValue } from './CopyValue';
-export { CheckIcon, CopyIcon } from './icons';
+export {
+  CheckIcon, CloseIcon, CopyIcon, CursorIcon, HorizontalLineIcon, MaximizeIcon, RectangleIcon, TrashIcon, TrendLineIcon,
+} from './icons';
 export { Heatmap } from './Heatmap';
 export type { HeatCell, HeatLevel } from './Heatmap';
 export { Toasts, useToasts } from './Toast';

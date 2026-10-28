@@ -104,6 +104,14 @@ updated position, so no TP / SL lines and empty Target / Stop columns. The page 
 (live after the next backend restart).
 Ticket "Need ₹…" (28-Oct): next to Lots / Qty, ask × qty for the chosen lots (charges extra), red when above the
 available funds (`checkTicket` `cost` / `short`).
+Big chart + drawings (28-Oct, `feature/scalper-drawings`): every chart head (`ChartPanel.tsx`) has drawing tools and ⤢
+maximise. Maximised = the same chart large in an overlay (✕ / Esc / click outside closes; TP / SL drag works there too).
+Tools: select, trendline (two clicks or press-drag), rectangle zone, horizontal line (one click, price on the axis);
+drag a drawing or its ends / corners, Delete removes the selected one, Esc cancels / deselects, 🗑 clears the chart.
+Drawings are pinned to time + price (`logic/drawings.ts`: bar-index interpolation, so they hold across 1m / 3m / 5m and
+gaps), drawn as an SVG over the price pane (`DrawingLayer.tsx`), saved in this browser only (`localStorage`
+`scalper.drawings.v1`, per index / per option security id; an option's drawings are dropped after its expiry).
+Limits: not on other PCs / browsers (no backend save), one colour, no extended (ray) lines.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

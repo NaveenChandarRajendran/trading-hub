@@ -13,7 +13,7 @@
 .sc .sc-chart-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: var(--sp-2) var(--sp-3); }
 .sc .sc-chart-card.sc-index { grid-row: 1 / span 2; }
 .sc .sc-chart-head { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); margin-bottom: var(--sp-1); min-width: 0; }
-.sc .sc-chart-title { font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.sc .sc-chart-title { font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sc .sc-ltp { font-weight: 600; }
 .sc .sc-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc .sc-help { position: relative; }
@@ -23,6 +23,30 @@
 .sc .sc-chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: var(--fs-sm); pointer-events: none; }
 .sc .sc-chart-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
 .sc .sc-chart { flex: 1 1 auto; min-height: 0; min-width: 0; }
+
+/* chart head: drawing tools + maximise on the right */
+.sc .sc-head-end { flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; gap: 2px; align-self: center; }
+.sc .sc-tools { display: inline-flex; gap: 2px; padding-right: var(--sp-1); margin-right: var(--sp-1); border-right: 1px solid var(--border); }
+.sc .btn.sc-tool { width: 24px; height: 24px; min-height: 0; color: var(--text-3); }
+.sc .btn.sc-tool:hover:not(:disabled) { color: var(--text); }
+.sc .btn.sc-tool[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
+
+/* drawings: an SVG over the price pane; shapes take the pointer, the chart under the empty area keeps it */
+.sc .sc-draw-layer { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.sc .sc-draw-capture { fill: transparent; pointer-events: all; cursor: crosshair; }
+.sc .sc-draw-line { stroke: var(--accent); stroke-width: 1.5; }
+.sc .sc-draw-line.dashed { stroke-dasharray: 6 4; }
+.sc .sc-draw-rect { fill: var(--accent); fill-opacity: 0.1; stroke: var(--accent); stroke-width: 1; pointer-events: all; cursor: move; }
+.sc .sc-draw-hit { stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: move; }
+.sc .sc-draw.is-selected .sc-draw-line { stroke-width: 2.5; }
+.sc .sc-draw.is-selected .sc-draw-rect { fill-opacity: 0.18; stroke-width: 2; }
+.sc .sc-draw.is-preview { opacity: 0.7; }
+.sc .sc-draw-layer.is-drawing .sc-draw-hit, .sc .sc-draw-layer.is-drawing .sc-draw-rect { pointer-events: none; }
+.sc .sc-draw-handle { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; pointer-events: all; cursor: grab; }
+
+/* maximised chart: an overlay over the page */
+.sc .sc-max-backdrop { position: fixed; inset: 0; z-index: 50; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: var(--sp-4); }
+.sc .sc-max { width: min(1600px, 100%); height: min(92vh, 100%); display: flex; flex-direction: column; padding: var(--sp-2) var(--sp-3); box-shadow: var(--shadow-pop); }
 
 /* position on an option chart: label on the entry line, TP / SL handles, grips on the TP / SL lines */
 .sc .sc-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 3; }

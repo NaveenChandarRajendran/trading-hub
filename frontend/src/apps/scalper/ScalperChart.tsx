@@ -1,13 +1,15 @@
 // One Power Scalper chart (Lightweight Charts): candles + a soft volume strip, colours from the design tokens. The
 // three charts share one time grid and a ChartSync, so scroll, zoom and crosshair move together. Bars arrive already
 // aligned (blank bars where the instrument did not trade). An option chart can carry an open position's overlay
-// (entry line, draggable TP / SL, PositionOverlay.tsx).
-import { useEffect, useRef, useState } from 'react';
+// (entry line, draggable TP / SL, PositionOverlay.tsx) and the user's drawings (DrawingLayer.tsx).
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CandlestickSeries, HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import { useTheme } from '../../shared/theme';
 import { candleColors, chartOptions, compactVolume, ohlc, pricePriceFormat, themeOptions, volumePoint } from './chartTheme';
 import { isCandle, type Bar } from './logic/series';
 import type { ChartSync, SyncableChart } from './logic/sync';
+import { DrawingLayer } from './DrawingLayer';
+import type { Drawing, Tool } from './logic/drawings';
 import { PositionOverlay, type ChartPosition } from './PositionOverlay';
 
 const INITIAL_BARS = 90; // bars in view when a chart first loads (scroll back for more)
@@ -21,13 +23,26 @@ export interface PositionProps {
   onError: (message: string) => void;
 }
 
-export function ScalperChart({ id, bars, sync, resetKey, position }: {
+export interface DrawingProps {
+  items: Drawing[];
+  onChange: (items: Drawing[]) => void;
+  tool: Tool;
+  onToolDone: () => void;
+  step: number; // seconds a bar
+  keys?: boolean; // Delete / Esc act on this chart (false while the maximised copy is open)
+}
+
+export function ScalperChart({ id, bars, sync, resetKey, position, drawing, big = false }: {
   id: string; // "index" | "ce" | "pe": the sync member id
   bars: Bar[]; // aligned to the shared grid
   sync: ChartSync;
   resetKey: string; // instrument + timeframe: re-fit the view when it changes
   position?: PositionProps | null; // an open position on this chart's instrument
+  drawing?: DrawingProps; // trendlines, rectangles, horizontal lines
+  big?: boolean; // the maximised view: twice as many bars at first
 }) {
+  const initialBars = big ? 2 * INITIAL_BARS : INITIAL_BARS;
+  const times = useMemo(() => bars.map((b) => b.time as number), [bars]);
   const { mode } = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -94,8 +109,8 @@ export function ScalperChart({ id, bars, sync, resetKey, position }: {
     vol.current?.setData(bars.map(volumePoint));
     closes.current = new Map(bars.filter(isCandle).map((b) => [b.time, b.close]));
     // fit on a new instrument / timeframe, and once more when history arrives after a few live bars were fitted
-    if (bars.length && (fitted.current !== resetKey || (fittedLen.current < INITIAL_BARS && bars.length >= 2 * fittedLen.current + 10))) {
-      chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - INITIAL_BARS), to: bars.length + 2 });
+    if (bars.length && (fitted.current !== resetKey || (fittedLen.current < initialBars && bars.length >= 2 * fittedLen.current + 10))) {
+      chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - initialBars), to: bars.length + 2 });
       fitted.current = resetKey;
       fittedLen.current = bars.length;
     }
@@ -106,6 +121,9 @@ export function ScalperChart({ id, bars, sync, resetKey, position }: {
     <div className="sc-chart-wrap">
       <div className="sc-chart" ref={box} />
       {!bars.length && <div className="sc-chart-empty">Loading candles…</div>}
+      {ready && drawing && chart.current && candles.current && (
+        <DrawingLayer chart={chart.current} series={candles.current} frame={frame} times={times} {...drawing} />
+      )}
       {ready && position && chart.current && candles.current && (
         <PositionOverlay chart={chart.current} series={candles.current} frame={frame} {...position} />
       )}

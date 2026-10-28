@@ -13,6 +13,7 @@ import { cacheQuotes } from '../paper-trade/logic/chain';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { PlanStrip } from '../growth-plan/PlanStrip';
 import { BottomStrip } from './BottomStrip';
+import { ChartPanel } from './ChartPanel';
 import {
   CHAIN_CACHE_REFRESH_MS, DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe,
 } from './config/settings';
@@ -21,10 +22,11 @@ import { HOTKEYS, hotkeyAction } from './logic/hotkeys';
 import { pickerItems } from './logic/picker';
 import { alignSeries, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
 import { ChartSync } from './logic/sync';
+import { indexKey, optionKey } from './logic/drawings';
 import { checkTicket, followStrike, sideHeld, type Side } from './logic/ticket';
 import { PositionsBox } from './PositionsBox';
 import { Reports } from './Reports';
-import { ScalperChart, type PositionProps } from './ScalperChart';
+import { type PositionProps } from './ScalperChart';
 import { Ticket } from './Ticket';
 import { useScalper, type Scalper } from './useScalper';
 import './scalper.css';
@@ -74,39 +76,6 @@ function PageStatus({ sc }: { sc: Scalper }) {
 
 /** 1-minute candles of one instrument from the live state. */
 const minutesOf = (sc: Scalper, key: InstrumentKey | null): Candle[] => (key ? sc.series.get(key)?.minutes ?? [] : []);
-
-/** Last price and change vs the previous close for a chart head. */
-function Quote({ tick, bars }: { tick?: ScalperTick; bars: Bar[] }) {
-  const last = [...bars].reverse().find((b): b is Candle => 'close' in b);
-  const ltp = tick?.ltp ?? last?.close;
-  const chg = ltp != null && tick?.close ? ((ltp - tick.close) / tick.close) * 100 : null;
-  return (
-    <>
-      <span className="num sc-ltp">{price(ltp)}</span>
-      {chg != null && <span className={`num ${toneOf(chg)}`}>{pct(chg)}</span>}
-    </>
-  );
-}
-
-function ChartCard({ title, className = '', tick, bars, children, note }: {
-  title: string;
-  className?: string;
-  tick?: ScalperTick;
-  bars: Bar[];
-  children: React.ReactNode;
-  note?: string;
-}) {
-  return (
-    <section className={`card sc-chart-card ${className}`}>
-      <div className="sc-chart-head">
-        <span className="sc-chart-title">{title}</span>
-        <Quote tick={tick} bars={bars} />
-        {note && <span className="muted sc-note">{note}</span>}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 /** Every order from this page goes into the strategy picked in "Trading into"; switching it reloads the page. */
 export default function ScalperApp() {
@@ -432,15 +401,14 @@ function ScalperPage({ into }: { into: TradingInto }) {
         <>
           <div className="sc-body">
             <div className="sc-charts">
-              <ChartCard className="sc-index" title={`${symbol} · ${tf}m`} tick={spotTick} bars={indexBars ?? []} note={histErr.index}>
-                <ScalperChart id="index" bars={indexBars ?? []} sync={sync} resetKey={`${symbol}|${tf}`} />
-              </ChartCard>
-              <ChartCard title={legName('CE')} tick={tickOf('CE')} bars={ceBars ?? []} note={histErr.ce}>
-                <ScalperChart id="ce" bars={ceBars ?? []} sync={sync} resetKey={`${ceKey}|${tf}`} position={chartPosition('CE')} />
-              </ChartCard>
-              <ChartCard title={legName('PE')} tick={tickOf('PE')} bars={peBars ?? []} note={histErr.pe}>
-                <ScalperChart id="pe" bars={peBars ?? []} sync={sync} resetKey={`${peKey}|${tf}`} position={chartPosition('PE')} />
-              </ChartCard>
+              <ChartPanel id="index" className="sc-index" title={`${symbol} · ${tf}m`} tick={spotTick} bars={indexBars ?? []} note={histErr.index}
+                sync={sync} resetKey={`${symbol}|${tf}`} drawKey={indexKey(symbol)} expiry={null} step={interval * 60} />
+              {SIDES.map((side) => (
+                <ChartPanel key={side} id={side.toLowerCase()} title={legName(side)} tick={tickOf(side)} bars={(side === 'CE' ? ceBars : peBars) ?? []}
+                  note={histErr[side === 'CE' ? 'ce' : 'pe']} sync={sync} resetKey={`${side === 'CE' ? ceKey : peKey}|${tf}`}
+                  position={chartPosition(side)} drawKey={legs[side] ? optionKey(legs[side]!.securityId) : null}
+                  expiry={chain?.expiry ?? null} step={interval * 60} />
+              ))}
             </div>
             <aside className="card sc-panel">
               <Segmented label="Panel" options={PANEL_TABS} value="trade" onChange={() => undefined} />
