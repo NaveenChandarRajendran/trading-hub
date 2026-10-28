@@ -1,12 +1,13 @@
 // Strike dropdown of a ticket: every strike of the expiry, opens scrolled to the selected strike (or ATM), ATM and ITM
 // marked, each strike's LTP, type a strike to jump to it (Enter picks it, Esc closes). The dropdown is drawn on
-// document.body at a fixed position, so it never widens or scrolls the Trade panel.
+// document.body at a fixed position, so it never widens or scrolls the Trade panel. Also used by Strategy Builder.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { inr } from '../../shared/grid';
 import { price } from '../paper-trade/format';
 import { popPlacement } from './logic/layout';
 import { searchStrike, type PickerItem } from './logic/picker';
+import './StrikePicker.css';
 
 export function StrikePicker({ label, value, items, atmIndex, onPick, disabled }: {
   label: string; // "CE strike"

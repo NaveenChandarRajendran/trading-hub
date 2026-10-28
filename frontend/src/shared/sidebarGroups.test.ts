@@ -14,7 +14,7 @@ describe('sidebar groups', () => {
     expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard', 'strategies', 'growth-plan']);
     expect(apps[0].id).toBe('dashboard'); // landing page
     expect(g[1].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
-    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'paper-trade', 'algo', 'scalper']);
+    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'paper-trade', 'algo', 'scalper', 'strategy-builder']);
   });
 
   it('drops empty sections', () => {

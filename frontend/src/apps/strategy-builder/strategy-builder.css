@@ -1,0 +1,49 @@
+/* Strategy Builder. Layout only; colours and sizes are tokens. */
+.ds.sb { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ds .sb-top { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); }
+.ds .sb-spot { display: flex; align-items: baseline; gap: var(--sp-2); align-self: flex-end; padding-bottom: var(--sp-1); }
+.ds .sb-spot b { font-size: var(--fs-lg); }
+.ds .sb-mult { width: 64px; }
+.ds .sb-small { font-size: var(--fs-sm); margin: 0; }
+
+/* design tabs 1..6 */
+.ds .sb-tabs { display: flex; gap: var(--sp-1); flex-wrap: wrap; align-items: center; }
+.ds .sb-tab { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.ds .sb-tab button { font: inherit; font-size: var(--fs-sm); background: none; border: 0; color: var(--text-2); cursor: pointer; padding: 2px var(--sp-2); }
+.ds .sb-tab.on { border-color: var(--accent); background: var(--accent-soft); }
+.ds .sb-tab.on button { color: var(--accent); font-weight: 600; }
+.ds .sb-tab .sb-tab-x { padding: 2px 6px; color: var(--text-3); }
+.ds .sb-tab .sb-tab-x:hover { color: var(--down); }
+.ds .sb-tab-add { font-size: var(--fs-sm); }
+
+/* legs and payoff side by side, half each (stacked below 1200 px) */
+.ds .sb-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-3); align-items: start; }
+.ds .sb-left, .ds .sb-right { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.ds .sb-legs { display: flex; flex-direction: column; gap: var(--sp-2); overflow-x: auto; }
+.ds table.sb-legs-table td, .ds table.sb-legs-table th { padding: 4px 3px; white-space: nowrap; text-align: left; }
+.ds table.sb-legs-table select { padding-right: 18px; }
+.ds table.sb-legs-table tr.sb-off td { opacity: 0.5; }
+.ds .sb-side, .ds .sb-type { min-width: 32px; padding: 0 6px; justify-content: center; font-weight: 600; }
+.ds .sb-side.buy { color: var(--up); border-color: color-mix(in srgb, var(--up) 40%, var(--border)); }
+.ds .sb-side.sell { color: var(--down); border-color: color-mix(in srgb, var(--down) 40%, var(--border)); }
+.ds .sb-type.ce { color: var(--text); }
+.ds .sb-type.pe { color: var(--text-2); }
+.ds .sb-strike { display: inline-flex; align-items: center; gap: 2px; }
+.ds .sb-strike .sc-picker-btn { min-width: 76px; }
+.ds .sb-strike > .btn.icon { width: 24px; }
+.ds .sb-lots { width: 48px; }
+.ds .sb-price { display: inline-flex; align-items: center; gap: 2px; }
+.ds .sb-price input { width: 82px; }
+.ds .sb-iv { font-size: var(--fs-xs); min-width: 34px; }
+.ds .sb-add { align-self: flex-start; }
+.ds .sb-menu { position: relative; display: inline-flex; }
+.ds .sb-menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: flex; flex-direction: column; padding: var(--sp-1); box-shadow: var(--shadow-pop); min-width: 120px; }
+.ds .sb-menu-pop .btn { justify-content: flex-start; }
+.ds .sb-danger { color: var(--down); }
+
+/* quick check until the chart + summary land (step 3) */
+.ds .sb-quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); margin: 0; }
+.ds .sb-quick dt { font-size: var(--fs-sm); color: var(--text-3); }
+.ds .sb-quick dd { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+
+@media (max-width: 1200px) { .ds .sb-body { grid-template-columns: minmax(0, 1fr); } }

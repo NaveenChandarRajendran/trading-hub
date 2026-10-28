@@ -29,7 +29,14 @@ what a strategy already holds.
 
 ## Build steps (A)
 1. Maths library + tests — done (`blackScholes.ts`, `payoff.ts`, `pop.ts`).
-2. Legs table + templates + live prices.
+2. Legs table + templates + live prices — done. Page Live → Strategy Builder (`StrategyBuilderApp.tsx`,
+   `LegsTable.tsx`, `useMarket.ts`): index + live spot, expiry, templates (Long / Short Straddle and Strangle, Bull Call,
+   Bear Put, Iron Condor, Iron Butterfly; distances in `logic/templates.ts` `TEMPLATE_PCT`: strangle ±1 %, spreads 1 %,
+   condor shorts ±1.5 % / wings ±2.5 %, butterfly wings ±1.5 %, snapped to listed strikes), up to 8 legs (tick, B/S,
+   expiry, strike dropdown + −/+, CE/PE, lots, price = live bid/ask mid or typed with ↺, IV, duplicate / delete),
+   multiplier, tabs 1–6 (this browser until drafts). Data: `/api/paper/chain` (strikes / IDs / lot size),
+   `/api/option-chain` cache (IV, last prices; every 60 s), `/ws/paper` ticks (spot + legs). The strike dropdown
+   (`scalper/StrikePicker.tsx`) now has its own stylesheet and is shared with Power Scalper.
 3. Payoff chart + summary + Greeks.
 4. Margin (`POST /v2/margincalculator/multi`, one live check after market close with Naveen's OK) + drafts
    (`th_builder_drafts`) + Analyze positions.

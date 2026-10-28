@@ -1,0 +1,12 @@
+/* Strike dropdown (StrikePicker.tsx), used by Power Scalper and Strategy Builder. Tokens only. */
+.sc-picker { position: relative; }
+.sc-picker-btn { min-width: 92px; justify-content: space-between; }
+.sc-picker-pop { position: fixed; z-index: 1000; width: 220px; padding: var(--sp-2); box-shadow: var(--shadow-pop); display: flex; flex-direction: column; gap: var(--sp-2); box-sizing: border-box; }
+.sc-picker-pop input { width: 100%; box-sizing: border-box; }
+.sc-picker-list { max-height: 320px; min-height: 0; flex: 1 1 auto; overflow: hidden auto; }
+.sc-picker-row { display: flex; justify-content: space-between; padding: 4px var(--sp-2); border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm); }
+.sc-picker-row.itm { background: var(--itm-soft); }
+.sc-picker-row.atm { background: var(--accent-soft); }
+.sc-picker-row.hl { box-shadow: inset 0 0 0 1px var(--accent); }
+.sc-picker-row.on { font-weight: 600; color: var(--accent); }
+.sc-atm-tag { margin-left: var(--sp-2); font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
