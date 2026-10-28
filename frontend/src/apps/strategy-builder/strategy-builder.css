@@ -62,7 +62,7 @@
 .ds .sb-oc-btn.on { opacity: 1; }
 .ds .sb-oc-btn.buy.on { background: var(--up-soft); border-color: var(--up); }
 .ds .sb-oc-btn.sell.on { background: var(--down-soft); border-color: var(--down); }
-.ds .sb-oc-held { position: absolute; top: 1px; font-size: 10px; font-weight: 700; color: var(--accent); line-height: 1; }
+.ds .sb-oc-held { position: absolute; top: 1px; font-size: var(--fs-xs); font-weight: 700; color: var(--accent); line-height: 1; }
 .ds .sb-oc-side.ce .sb-oc-held { left: 6px; }
 .ds .sb-oc-side.pe .sb-oc-held { right: 6px; }
 .ds .sb-oc-empty { padding: var(--sp-3); }
