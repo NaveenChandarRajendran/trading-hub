@@ -92,6 +92,11 @@ bands, zoom / pan, what-if sliders), summary (POP, reward : risk, charges) and G
 returns `chargeRates`. Option chain for picking legs. Step 4 done: Dhan basket margin, drafts per user
 (`th_builder_drafts`), Analyze positions. Needs a backend restart once merged (new routes + table). Not merged.
 
+## Options paper trading (branch `feature/options-paper`, ADR 0010, spec `docs/features/options-paper.md`) — in progress
+Part B of the Strategy Builder: an `options` strategy kind with short legs, overnight positions and expiry settlement
+(15:30 spot; STT on ITM longs; Dhan basket margin, refused without it). Step 1 done (28-Oct): pure engine
+`backend/options_engine.py` + 10 tests. Not merged; nothing live.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills
