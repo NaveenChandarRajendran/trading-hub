@@ -15,7 +15,8 @@ import { levelsText } from '../oi-support-resistance/logic/levels';
 import { BB_PERIOD, DEFAULT_INDICATORS, EMA_PERIOD, LEVELS_REFRESH_SEC, REFRESH_OPTIONS, RSI_PERIOD, SR_RANGE, ST_FACTOR, ST_PERIOD, STORAGE_PREFIX, type IndicatorToggles } from './config/settings';
 import { componentsCard } from './logic/cards';
 import { srLevels } from './logic/levels';
-import { CHART_PRESETS, type ChartStrategy, type StrategyKey } from './logic/board';
+import { CHART_PRESETS, type ChartStrategy, type SellingState, type StrategyKey } from './logic/board';
+import { API_BASE, getJson } from '../../shared/api';
 import { minutesToExit, type SignalsState } from './logic/signals';
 import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
@@ -150,6 +151,15 @@ export default function DashboardApp() {
   const sigB = useSignals('BANKNIFTY');
   const sN = sigN.data;
   const sB = sigB.data;
+  // the option selling book's state for the board (owner 28-Oct-2026); undefined = not running, so no selling rows
+  const [selling, setSelling] = useState<SellingState | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    const load = () => getJson<SellingState>(API_BASE, '/api/selling/state').then((r) => live && setSelling(r), () => live && setSelling(undefined));
+    void load();
+    const id = window.setInterval(load, 10000);
+    return () => { live = false; window.clearInterval(id); };
+  }, []);
   // a strategy's chart opens at its own candle size, and the Interval picker stays usable (owner 27-Oct-2026)
   const [strategyInterval, setStrategyInterval] = useState<number | null>(null);
   useEffect(() => setStrategyInterval(null), [strategy]);
@@ -247,7 +257,7 @@ export default function DashboardApp() {
 
       {/* 2. strategy board */}
       <StrategyBoard signals={signals} symbols={symbols} strategy={strategy} open={openBox} ltp={ltp}
-        onStrategy={setStrategy} onOpen={setOpenBox} />
+        onStrategy={setStrategy} onOpen={setOpenBox} selling={selling} />
 
       {/* 3. charts */}
       <div className="db-section-head">

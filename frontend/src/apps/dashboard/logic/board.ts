@@ -100,3 +100,34 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 },
     note: 'EMA 200 and VWAP (BankNifty only). ATR and the 10-day average range are on the strategy box.' },
 };
+
+/** The Rs 3 lakh option SELLING book (owner 28-Oct-2026, sell_desk.py): NIFTY only, its own state at /api/selling/state. */
+export interface SellLeg {
+  id: string; slot: string; rule?: string; side: 'CE' | 'PE'; qty: number; entryPrice: number; netPnl?: number | null;
+  instrument: { name: string; securityId?: number }; ltp?: number | null; pnl?: number | null;
+}
+export interface SellingState { open: SellLeg[]; closedToday: SellLeg[]; notes: Record<string, string> }
+export const SELL_BOARD: { key: string; name: string; account: string; idle: string }[] = [
+  { key: 'sellStraddle', name: 'Expiry Straddle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:20 on Nifty expiry days' },
+  { key: 'sellCalmCall', name: 'Calm-day Call Sell', account: 'Selling · ₹3 lakh · Nifty only', idle: 'checks at 10:15 (calm days only)' },
+  { key: 'sellStrangle', name: '2-month Strangle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'enters at 10:00 when none is open' },
+];
+
+/** One selling rule's box: sold legs and their P&L now, else today's result or note, else when it acts. */
+export function sellCell(st: SellingState | null | undefined, key: string, ltp: Record<number, number> = {}): Cell {
+  const row = SELL_BOARD.find((b) => b.key === key);
+  if (!st || !row) return { kind: 'none', title: 'No reading yet', sub: 'selling book not running' };
+  const open = st.open.filter((l) => l.slot === key);
+  if (open.length) {
+    const pnl = open.reduce((s, l) => {
+      const now = l.instrument.securityId != null ? ltp[l.instrument.securityId] : undefined;
+      return s + (now != null ? (l.entryPrice - now) * l.qty : l.pnl ?? 0);
+    }, 0);
+    return { kind: 'trade', title: `Sold · ${open.length} leg${open.length > 1 ? 's' : ''}`,
+      sub: `${open.map((l) => l.instrument.name.replace(/^NIFTY \S+ \S+ /, '')).join(' + ')} · ${money(pnl)} now` };
+  }
+  const done = st.closedToday.filter((l) => l.slot === key);
+  if (done.length) return { kind: 'wait', title: 'Done today', sub: `${done.length} leg${done.length > 1 ? 's' : ''} · ${money(done.reduce((s, l) => s + (l.netPnl ?? 0), 0))}` };
+  const note = st.notes[row.name];
+  return { kind: 'wait', title: 'Waiting', sub: note || row.idle };
+}

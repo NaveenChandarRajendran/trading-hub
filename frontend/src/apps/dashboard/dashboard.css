@@ -188,3 +188,4 @@
 .db .db-zoom .btn, .db .db-zoom .btn.ghost { height: 26px; padding: 0 var(--sp-2); font-size: var(--fs-sm); background: var(--surface); }
 .db .db-zoom-note { font-size: var(--fs-xs); color: var(--text-3); background: var(--surface); padding: 1px 6px; border-radius: var(--r-sm); }
 .db .db-cell-empty { display: block; }
+.db .db-board-name.static { cursor: default; }

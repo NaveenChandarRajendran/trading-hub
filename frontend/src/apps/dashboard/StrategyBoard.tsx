@@ -1,7 +1,7 @@
 // Strategy board (owner 26-Oct-2026): one row per strategy, a column per index. Each box says in a word where the
 // strategy stands; click a strategy to put its indicators on the charts, click a box to open its checklist.
 import { Fragment } from 'react';
-import { BOARD, cell, openTrade, type ChartStrategy, type StrategyKey } from './logic/board';
+import { BOARD, SELL_BOARD, cell, openTrade, sellCell, type ChartStrategy, type SellingState, type StrategyKey } from './logic/board';
 import type { RuleResult, SignalsState } from './logic/signals';
 import { INDEX_NAME } from './ChartPanel';
 import { RuleCard } from './SignalPanels';
@@ -12,8 +12,9 @@ const FALLBACK: Record<StrategyKey, string> = {
   fourPillar: '4 PILLAR RULES', superTrend: 'SUPERTREND RULES', dharaniV2: 'DHARANI RULES', tradingHub: 'TREND RULES', reboundCall: 'REBOUND CALL',
 };
 
-export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrategy, onOpen }: {
+export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrategy, onOpen, selling }: {
   signals: Record<string, SignalsState | null>;
+  selling?: SellingState | null; // the option selling book (NIFTY only), owner 28-Oct-2026
   symbols: string[];
   strategy: ChartStrategy;
   open: { key: StrategyKey; symbol: string } | null; // checklist shown under the board
@@ -23,6 +24,9 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
 }) {
   const shownRule = open ? ruleOf(signals[open.symbol], open.key) : null;
   const evaluated = symbols.map((x) => signals[x]?.meta).find(Boolean);
+  // owner 28-Oct-2026: rules on hold (watch only) are not shown; they are tracked in the logs and the Excel
+  const onHold = symbols.map((x) => signals[x]?.auto?.watchOnly).find(Boolean) ?? [];
+  const rows = BOARD.filter((b) => !onHold.includes(b.name));
   return (
     <section className="card db-board-card">
       <div className="card-head">
@@ -32,7 +36,7 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
       <div className="db-board" style={{ gridTemplateColumns: `minmax(180px, 1.1fr) repeat(${symbols.length}, minmax(0, 1fr))` }} role="table">
         <span className="db-board-h" role="columnheader" />
         {symbols.map((x) => <span key={x} className="db-board-h" role="columnheader">{INDEX_NAME[x] ?? x}</span>)}
-        {BOARD.map((b) => (
+        {rows.map((b) => (
           <Fragment key={b.key}>
             <button type="button" className={`db-board-name ${strategy === b.key ? 'on' : ''}`} aria-pressed={strategy === b.key}
               onClick={() => onStrategy(strategy === b.key ? 'all' : b.key)}>
@@ -52,6 +56,16 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
                   <b>{c.title}</b><span>{c.sub}</span>
                 </button>
               );
+            })}
+          </Fragment>
+        ))}
+        {selling !== undefined && SELL_BOARD.map((b) => (
+          <Fragment key={b.key}>
+            <span className="db-board-name static"><b>{b.name}</b><span>{b.account}</span></span>
+            {symbols.map((x) => {
+              if (x !== 'NIFTY') return <span key={x} className="db-cell-empty" aria-hidden="true" />;
+              const c = sellCell(selling, b.key, ltp);
+              return <span key={x} className={`db-cell ${c.kind}`}><b>{c.title}</b><span>{c.sub}</span></span>;
             })}
           </Fragment>
         ))}
