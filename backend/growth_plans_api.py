@@ -4,8 +4,10 @@ growth_plans_api.py - Growth Plans of the signed-in user (growth_plans.py has th
     GET   /api/plans?archived=false                 {"plans": [{..., "appliedTo": [{id, name}]}]}
     POST  /api/plans {name, yearlyPct, method, initialCapital, startMonth, years?}     -> {"plan"}
     GET   /api/plans/{id}                           -> {"plan", "appliedTo"}
-    PATCH /api/plans/{id} {name?, years?}           ("+5 years" = years + 5, at most 20)
+    PATCH /api/plans/{id} {name?, yearlyPct?, method?, initialCapital?, startMonth?, years?}   ("+5 years": years + 5)
+    DELETE /api/plans/{id}                          the plan and all its links (active + history), for good
     POST  /api/plans/{id}/archive                   (ends its active links; history kept)
+    plans carry "appliedTo" (strategies using it now) and "usedBefore" (strategies that used it earlier)
     POST  /api/strategies/{id}/plan {planId, initialCapital?}  apply (ends the active one; default capital = strategy's)
     DELETE /api/strategies/{id}/plan                remove the active plan (kept in history)
     GET   /api/strategies/{id}/plan                 tracker inputs: plan, mapping, history, days [{date, net}],
@@ -30,6 +32,10 @@ class PlanBody(BaseModel):
 class PlanEdit(BaseModel):
     name: str | None = None
     years: int | None = None
+    yearlyPct: float | None = None
+    method: str | None = None
+    initialCapital: float | None = None
+    startMonth: str | None = None
 
 
 class ApplyBody(BaseModel):
@@ -47,7 +53,8 @@ def register(app, plans, live=None):
             raise HTTPException(e.status, e.message) from None
 
     def with_links(user, p):
-        return {**public_plan(p), "appliedTo": run(plans.applied_to, user, p["id"])}
+        now, before = run(plans.links, user, p["id"])
+        return {**public_plan(p), "appliedTo": now, "usedBefore": before}
 
     @app.get("/api/plans")
     def list_plans(request: Request, archived: bool = False):
@@ -66,7 +73,14 @@ def register(app, plans, live=None):
 
     @app.patch("/api/plans/{pid}")
     def edit(pid: str, body: PlanEdit, request: Request):
-        return {"plan": with_links(request.state.user, run(plans.edit, request.state.user, pid, body.name, body.years))}
+        p = run(plans.edit, request.state.user, pid, body.name, body.years, body.yearlyPct, body.method,
+                body.initialCapital, body.startMonth)
+        return {"plan": with_links(request.state.user, p)}
+
+    @app.delete("/api/plans/{pid}")
+    def delete(pid: str, request: Request):
+        run(plans.delete, request.state.user, pid)
+        return {"ok": True}
 
     @app.post("/api/plans/{pid}/archive")
     def archive(pid: str, request: Request):

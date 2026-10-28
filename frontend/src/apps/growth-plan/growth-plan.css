@@ -51,3 +51,10 @@
 .ds .pl-strip b.below { color: var(--warn); }
 .ds .pl-strip b.loss { color: var(--down); }
 .ds table.t .gp-left { text-align: left; }
+.ds .gp-nomargin { margin: 0; }
+.ds .gp-plans-table td { vertical-align: middle; }
+.ds .gp-plans-table tr.gp-on td { background: var(--accent-soft); }
+.ds .gp-link { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.ds .gp-link:hover { text-decoration: underline; }
+.ds .gp-actions { white-space: nowrap; }
+.ds .btn.gp-danger { color: var(--down); }

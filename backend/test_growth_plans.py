@@ -161,3 +161,38 @@ def test_tracker_days_add_up_every_capital_period(env):
     t = a.get(f"/api/strategies/{st['id']}/plan").json()
     assert t["days"] == [{"date": "2026-10-20", "net": 1260.0}, {"date": DAY, "net": -690.0}]
     assert t["today"] == DAY and t["unrealized"] == 0.0 and t["strategy"]["name"] == "SuperTrend"
+
+
+# ---------- edit every field, delete ----------
+def test_edit_every_field_in_place(env):
+    a, *_ = env
+    p = plan(a, name="2% plan", yearlyPct=24, method="simple", initialCapital=100000)
+    r = a.patch(f"/api/plans/{p['id']}", json={"initialCapital": 500000, "yearlyPct": 30, "method": "compounded",
+                                                "startMonth": "2027-01", "name": "2.2% plan"})
+    assert r.status_code == 200
+    q = r.json()["plan"]
+    assert (q["id"], q["initialCapital"], q["yearlyPct"], q["method"], q["startMonth"], q["name"]) == \
+        (p["id"], 500000.0, 30.0, "compounded", "2027-01", "2.2% plan")
+    assert len(a.get("/api/plans").json()["plans"]) == 1  # the same plan, not a new one
+    for bad in ({"initialCapital": 5}, {"method": "x"}, {"startMonth": "2027-1"}, {"yearlyPct": -1}):
+        assert a.patch(f"/api/plans/{p['id']}", json=bad).status_code == 400, bad
+
+
+def test_links_now_and_before_and_delete(env):
+    a, b, *_ = env
+    one, two = strategy(a, "One"), strategy(a, "Two")
+    p, other = plan(a), plan(a, name="Other")
+    a.post(f"/api/strategies/{one['id']}/plan", json={"planId": p["id"]})
+    a.post(f"/api/strategies/{two['id']}/plan", json={"planId": p["id"]})
+    a.post(f"/api/strategies/{two['id']}/plan", json={"planId": other["id"]})  # Two moves on to Other
+    got = next(x for x in a.get("/api/plans").json()["plans"] if x["id"] == p["id"])
+    assert got["appliedTo"] == [{"id": one["id"], "name": "One"}]
+    assert got["usedBefore"] == [{"id": two["id"], "name": "Two"}]
+    assert b.delete(f"/api/plans/{p['id']}").status_code == 404  # not hers
+    assert a.delete(f"/api/plans/{p['id']}").status_code == 200
+    assert [x["name"] for x in a.get("/api/plans").json()["plans"]] == ["Other"]
+    assert a.get(f"/api/plans/{p['id']}").status_code == 404
+    t1 = a.get(f"/api/strategies/{one['id']}/plan").json()
+    t2 = a.get(f"/api/strategies/{two['id']}/plan").json()
+    assert t1["plan"] is None and t1["history"] == []  # its links went with it
+    assert t2["plan"]["name"] == "Other" and t2["history"] == []

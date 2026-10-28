@@ -8,7 +8,10 @@ Rules
 - Plans are private: someone else's plan (or strategy) is "not found" (404), like one that doesn't exist.
 - One active plan per strategy: applying a plan ends the active one, which stays in the history.
 - Default initial capital of an applied plan = the strategy's capital; the page warns when they differ.
-- Archiving a plan ends its active links (history kept).
+- Archiving a plan ends its active links (history kept). Deleting removes the plan and all its links (active and
+  history) for good.
+- Editing a plan changes the targets of every strategy it is applied to (their trackers follow it). Each strategy keeps
+  its own tracking start capital (set when the plan was applied).
 """
 import re
 
@@ -51,7 +54,7 @@ class Plans:
                                    self._capital(initial_capital), self._month(start_month), self._years(years),
                                    self.clock())
 
-    def edit(self, user, pid, name=None, years=None):
+    def edit(self, user, pid, name=None, years=None, yearly_pct=None, method=None, initial_capital=None, start_month=None):
         p = self.get(user, pid)
         if p["archived_at"]:
             raise Refused("Archived plans are read-only.")
@@ -60,7 +63,19 @@ class Plans:
             fields["name"] = self._name(name)
         if years is not None:
             fields["years"] = self._years(years)
+        if yearly_pct is not None:
+            fields["yearly_pct"] = self._pct(yearly_pct)
+        if method is not None:
+            fields["method"] = self._method(method)
+        if initial_capital is not None:
+            fields["initial_capital"] = self._capital(initial_capital)
+        if start_month is not None:
+            fields["start_month"] = self._month(start_month)
         return self.store.update_plan(p["id"], **fields) if fields else p
+
+    def delete(self, user, pid):
+        p = self.get(user, pid)
+        self.store.delete_plan(p["id"])
 
     def archive(self, user, pid):
         p = self.get(user, pid)
@@ -70,13 +85,16 @@ class Plans:
 
     def applied_to(self, user, pid):
         """Strategies the plan is active on now: [{id, name}]."""
+        return self.links(user, pid)[0]
+
+    def links(self, user, pid):
+        """([{id, name}] using it now, [{id, name}] used it before but not now)."""
         p = self.get(user, pid)
-        out = []
+        active, before = {}, {}
         for m in self.store.plan_mappings(plan_id=p["id"]):
-            if not m["ended_at"]:
-                st = self.store.strategy(m["strategy_id"])
-                out.append({"id": st["id"], "name": st["name"]})
-        return out
+            st = self.store.strategy(m["strategy_id"])
+            (before if m["ended_at"] else active)[st["id"]] = {"id": st["id"], "name": st["name"]}
+        return list(active.values()), [v for k, v in before.items() if k not in active]
 
     # ------------------------------------------------------------------ plan <-> strategy
     def apply(self, user, sid, pid, initial_capital=None):

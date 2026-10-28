@@ -31,7 +31,7 @@ SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gr
 SCALPER_SUMMARY_COLS = ("trades", "wins", "losses", "fills", "realized", "charges", "net", "best_trade", "worst_trade")
 STRATEGY_EDITABLE = ("name", "description", "notes", "archived_at")
 DAILY_SUMMARY_KEYS = ("strategy_id", "account_id", "trade_date", *SCALPER_SUMMARY_COLS)
-PLAN_EDITABLE = ("name", "years", "archived_at")
+PLAN_EDITABLE = ("name", "yearly_pct", "method", "initial_capital", "start_month", "years", "archived_at")
 OPEN_ORDER_STATES = ("PENDING", "TRIGGERED")
 
 
@@ -549,6 +549,12 @@ class PaperJsonStore:
         self._write()
         return dict(pl)
 
+    def delete_plan(self, pid):
+        """The plan and every link to it (active and history)."""
+        self.d["strategy_plans"] = [m for m in self.d.get("strategy_plans", []) if m["plan_id"] != pid]
+        self.d["plans"] = [p for p in self.d.get("plans", []) if p["id"] != pid]
+        self._write()
+
     def apply_plan(self, strategy_id, plan_id, initial_capital, now):
         rows = self.d.setdefault("strategy_plans", [])
         for m in rows:
@@ -897,11 +903,17 @@ class PaperPgStore:
             return self._plan(r) if r else None
 
     def update_plan(self, pid, **fields):
-        fields = {k: v for k, v in fields.items() if k in PLAN_EDITABLE}
+        fields = {k: (f"{v}-01" if k == "start_month" else v) for k, v in fields.items() if k in PLAN_EDITABLE}
         with self.pg._cursor() as cur:
             cur.execute(f"UPDATE th_growth_plans SET {', '.join(f'{k}=%s' for k in fields)} WHERE id=%s "
                         f"RETURNING {self._PLAN_COLS}", (*fields.values(), pid))
             return self._plan(cur.fetchone())
+
+    def delete_plan(self, pid):
+        """The plan and every link to it (active and history), in one transaction."""
+        with self.pg._cursor() as cur:
+            cur.execute("DELETE FROM th_strategy_plans WHERE plan_id=%s", (pid,))
+            cur.execute("DELETE FROM th_growth_plans WHERE id=%s", (pid,))
 
     @staticmethod
     def _mapping(r):

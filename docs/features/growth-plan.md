@@ -8,7 +8,11 @@ Branch `feature/growth-plan` (from `naveen-dev`), plan approved 28-Oct-2026. ADR
   (24 % → 2.00 %, which compounds to 26.82 %). Both are shown with the formula.
 - Year table (year, months, start, target %, end, profit; click a year) and the month table of the chosen year (start,
   target %, target profit, end). 5 years; "+5 years" up to 20. Amounts with CopyValue; CSV for both tables.
-- "Save plan" stores it (per user, `th_growth_plans`); saved plans can be opened, archived and applied to a strategy.
+- "Your plans" table: name, yearly target, method, monthly %, initial capital, start, years, **Used by** (strategies
+  using it now, linked) and **Used before**; Edit / Delete. Edit loads it into the form ("Editing: <name>"): **Save
+  changes** updates the same plan (every field), **Save as new** keeps it and saves a copy, **Cancel**. Delete asks
+  first (naming its strategies) and removes the plan with its links and history. Editing a plan moves the targets of
+  every strategy using it; each keeps its own tracking start capital.
 
 ## Plan ↔ strategy
 - One active plan per strategy (`th_strategy_plans`, unique while `ended_at` is NULL); applying another ends the old
