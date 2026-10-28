@@ -1,6 +1,15 @@
 # Current state
 
-_Last updated: 2026-10-28 (paper Option Selling book; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-28 (Momentum 20 stock books; paper Option Selling book; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
+
+## Momentum 20 stock books, 2 x Rs 5 L PAPER (owner 28-Oct-2026)
+Rules: `docs/strategies/momentum-20.md`. `momentum.py` (pure screener, a port of the research backtest; same top 40 on
+2020-07-31, 2024-08-30 and 2026-10-27) + `momentum_book.py` (`MomentumDesk`): 5-minute loop, Yahoo daily bars,
+month-end ranking after 15:50, fills at the next open from 09:35, catch-up of missed days. Books `momSwitch`
+(cash when Nifty < 200-day average) and `momAll`. Not in the journal (monthly, multi-day); phone texts via
+`Notifier.send`. API GET `/api/momentum/state`, POST `/api/momentum/run`; Today page `MomentumCard`. Switch:
+autopaper.json `momentum.enabled`, first day `momentum.start` (2026-10-30, first buys 2 Nov). Tests:
+`backend/test_momentum.py`, `frontend/src/apps/today/logic/momentum.test.ts`.
 
 ## Option Selling book, Rs 3 L PAPER (owner 28-Oct-2026)
 Rules: `docs/strategies/option-selling.md`. `sell_rules.py` (pure rules) + `sell_desk.py` (`SellDesk`): its own state

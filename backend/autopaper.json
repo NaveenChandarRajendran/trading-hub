@@ -16,6 +16,8 @@
     "sellStrangle": {"enabled": true, "entry": "10:00", "check": "15:05", "awayPct": 3, "days": 61, "minDays": 45, "maxDays": 80, "rollAtPct": 70, "maxLoss": 60000},
     "timeExit": "15:14",
     "_note": "Rs 3 lakh option SELLING paper book (docs/strategies/option-selling.md, sell_desk.py), NIFTY only, owner approved 28-Oct-2026. PAPER ONLY. Set a rule's enabled to false to stop it."},
+  "momentum": {"enabled": true, "capital": 500000, "start": "2026-10-30",
+    "_note": "Momentum 20 stock screener (docs/strategies/momentum-20.md, momentum_book.py): two Rs 5 lakh PAPER books, 'with Nifty switch' and 'no switch', owner approved 28-Oct-2026. Month-end check after 15:50, fills at the next day's open. Prices from Yahoo Finance. PAPER ONLY."},
   "watchOnly": ["tradingHub", "fourPillar", "superTrend"],
   "_watchOnlyNote": "Owner 28-Oct-2026 (5-year review: these three lose in 2025-26 with every setting): they still check signals and the shadow log tracks each GO, but take no paper trades. Remove a name to let that rule trade again.",
   "rules": {

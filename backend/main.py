@@ -330,6 +330,13 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         if signals.phone is not None:
             import notify
             notify.register(app, signals.phone)
+        if signal_config.get("momentum", {}).get("enabled", False):  # Momentum 20 stock books (owner 28-Oct-2026)
+            import momentum_book
+            phone = signals.phone
+            desk = momentum_book.MomentumDesk(signal_config["momentum"], data_dir="data",
+                                              on_text=phone.send if phone is not None else (lambda text: None))
+            momentum_book.register(app, desk)
+            app.state.momentum = desk
     return app
 
 

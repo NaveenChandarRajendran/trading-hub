@@ -65,3 +65,12 @@
 .td .td-tag.s0 { --tag: var(--border-strong); }
 @media (max-width: 900px) { .td .td-strat { grid-template-columns: 1fr auto; } .td .td-strat-detail { grid-column: 1 / -1; } }
 .td button.td-phone { border: 0; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+
+/* Momentum 20 stock books (owner 28-Oct-2026) */
+.td .td-mom { display: flex; flex-direction: column; gap: var(--sp-3); }
+.td .td-mom-book { border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--r-lg); padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.td .td-mom-book.gain { border-left-color: var(--up); }
+.td .td-mom-book.loss { border-left-color: var(--down); }
+.td .td-mom-row { display: grid; grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(110px, 1fr)) auto; align-items: center; gap: var(--sp-3); }
+.td .td-mom-fig { display: flex; flex-direction: column; gap: 2px; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .td .td-mom-row { grid-template-columns: 1fr 1fr; } }

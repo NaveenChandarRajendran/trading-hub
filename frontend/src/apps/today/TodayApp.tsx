@@ -15,6 +15,7 @@ import { keyOf } from '../paper-trade/logic/feed';
 import { longDate, price, signedRupees, toneOf } from '../paper-trade/format';
 import { usePaper } from '../paper-trade/usePaper';
 import { STATUS_TEXT, WHO_ORDER, buildRows, whoInfo, forIndex, summarize, type TodayRow } from './logic/today';
+import MomentumCard from './MomentumCard';
 import './today.css';
 
 const REFRESH_MS = 10000;
@@ -305,6 +306,8 @@ export default function TodayApp() {
           </div>
         )}
       </section>
+
+      <MomentumCard />
 
       <p className="td-foot">
         <span className="up">Green = profit</span> · <span className="down">red = loss</span>. Closed trades are after charges; open trades are
