@@ -98,6 +98,10 @@ the full height); ▲ or a Positions / Orders / Open / Closed tab opens it, ▼ 
 (120 px to 60 % of the window, height remembered in this browser as `scalper.stripHeight`). The strike dropdown is drawn
 on `document.body` at a fixed position (kept on screen, opens upward when there is no room below), so the Trade panel
 never scrolls sideways. Pure helpers + tests: `scalper/logic/layout.ts`.
+TP / SL display fix (28-Oct, live market): setting a target / stop placed the OCO orders but the page never got the
+updated position, so no TP / SL lines and empty Target / Stop columns. The page now applies the position the PUT returns
+(live on refresh, 28-Oct); `paper_api._publish` re-sends a position when its orders change without a position event
+(live after the next backend restart).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range
