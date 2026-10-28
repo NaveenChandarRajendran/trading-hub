@@ -21,8 +21,13 @@ export const WHO: Record<Who, { name: string; where: string }> = {
   'Expiry Straddle (sell)': { name: 'Expiry Straddle', where: 'App · Selling ₹3L' },
   'Calm-day Call Sell': { name: 'Calm-day Call Sell', where: 'App · Selling ₹3L' },
   '2-month Strangle (sell)': { name: '2-month Strangle', where: 'App · Selling ₹3L' },
+  // timed expiry straddles from a Salem trader's podcast (owner 28-Oct-2026)
+  'Expiry Straddle 9:40 (sell)': { name: 'Expiry Straddle 9:40', where: 'App · Selling ₹3L' },
+  'Expiry Straddle 11:26 (sell)': { name: 'Expiry Straddle 11:26', where: 'App · Selling ₹3L' },
+  'Expiry Straddle 12:24 (sell)': { name: 'Expiry Straddle 12:24', where: 'App · Selling ₹3L' },
 };
-export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)'];
+export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
+  'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
 export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 

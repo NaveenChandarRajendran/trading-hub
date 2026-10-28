@@ -1,6 +1,6 @@
 # Current state
 
-_Last updated: 2026-10-28 (Momentum 20 stock books; paper Option Selling book; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-28 (Momentum 20 stock books; paper Option Selling book + timed expiry straddles; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
 
 ## Momentum 20 stock books, 2 x Rs 5 L PAPER (owner 28-Oct-2026)
 Rules: `docs/strategies/momentum-20.md`. `momentum.py` (pure screener, a port of the research backtest; same top 40 on
@@ -19,6 +19,8 @@ intraday). Legs go to the journal as account "App · Selling" with `short: true`
 positional leg is re-recorded each morning with event "carry") and to the phone ("🟠 SELL"). API: GET
 `/api/selling/state`, POST `/api/selling/exit/{leg_id}` (Today page Exit button on a SOLD row). Switch:
 autopaper.json `selling.enabled` and each rule's `enabled`. Tests: `backend/test_sell_desk.py`.
+Timed expiry straddles 09:40 / 11:26 / 12:24 (owner 28-Oct-2026): slots `sellStraddle940/1126/1224` reuse
+`SellDesk._straddle(now, rule)`; per-rule `trailToCost` (false for these). Journal strategy names "Expiry Straddle 9:40 (sell)" etc.
 
 ## Trend, 4 Pillar and SuperTrend are watch-only (owner 28-Oct-2026)
 autopaper.json `watchOnly: ["tradingHub", "fourPillar", "superTrend"]`: `AutoTrader.on_signal` returns

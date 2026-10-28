@@ -111,6 +111,9 @@ export const SELL_BOARD: { key: string; name: string; account: string; idle: str
   { key: 'sellStraddle', name: 'Expiry Straddle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:20 on Nifty expiry days' },
   { key: 'sellCalmCall', name: 'Calm-day Call Sell', account: 'Selling · ₹3 lakh · Nifty only', idle: 'checks at 10:15 (calm days only)' },
   { key: 'sellStrangle', name: '2-month Strangle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'enters at 10:00 when none is open' },
+  { key: 'sellStraddle940', name: 'Expiry Straddle 9:40 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:40 on Nifty expiry days' },
+  { key: 'sellStraddle1126', name: 'Expiry Straddle 11:26 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 11:26 on Nifty expiry days' },
+  { key: 'sellStraddle1224', name: 'Expiry Straddle 12:24 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 12:24 on Nifty expiry days' },
 ];
 
 /** One selling rule's box: sold legs and their P&L now, else today's result or note, else when it acts. */

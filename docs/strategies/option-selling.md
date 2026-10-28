@@ -45,3 +45,15 @@ A buy-back with no sellers waits for the next tick. Open strangle legs show on e
 
 ## Margin note
 Real margin for the straddle and the strangle together can be more than Rs 3 L; the paper book does not block it.
+
+## 4. Timed Expiry Straddles (sellStraddle940, sellStraddle1126, sellStraddle1224)
+- Owner approved PAPER on 28-Oct-2026 ("may be we can keep this also for testing"), idea from a Salem trader's
+  automated basket (Dhan podcast). Scripts and results: project files `research/timed-straddle/`.
+- Day: NIFTY expiry day only (same as rule 1). Three separate straddles, 1 lot per leg each:
+  - 09:40: sell ATM call + ATM put, stop per leg +80 %.
+  - 11:26: same, stop +80 %.
+  - 12:24: same, stop +70 %.
+- No move-to-cost (`trailToCost: false`): each leg only has its own stop. 15:14: buy back whatever is open.
+- Test (costs + 0.5 % slippage, 261 expiries): 2021-24 +1.92 L, 2025-26 +1.34 L, profit every year, worst day -24.8 k,
+  max drawdown 53 k. The same basket on every day loses (-1.55 L), so it stays expiry-only.
+- Margin note: with rule 1 that is 4 straddles open at once; real money would need about Rs 7-8 L margin.

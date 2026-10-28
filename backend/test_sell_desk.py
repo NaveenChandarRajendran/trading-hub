@@ -151,6 +151,27 @@ def test_expiry_straddle_sells_both_legs_and_trails_to_cost(make):
     assert s["open"] == [] and s["realized"] == round(c["netPnl"] + p["netPnl"], 2) and s["capital"] == 300000
 
 
+def test_timed_expiry_straddles_wide_stop_no_trail(make):
+    exp = "2026-11-03"
+    off = {k: {"enabled": False} for k in (R.STRADDLE, R.CALM, R.STRANGLE, R.S1126, R.S1224)}
+    desk, paper, ev = make(at(TUE, 9, 40, 1), [exp, "2026-11-10"], minutes(TUE, [22700.0] * 21, 22712.0), off)
+    ce, pe = sid("CE", exp, 22700), sid("PE", exp, 22700)
+    desk.step(paper.now)
+    desk.on_tick(ce, bk(80.5), paper.now)
+    desk.on_tick(pe, bk(70.5), paper.now)
+    desk.step(paper.now)
+    legs = {lg["side"]: lg for lg in desk.open_legs(R.S940)}
+    assert legs["CE"]["stop"] == R.leg_stop(80.25, 80) and legs["PE"]["stop"] == R.leg_stop(70.25, 80)
+    assert not desk.open_legs(R.STRADDLE)
+    desk.on_tick(ce, bk(145.0), at(TUE, 11, 0))  # CE stop: PE keeps its own stop (no move to cost)
+    assert desk.state["legs"][legs["CE"]["id"]]["exitReason"] == "Stop"
+    assert desk.state["legs"][legs["PE"]["id"]]["stop"] == R.leg_stop(70.25, 80)
+    desk.on_tick(pe, bk(40.0), at(TUE, 15, 0))
+    desk.step(at(TUE, 15, 14))
+    assert desk.state["legs"][legs["PE"]["id"]]["exitReason"] == "Time exit 15:14"
+    assert R.DEFAULTS[R.S1126]["entry"] == "11:26" and R.DEFAULTS[R.S1224]["stopPct"] == 70
+
+
 def test_no_straddle_on_other_days(make):
     desk, paper, ev = make(at(WED, 9, 21), ["2026-11-10"], minutes(WED, [22700.0] * 21, 22700.0))
     desk.step(paper.now)

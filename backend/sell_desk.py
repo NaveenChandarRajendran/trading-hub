@@ -141,7 +141,8 @@ class SellDesk:
                 self._time_exit(now)
                 return
             for rule, key, fn in ((R.STRADDLE, "entry", self._straddle), (R.STRANGLE, "entry", self._strangle_entry),
-                                  (R.CALM, "entry", self._calm)):
+                                  (R.CALM, "entry", self._calm), (R.S940, "entry", self._straddle_at(R.S940)),
+                                  (R.S1126, "entry", self._straddle_at(R.S1126)), (R.S1224, "entry", self._straddle_at(R.S1224))):
                 if c[rule].get("enabled", True) and not self.state["done"].get(rule) and self._at(now, c[rule][key]):
                     self._attempt(rule, fn, now)
             if self.state.get("rollPending"):
@@ -195,7 +196,10 @@ class SellDesk:
             return False
         return True
 
-    def _straddle(self, now):
+    def _straddle_at(self, rule):
+        return lambda now: self._straddle(now, rule)
+
+    def _straddle(self, now, rule=R.STRADDLE):
         exps = self.paper.option_expiries(R.SYMBOL)
         if not R.is_expiry_day(exps, now.date()):
             return "Not a NIFTY expiry day: no trade"
@@ -208,8 +212,8 @@ class SellDesk:
             return f"Skipped: no {k} options for {exps[0]}"
         if not self._ready([ce, pe]):
             return "retry: waiting for prices"
-        pct = self.cfg[R.STRADDLE]["stopPct"]
-        legs = [self._sell(R.STRADDLE, inst, now, stop_pct=pct) for inst in (ce, pe)]
+        pct = self.cfg[rule]["stopPct"]
+        legs = [self._sell(rule, inst, now, stop_pct=pct) for inst in (ce, pe)]
         if not all(legs):
             return "retry: no buyers in the depth"
         return f"Sold {k} CE @ {legs[0]['entryPrice']:.2f} + {k} PE @ {legs[1]['entryPrice']:.2f} (spot {spot:,.2f})"
@@ -326,7 +330,7 @@ class SellDesk:
         for lg in self.open_legs():
             if lg.get("closing"):
                 continue
-            if lg["rule"] in (R.STRADDLE, R.CALM) or lg["expiry"] <= today:
+            if lg["rule"] in R.STRADDLES + (R.CALM,) or lg["expiry"] <= today:
                 self._close(lg, "Time exit 15:14" if lg["rule"] != R.STRANGLE else "Expiry day 15:14", now)
 
     # ---------- fills ----------
@@ -375,8 +379,8 @@ class SellDesk:
             self.state["cycle"]["booked"] = r2(self.state["cycle"]["booked"] + lg["netPnl"])
             if not self.open_legs(R.STRANGLE) and reason != "Roll":
                 self.state["cycle"] = None
-        if lg["rule"] == R.STRADDLE and reason == "Stop" and self.cfg[R.STRADDLE].get("trailToCost", True):
-            for other in self.open_legs(R.STRADDLE):  # the other leg's stop moves to its own sell price
+        if lg["rule"] in R.STRADDLES and reason == "Stop" and self.cfg[lg["rule"]].get("trailToCost", True):
+            for other in self.open_legs(lg["rule"]):  # the other leg's stop moves to its own sell price
                 other["stop"] = min(other["stop"] or other["entryPrice"], other["entryPrice"])
         self._watch()
         self._save()

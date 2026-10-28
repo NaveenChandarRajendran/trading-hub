@@ -18,6 +18,10 @@ clock; sell_desk.py runs them.
    charges) is a loss of Rs 60,000 or more, everything is bought back. On expiry day everything buys back at 15:14.
    5-year estimate (Black-Scholes on India VIX, research/long-strangle/roll.py): about +8.9 k per 2-month cycle,
    worst cycle about -73 k.
+4. Timed Expiry Straddles (sellStraddle940 / sellStraddle1126 / sellStraddle1224, owner approved 28-Oct-2026, from a
+   Salem trader's Dhan podcast): the same expiry-day straddle as rule 1, sold again at 09:40 (stop +80 %), 11:26
+   (stop +80 %) and 12:24 (stop +70 %), each its own pair, no move-to-cost, buy back at 15:14. 5-year test as one basket
+   (research/timed-straddle/): +1.92 L on 2021-24, +1.34 L on 2025-26, profit every year, worst day about -25 k.
 """
 from datetime import date, datetime
 from statistics import fmean, pstdev
@@ -25,8 +29,11 @@ from statistics import fmean, pstdev
 from sig_indicators import IST
 
 STRADDLE, CALM, STRANGLE = "sellStraddle", "sellCalmCall", "sellStrangle"
-RULES = (STRADDLE, CALM, STRANGLE)
-NAMES = {STRADDLE: "Expiry Straddle (sell)", CALM: "Calm-day Call Sell", STRANGLE: "2-month Strangle (sell)"}
+S940, S1126, S1224 = "sellStraddle940", "sellStraddle1126", "sellStraddle1224"
+STRADDLES = (STRADDLE, S940, S1126, S1224)  # expiry-day straddles, one pair each
+RULES = (STRADDLE, CALM, STRANGLE, S940, S1126, S1224)
+NAMES = {STRADDLE: "Expiry Straddle (sell)", CALM: "Calm-day Call Sell", STRANGLE: "2-month Strangle (sell)",
+         S940: "Expiry Straddle 9:40 (sell)", S1126: "Expiry Straddle 11:26 (sell)", S1224: "Expiry Straddle 12:24 (sell)"}
 SYMBOL = "NIFTY"
 
 DEFAULTS = {
@@ -35,6 +42,9 @@ DEFAULTS = {
     CALM: {"enabled": True, "entry": "10:15", "maxWidth": 1.34, "bars": 20, "stopPct": 50},
     STRANGLE: {"enabled": True, "entry": "10:00", "check": "15:05", "awayPct": 3, "days": 61, "minDays": 45, "maxDays": 80,
                "rollAtPct": 70, "maxLoss": 60000},
+    S940: {"enabled": True, "entry": "09:40", "stopPct": 80, "trailToCost": False},
+    S1126: {"enabled": True, "entry": "11:26", "stopPct": 80, "trailToCost": False},
+    S1224: {"enabled": True, "entry": "12:24", "stopPct": 70, "trailToCost": False},
     "timeExit": "15:14",
 }
 
