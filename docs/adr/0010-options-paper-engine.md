@@ -30,7 +30,8 @@ are shared by Paper Trading, Power Scalper and the algo, which must not change.
 8. **Records in the existing tables** so every report keeps working unchanged: each fill is a `pt_trades` row (and a
    FILLED `pt_orders` row, `source='builder'`); each day's per-instrument row in `pt_positions` carries that day's
    buys, sells and the realized P&L booked that day. The P&L calendar, strategy cards, Growth Plan tracker and daily
-   summaries read them as they read every other strategy. New: `pt_accounts.blocked_margin` (the margin now).
+   summaries read them as they read every other strategy. Own tables: `op_fills` (every fill in full, to rebuild the
+   positions across days) and `op_state` (the margin blocked now).
 
 ## Consequences
 - Options strategies appear in the Builder's Paper trade, the Strategies page and reports; Paper Trading and Power
