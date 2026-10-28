@@ -82,6 +82,12 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
 
+## Strategy Builder (branch `feature/strategy-builder`, spec `docs/features/strategy-builder.md`) — in progress
+Split A (Builder) / B (options paper engine: short legs, margin, overnight, expiry) / C (Strategy Lab weekly rules).
+Step 1 of A done (28-Oct): maths library `src/apps/strategy-builder/logic/` — Black–Scholes + Greeks + implied vol,
+expiry payoff / breakevens / max profit-loss with "unlimited", T+0 value, position Greeks, lognormal POP; 25 tests incl.
+the 3 Nov iron condor checked against Dhan. Not merged; no UI yet.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills
