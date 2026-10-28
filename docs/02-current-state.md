@@ -1,6 +1,14 @@
 # Current state
 
-_Last updated: 2026-10-27 (Today page + simpler navigation on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-28 (Trend, 4 Pillar, SuperTrend set to watch-only on `Diwakar_OptionBuy_Backtest`)_
+
+## Trend, 4 Pillar and SuperTrend are watch-only (owner 28-Oct-2026)
+autopaper.json `watchOnly: ["tradingHub", "fourPillar", "superTrend"]`: `AutoTrader.on_signal` returns
+"Watch only (config watchOnly)" for these slots, so a GO is not traded and sig_service puts it in the shadow log
+("GO, not sent: Watch only"). Only Dharani and Rebound Call take paper trades. Why: 5-year review 28-Oct-2026
+(page https://claude.ai/artifact/TziqL9KPqRafMFU2Mut6xM, scripts in project files research/rule-review/): all
+three lose in 2025-26 with every setting tried (Trend 64 versions incl. real S1/R1 break, no re-entry, wider /
+SuperTrend stops; 4 Pillar VIX 14/16/18/none). Remove a name from the list to let that rule trade again.
 
 ## SuperTrend Rules waits for a band close (owner 27-Oct-2026)
 `sig_rules.supertrend_rule`: with `MB_ST_WAIT_BAND_CLOSE` (autopaper.json rules `superTrendWaitBandClose`, default on)

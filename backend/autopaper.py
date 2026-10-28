@@ -439,6 +439,8 @@ class AutoTrader:
             return "Dharani v2 is off (config dharaniV2.enabled)"
         if slot == RB and not self.cfg.get(RB, {}).get("enabled", False):
             return "Rebound Call is off (config reboundCall.enabled)"
+        if slot in self.cfg.get("watchOnly", []):  # owner 28-Oct-2026: signal is shadow-logged, no paper trade
+            return "Watch only (config watchOnly)"
         why = self.block_reason(account, result["symbol"], slot=slot)
         if why:
             return why

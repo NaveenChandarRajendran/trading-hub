@@ -119,6 +119,16 @@ def test_off_by_default_and_nothing_sent(tmp_path):
     assert acc.sent == []
 
 
+def test_watch_only_rule_sends_nothing(tmp_path):
+    """Owner 28-Oct-2026: rules in watchOnly still signal (shadow-logged by sig_service) but never trade."""
+    t, acc, _ = make(tmp_path)
+    t.cfg["watchOnly"] = ["tradingHub"]
+    t.set_auto(True)
+    assert t.on_signal(GO, STATE) == "Watch only (config watchOnly)"
+    wait_idle(t)
+    assert acc.sent == [] and t.state["trades"] == []
+
+
 def test_entry_places_stop_and_rolls_expiry_on_expiry_day(tmp_path):
     t, acc, _ = make(tmp_path)
     t.set_auto(True)
