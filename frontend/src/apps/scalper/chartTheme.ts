@@ -14,7 +14,8 @@ export function themeOptions() {
   const border = cssVar('--border');
   return {
     layout: {
-      background: { type: ColorType.Solid, color: cssVar('--surface') },
+      // transparent: the card's surface shows through, and so do the TP / SL zones drawn behind the candles
+      background: { type: ColorType.Solid, color: 'transparent' },
       textColor: cssVar('--text-2'),
       fontFamily: cssVar('--font') || 'Inter, system-ui, sans-serif',
       attributionLogo: true, // TradingView attribution, required by the Lightweight Charts licence

@@ -1,15 +1,19 @@
 // An open position on its option chart: the entry line with a "65 · +13.00 INR" label (✕ exits at market), TP / SL
 // handles to drag onto the chart, and the TP / SL lines (price + P&L at that price), each draggable to move it or
 // back onto the label to cancel it. Drops place / modify / cancel the OCO pair (PUT /api/scalper/protection).
-// The label also has 25 / 50 / 75 % partial exits and the trailing stop (TrailControl.tsx).
+// The label also has 25 / 50 / 75 % partial exits and the trailing stop (TrailControl.tsx). Green / red TP / SL zones
+// (logic/zones.ts) are drawn behind the candles, into `zonesHost`, from the opening buy's candle to the right edge.
 // Positions come from the chart's own price <-> pixel conversion (Lightweight Charts), so they follow scroll / zoom.
 import { useEffect, useRef, useState } from 'react';
-import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi } from 'lightweight-charts';
+import { createPortal } from 'react-dom';
+import { LineStyle, type IChartApi, type IPriceLine, type ISeriesApi, type Logical } from 'lightweight-charts';
 import { inr } from '../../shared/grid';
 import { cssVar } from './chartTheme';
 import type { Position } from './logic/api';
 import { dropResult, lineLabel, onBox, pnlAt, roundTick, type Level } from './logic/drag';
+import { timeToLogical } from './logic/drawings';
 import { EXIT_PCTS, exitTitle, trailLabel } from './logic/exitPlan';
+import { zoneBands } from './logic/zones';
 import { TrailControl } from './TrailControl';
 
 export interface ChartPosition {
@@ -20,15 +24,19 @@ export interface ChartPosition {
   target: number | null;
   stop: number | null;
   raw: Position; // the backend's position (lots, trail)
+  openedAt: number | null; // epoch seconds of the opening buy (zones start at its candle)
 }
 
 const GRIP_HALF_PX = 10; // a grip's half height: kept inside the price pane when its line is at the edge
 
 type Drag = { kind: Level; from: 'label' | 'line'; y: number; price: number | null };
 
-export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, onPartial, onTrailDone, onProtect, onError }: {
+export function PositionOverlay({ chart, series, frame, times, step, zonesHost, pos, enabled, onExit, onPartial, onTrailDone, onProtect, onError }: {
   chart: IChartApi;
   series: ISeriesApi<'Candlestick'>;
+  times: number[]; // the chart's bar times
+  step: number; // seconds a bar
+  zonesHost: HTMLElement | null; // the layer behind the chart canvas
   frame: number; // bumps when the view moves, so the labels re-read their pixel positions
   pos: ChartPosition;
   enabled: boolean; // market open, live prices: dragging / exit allowed
@@ -133,8 +141,30 @@ export function PositionOverlay({ chart, series, frame, pos, enabled, onExit, on
   const tpY = drag?.kind === 'tp' && drag.from === 'line' ? null : yOf(pos.target);
   const slY = drag?.kind === 'sl' && drag.from === 'line' ? null : yOf(pos.stop);
 
+  // zones: from the opening buy's candle to the right edge; a dragged line moves its zone live
+  const dragged = drag?.price != null ? roundTick(drag.price) : null;
+  const bands = zoneBands(pos.avg, drag?.kind === 'tp' && dragged != null ? dragged : pos.target,
+    drag?.kind === 'sl' && dragged != null ? dragged : pos.stop);
+  const paneW = chart.timeScale().width();
+  const opened = pos.openedAt != null ? timeToLogical(times, pos.openedAt, step) : null;
+  const openX = opened == null ? null : chart.timeScale().logicalToCoordinate(Math.floor(opened + 1e-9) as Logical);
+  const left = Math.min(paneW, Math.max(0, openX == null ? 0 : openX - chart.timeScale().options().barSpacing / 2));
+  const zones = zonesHost && bands.length > 0 && left < paneW && createPortal(
+    <div className="sc-zones-clip" style={{ width: paneW, height: chart.panes()[0]?.getHeight() ?? 0 }}>
+      {bands.map((b) => {
+        const top = series.priceToCoordinate(b.hi);
+        const bottom = series.priceToCoordinate(b.lo);
+        return top == null || bottom == null ? null : (
+          <div key={b.tone} className={`sc-zone ${b.tone}`} style={{ left, width: paneW - left, top, height: Math.max(1, bottom - top) }} />
+        );
+      })}
+    </div>,
+    zonesHost,
+  );
+
   return (
     <div className="sc-overlay" ref={root}>
+      {zones}
       {labelY != null && (
         <div className="sc-pos-label" ref={label} style={{ top: labelY }}>
           <span className="num">{pos.qty}</span>

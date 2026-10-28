@@ -22,7 +22,15 @@
 .sc kbd { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 1px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); }
 .sc .sc-chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: var(--fs-sm); pointer-events: none; }
 .sc .sc-chart-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
-.sc .sc-chart { flex: 1 1 auto; min-height: 0; min-width: 0; }
+.sc .sc-chart { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; min-width: 0; }
+
+/* TP / SL zones (PositionOverlay.tsx) behind the transparent chart canvas, so candles and grid draw over them */
+.sc .sc-zones { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.sc .sc-zones-clip { position: absolute; left: 0; top: 0; overflow: hidden; }
+.sc .sc-zone { position: absolute; }
+.sc .sc-zone.reward { background: color-mix(in srgb, var(--up) 14%, transparent); }
+.sc .sc-zone.risk { background: color-mix(in srgb, var(--down) 14%, transparent); }
+.sc .sc-zone.locked { background: color-mix(in srgb, var(--up) 26%, transparent); }
 
 /* chart head: drawing tools + maximise on the right */
 .sc .sc-head-end { flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; gap: 2px; align-self: center; }

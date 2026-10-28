@@ -45,6 +45,7 @@ export function ScalperChart({ id, bars, sync, resetKey, position, drawing, big 
   big?: boolean; // the maximised view: twice as many bars at first
 }) {
   const initialBars = big ? 2 * INITIAL_BARS : INITIAL_BARS;
+  const [zonesHost, setZonesHost] = useState<HTMLDivElement | null>(null); // TP / SL zones go behind the candles
   const times = useMemo(() => bars.map((b) => b.time as number), [bars]);
   const { mode } = useTheme();
   const box = useRef<HTMLDivElement>(null);
@@ -122,13 +123,15 @@ export function ScalperChart({ id, bars, sync, resetKey, position, drawing, big 
 
   return (
     <div className="sc-chart-wrap">
+      <div className="sc-zones" ref={setZonesHost} />
       <div className="sc-chart" ref={box} />
       {!bars.length && <div className="sc-chart-empty">Loading candles…</div>}
       {ready && drawing && chart.current && candles.current && (
         <DrawingLayer chart={chart.current} series={candles.current} frame={frame} times={times} {...drawing} />
       )}
       {ready && position && chart.current && candles.current && (
-        <PositionOverlay chart={chart.current} series={candles.current} frame={frame} {...position} />
+        <PositionOverlay chart={chart.current} series={candles.current} frame={frame} times={times} step={drawing?.step ?? 60}
+          zonesHost={zonesHost} {...position} />
       )}
     </div>
   );

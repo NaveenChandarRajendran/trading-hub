@@ -127,6 +127,10 @@ exits (round down, ≥ 1 lot) and a points-based trailing stop run by the paper 
 UI on the chart label and Positions rows (`TrailControl.tsx`, `logic/exitPlan.ts`). Tests: `test_paper_trail.py`,
 `test_scalper.py`, `test_paper_store.py`, `exitPlan.test.ts`. Needs a backend restart; the buttons only show when the
 backend sends `trail` on positions (an old backend ignores `pct` and would sell everything).
+TP / SL zones (28-Oct): TradingView-style green (entry → target) and red (stop → entry) bands on option charts, from the
+opening buy's candle (`logic/zones.ts` `openingTime`) to the right edge; a stop above the entry (trailed) shows as a
+stronger green "locked" band; a dragged line moves its zone live. Drawn behind the candles: the Scalper chart background
+is now transparent and the zones sit in `.sc-zones` under the canvas (portal from `PositionOverlay.tsx`).
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

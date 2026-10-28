@@ -23,6 +23,7 @@ import { pickerItems } from './logic/picker';
 import { alignSeries, pageStatus, previousClose, withFutureVolume, type Bar, type Leg } from './logic/series';
 import { ChartSync } from './logic/sync';
 import { indexKey, optionKey } from './logic/drawings';
+import { openingTime } from './logic/zones';
 import { checkTicket, followStrike, sideHeld, type Side } from './logic/ticket';
 import { PositionsBox } from './PositionsBox';
 import { Reports } from './Reports';
@@ -317,7 +318,8 @@ function ScalperPage({ into }: { into: TradingInto }) {
     const p = leg ? sc.positions.get(leg.securityId) : undefined;
     if (!leg || !p || p.open_qty <= 0) return null;
     return {
-      pos: { securityId: leg.securityId, qty: p.open_qty, avg: p.avg_buy, ltp: tickOf(side)?.ltp ?? p.ltp, target: p.target, stop: p.stop, raw: p },
+      pos: { securityId: leg.securityId, qty: p.open_qty, avg: p.avg_buy, ltp: tickOf(side)?.ltp ?? p.ltp, target: p.target, stop: p.stop, raw: p,
+        openedAt: openingTime(sc.orders.values(), leg.securityId) },
       enabled: tradingOn,
       onExit: () => {
         api.exit(leg.securityId)
