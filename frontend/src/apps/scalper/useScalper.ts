@@ -122,7 +122,12 @@ export function useScalper() {
     setS((p) => ({ ...p, series: new Map(p.series).set(key, withHistory(p.series.get(key) ?? emptySeries(), candles)) }));
   }, []);
 
-  return { ...s, subscribe, setHistory, reloadAccount: loadAccount };
+  /** A position the backend just returned (e.g. after setting a target / stop), shown without waiting for the feed. */
+  const putPosition = useCallback((pos: Position) => {
+    setS((p) => ({ ...p, positions: new Map(p.positions).set(pos.security_id, pos) }));
+  }, []);
+
+  return { ...s, subscribe, setHistory, putPosition, reloadAccount: loadAccount };
 }
 
 export type Scalper = ReturnType<typeof useScalper>;

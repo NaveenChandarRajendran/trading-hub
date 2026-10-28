@@ -357,7 +357,7 @@ function ScalperPage({ into }: { into: TradingInto }) {
       },
       onProtect: async (body) => {
         try {
-          await api.protection(leg.securityId, body);
+          sc.putPosition((await api.protection(leg.securityId, body)).position); // the lines and Target / Stop show at once
           const what = 'target' in body ? 'Target' : 'Stop';
           const v = 'target' in body ? body.target : body.stop;
           setNotice({ kind: 'info', text: v == null ? `${what} cancelled for ${p.name}.` : `${what} ${price(v)} set for ${p.name} (OCO).` });

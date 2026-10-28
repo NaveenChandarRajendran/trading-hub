@@ -415,6 +415,12 @@ class PaperService:
             elif ev.kind == "order":
                 data = {**data, "source": book.sources.get(data["id"], "manual")}
             self._send(book, ev.kind, data)
+        # an order change without a position event (a target / stop placed, moved or cancelled) still changes the
+        # position's target / stop: send the position again
+        sent = {ev.data["security_id"] for ev in events if ev.kind == "position"}
+        for sid in dict.fromkeys(ev.data["security_id"] for ev in events if ev.kind == "order"):
+            if sid not in sent and sid in book.engine.positions:
+                self._send(book, "position", self._position(book, sid, book.engine.positions[sid]))
         self._send(book, "funds", self.funds(book))
         self._sync_feed()
 

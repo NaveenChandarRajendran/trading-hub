@@ -156,10 +156,14 @@ def test_protection_create_modify_cancel_and_validation(env):
     c, paper, _, clock, *_ = env
     tick(paper, clock, "09:30")
     order(c, "BUY")
+    sent = []
+    paper.event_listeners.append(lambda book, kind, data: sent.append((kind, data)))
     r = c.put(f"/api/scalper/protection/{CE}", json={"target": 120.0, "stop": 90.0})
     assert r.status_code == 200
     pos = r.json()["position"]
     assert (pos["target"], pos["stop"]) == (120.0, 90.0)
+    pushed = [d for k, d in sent if k == "position"]  # the open pages see the new target / stop too
+    assert len(pushed) == 1 and (pushed[0]["target"], pushed[0]["stop"]) == (120.0, 90.0)
     pos = c.put(f"/api/scalper/protection/{CE}", json={"stop": 92.5}).json()["position"]  # target absent: kept
     assert (pos["target"], pos["stop"]) == (120.0, 92.5)
     pos = c.put(f"/api/scalper/protection/{CE}", json={"target": None}).json()["position"]  # null: cancelled
