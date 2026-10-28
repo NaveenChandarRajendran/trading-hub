@@ -10,6 +10,12 @@
   "manual": {"lots": 1, "stopPct": 15, "targetPct": 20},
   "reboundCall": {"enabled": true, "lots": 1, "stopPct": 25, "targetPct": 50, "_note": "Rebound Call (docs/strategies/rebound-call.md): BANKNIFTY only, 5-minute candles, ATM call, stop -25 %, target +50 %, on the app's own Rs 1 lakh 'rebound' paper account (owner 27-Oct-2026)."},
   "dharaniV2": {"enabled": true, "symbols": ["NIFTY", "BANKNIFTY"], "premiumNear": {"NIFTY": 250, "BANKNIFTY": 500}, "_note": "Dharani rule (teacher's tuned setups, docs/strategies/dharani-v2.md) on the app's 'dharani' paper account, 3-minute candles, SuperTrend exit; BANKNIFTY added by the owner (the teacher tested NIFTY)."},
+  "selling": {"enabled": true, "capital": 300000, "lots": 1,
+    "sellStraddle": {"enabled": true, "entry": "09:20", "stopPct": 50, "trailToCost": true},
+    "sellCalmCall": {"enabled": true, "entry": "10:15", "maxWidth": 1.34, "bars": 20, "stopPct": 50},
+    "sellStrangle": {"enabled": true, "entry": "10:00", "check": "15:05", "awayPct": 3, "days": 61, "minDays": 45, "maxDays": 80, "rollAtPct": 70, "maxLoss": 60000},
+    "timeExit": "15:14",
+    "_note": "Rs 3 lakh option SELLING paper book (docs/strategies/option-selling.md, sell_desk.py), NIFTY only, owner approved 28-Oct-2026. PAPER ONLY. Set a rule's enabled to false to stop it."},
   "watchOnly": ["tradingHub", "fourPillar", "superTrend"],
   "_watchOnlyNote": "Owner 28-Oct-2026 (5-year review: these three lose in 2025-26 with every setting): they still check signals and the shadow log tracks each GO, but take no paper trades. Remove a name to let that rule trade again.",
   "rules": {

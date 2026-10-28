@@ -27,10 +27,12 @@ import holidays
 log = logging.getLogger("journal")
 
 STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "Dharani Rules",
-            "tradingHub": "Trend Rules", "reboundCall": "Rebound Call"}
+            "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "sellStraddle": "Expiry Straddle (sell)",
+            "sellCalmCall": "Calm-day Call Sell", "sellStrangle": "2-month Strangle (sell)"}
 ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Dharani", "rebound": "App · Rebound Call",
-           "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Manual"]
+           "selling": "App · Selling", "manual": "App · Manual"}
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Expiry Straddle (sell)",
+              "Calm-day Call Sell", "2-month Strangle (sell)", "Manual"]
 
 
 def strategy_of(trade):
@@ -50,6 +52,8 @@ def trade_row(t, day):
         "exitTime": t.get("exitTime"), "exitPrice": t.get("exitPrice"), "exitReason": t.get("exitReason"),
         "exitNote": t.get("exitNote"), "grossPnl": t.get("grossPnl"), "charges": t.get("charges"), "netPnl": t.get("netPnl"),
         "status": t["status"],
+        # Selling book legs (sell_desk.py, owner 28-Oct-2026): sold first, bought back to exit; may span days
+        "short": bool(t.get("short")), "securityId": inst.get("securityId"), "entryDay": t.get("entryDay"),
     }
 
 
@@ -112,8 +116,8 @@ class Journal:
             return next((o for o in orders if oid and o["orderId"] == oid), None)
         if event == "entry":
             orders.append({**base, "time": t.get("entryTime") or now.strftime("%H:%M:%S"), "orderId": t.get("entryOrderId"),
-                           "side": "BUY", "type": "MARKET", "price": t.get("entryPrice"), "trigger": None,
-                           "status": "FILLED", "note": "Entry"})
+                           "side": "SELL" if t.get("short") else "BUY", "type": "MARKET", "price": t.get("entryPrice"),
+                           "trigger": None, "status": "FILLED", "note": "Entry (sell)" if t.get("short") else "Entry"})
         elif event == "stop placed" and t.get("stopOrderId") and not find(t["stopOrderId"]):
             orders.append({**base, "time": now.strftime("%H:%M:%S"), "orderId": t["stopOrderId"], "side": "SELL",
                            "type": "SL-M", "price": None, "trigger": t.get("stop"), "status": "OPEN", "note": "Stop loss"})
@@ -127,7 +131,8 @@ class Journal:
                 if stop and stop["status"] == "OPEN":
                     stop.update(status="CANCELLED", cancelledAt=exit_time)
                 if t.get("exitOrderId") and not find(t["exitOrderId"]):
-                    orders.append({**base, "time": exit_time, "orderId": t["exitOrderId"], "side": "SELL", "type": "MARKET",
+                    orders.append({**base, "time": exit_time, "orderId": t["exitOrderId"], "type": "MARKET",
+                                   "side": "BUY" if t.get("short") else "SELL",
                                    "price": t.get("exitPrice"), "trigger": None, "status": "FILLED",
                                    "note": f"Exit · {reason}" + (f" ({t['exitNote']})" if t.get("exitNote") else "")})
         self._write(day, d)

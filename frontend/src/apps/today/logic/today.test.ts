@@ -43,7 +43,8 @@ describe('today', () => {
     expect([s.total, s.booked, s.running, s.open, s.closed, s.won, s.lost]).toEqual([961.75, 900, 61.75, 2, 1, 1, 0]);
     expect(s.byWho.map((w) => [w.who, w.pnl, w.trades, w.status])).toEqual([
       ['Manual', 347.75, 1, 'in-trade'], ['Dharani Rules', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'],
-      ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'],
+      ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'], ['Expiry Straddle (sell)', 0, 0, 'none'],
+      ['Calm-day Call Sell', 0, 0, 'none'], ['2-month Strangle (sell)', 0, 0, 'none'],
     ]);
     expect(s.byWho[0].holding).toEqual(['NIFTY 27 OCT 22700 PUT']);
     expect([s.byWho[1].won, s.byWho[1].lost]).toEqual([1, 0]);
@@ -66,5 +67,16 @@ describe('today', () => {
     expect(nifty.open.map((r) => r.id)).toEqual(['tr-2', 'manual-2026-10-27-52175-0']);
     expect(nifty.closed).toEqual([]);
     expect(forIndex(rows, 'BANKNIFTY').closed.map((r) => r.id)).toEqual(['th-1']);
+  });
+
+  it('shows a sold leg (Selling book) as profit when its price falls', () => {
+    const sold: JTrade = {
+      ...base, id: 'SL20261103-0001', source: 'auto', strategy: 'Expiry Straddle (sell)', account: 'App · Selling', side: 'CE',
+      instrument: 'NIFTY 03 NOV 22700 CALL', entryTime: '09:20:01', entryPrice: 100, short: true, securityId: 77001,
+    };
+    const [r] = buildRows([sold], [], [], { 77001: 80 });
+    expect([r.short, r.securityId, r.price, r.pnl, r.pnlPct]).toEqual([true, 77001, 80, 1300, 20]);
+    const s = summarize([r]);
+    expect(s.byWho.find((w) => w.who === 'Expiry Straddle (sell)')?.status).toBe('in-trade');
   });
 });

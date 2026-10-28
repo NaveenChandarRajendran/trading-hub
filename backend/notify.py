@@ -44,7 +44,8 @@ def rupees(v):
 def entry_text(t):
     stop = f" · stop {t['stop']:.2f}" if t.get("stop") else ""
     target = f" · target {t['target']:.2f}" if t.get("target") else ""
-    return (f"🔵 ENTRY · {strategy_of(t)}\n{t['instrument']['name']} · {t['qty']} qty @ {t['entryPrice']:.2f} "
+    head = "🟠 SELL" if t.get("short") else "🔵 ENTRY"  # selling book legs are sold first (owner 28-Oct-2026)
+    return (f"{head} · {strategy_of(t)}\n{t['instrument']['name']} · {t['qty']} qty @ {t['entryPrice']:.2f} "
             f"· {str(t.get('entryTime') or '')[:5]}{stop}{target}")
 
 

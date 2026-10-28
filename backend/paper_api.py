@@ -74,6 +74,7 @@ class PaperService:
         self._watch = {}  # group -> {(segment, id)} kept subscribed: "auto" (autopaper.py), "orderflow" (index futures)
         self.orderflow = None  # orderflow.OrderFlowService: estimated delta from the index futures' Full packets
         self.books = []  # strategy_books.StrategyBook: one paper account per auto strategy, fed the same ticks
+        self.tick_listeners = []  # other paper books fed every option Full packet (sell_desk.SellDesk)
         self._feed_status = None
         self._timer = None
         self._stopping = threading.Event()
@@ -271,11 +272,11 @@ class PaperService:
                     self._ensure_day(now)
                     prev_book = self.engine.books.get(key[1])
                     self._publish(self.engine.on_tick(key[1], book, now))
-                for b in list(self.books):
+                for b in list(self.books) + list(self.tick_listeners):
                     try:
                         b.on_tick(key[1], book, now)
                     except Exception:
-                        log.exception("strategy book %s tick failed", b.name)
+                        log.exception("paper book %s tick failed", getattr(b, "name", b))
                 if self.orderflow and key[1] in self.instruments.future_ids():
                     try:
                         self.orderflow.on_packet(key[1], pkt, prev_book)

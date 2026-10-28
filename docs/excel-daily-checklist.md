@@ -13,6 +13,9 @@ Each trading day D (skip weekends and NSE holidays, `holidays.py`):
    - `Option Buying - Trading Hub` (the app's paper trades, Trend + others; date in B)
    - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; Dharani's columns; date in B)
    - `Option Selling - Megabull` (selling, owner's own entries, expiry days only; date in B)
+   - `Option Sell - Selling Book` (the app's Rs 3 L paper selling book from its first live day; one row per leg
+     closed on D, open strangle legs listed with status Open; columns: Date, Rule, Index, Option, Expiry, Qty, Sell
+     time, Sell price, Stop, Buy-back time, Buy-back price, Exit reason, Gross, Charges, Net, Cycle / Notes)
 2. **`Megabull Option Buy - P&L` calendar (hand-filled, NOT automatic)**: month in D6, columns D..J = Sun..Sat,
    first week in row 8. The cell for D gets the formula
    `=(sum of AJ / AI net of D's 4 Pillar + SuperTrend rows)/(sum of their W / V invested)`, number format `0.00%`,

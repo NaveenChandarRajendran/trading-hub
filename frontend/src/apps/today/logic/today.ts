@@ -17,14 +17,20 @@ export const WHO: Record<Who, { name: string; where: string }> = {
   'Trend Rules': { name: 'Trend Rules', where: 'App account' },
   '4 Pillar Rules': { name: '4 Pillar Rules', where: 'MegaBull' },
   'SuperTrend Rules': { name: 'SuperTrend Rules', where: 'MegaBull' },
+  // the Rs 3 lakh option SELLING paper book (owner approved 28-Oct-2026), backend sell_desk.py
+  'Expiry Straddle (sell)': { name: 'Expiry Straddle', where: 'App · Selling ₹3L' },
+  'Calm-day Call Sell': { name: 'Calm-day Call Sell', where: 'App · Selling ₹3L' },
+  '2-month Strangle (sell)': { name: '2-month Strangle', where: 'App · Selling ₹3L' },
 };
-export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', '4 Pillar Rules', 'SuperTrend Rules'];
+export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)'];
+export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {
   id: string;
   who: string; // journal strategy name
   manual: boolean;
+  short: boolean; // a sold option (Selling book): profit when the price falls
   symbol: string;
   option: string;
   side: 'CE' | 'PE';
@@ -57,7 +63,9 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
   return trades.map((t) => {
     const manual = t.source === 'manual';
     const a = autoById.get(t.id);
-    const sid = manual ? manualSecurityId(t.id) : typeof a?.instrument.id === 'number' ? a.instrument.id : null;
+    const short = !!t.short;
+    const sid = manual ? manualSecurityId(t.id) : typeof a?.instrument.id === 'number' ? a.instrument.id : t.securityId ?? null;
+    const sign = short ? -1 : 1;
     const open = t.status === 'open';
     let price: number | null = t.exitPrice;
     let pnl: number | null = t.netPnl ?? t.grossPnl;
@@ -66,11 +74,11 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
       const pos = sid != null ? posById.get(sid) : undefined;
       if (manual && pos && pos.open_qty > 0) qty = pos.open_qty;
       price = (sid != null ? ticks[sid] : undefined) ?? a?.ltp ?? pos?.ltp ?? null;
-      pnl = price != null && t.entryPrice != null ? r2((price - t.entryPrice) * qty) : a?.pnl ?? null;
+      pnl = price != null && t.entryPrice != null ? r2(sign * (price - t.entryPrice) * qty) : a?.pnl ?? null;
     }
-    const pnlPct = price != null && t.entryPrice ? r2((price / t.entryPrice - 1) * 100) : null;
+    const pnlPct = price != null && t.entryPrice ? r2(sign * (price / t.entryPrice - 1) * 100) : null;
     return {
-      id: t.id, who: t.strategy, manual, symbol: t.symbol, option: t.instrument ?? a?.instrument.name ?? '—', side: t.side, qty,
+      id: t.id, who: t.strategy, manual, short, symbol: t.symbol, option: t.instrument ?? a?.instrument.name ?? '—', side: t.side, qty,
       entryTime: t.entryTime, entryPrice: t.entryPrice, open, exitTime: t.exitTime, exitPrice: t.exitPrice, exitReason: t.exitReason,
       price, pnl, pnlPct, afterCharges: !open && t.netPnl != null, securityId: sid,
     };

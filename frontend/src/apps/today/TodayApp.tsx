@@ -136,7 +136,9 @@ export default function TodayApp() {
   const exitRow = (r: TodayRow) =>
     r.manual
       ? act(() => paperApi.exit(r.securityId as number), `Exit sent for ${r.option}`)
-      : act(() => sig.exitTrade(r.id), `Exit sent for ${r.option}`);
+      : r.short // Selling book: buy the leg back
+        ? act(() => requestJson(API_BASE, `/api/selling/exit/${encodeURIComponent(r.id)}`, { method: 'POST' }), `Buy-back sent for ${r.option}`)
+        : act(() => sig.exitTrade(r.id), `Exit sent for ${r.option}`);
 
   const liveKind = paper.conn === 'open' ? (marketOpen ? 'live' : 'idle') : paper.conn === 'reconnecting' ? 'stale' : 'idle';
   const liveText = paper.conn !== 'open' ? 'Connecting to live prices…' : marketOpen ? `Live · ${now.toLocaleTimeString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' })}` : 'Market closed';
@@ -240,7 +242,7 @@ export default function TodayApp() {
                 {shown.open.map((r) => (
                   <tr key={r.id} className={`td-row ${mood(r.pnl)}`}>
                     <td><span className={`td-tag ${tagOf(r.who)}`}>{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
-                    <td className="txt"><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
+                    <td className="txt">{r.short && <span className="td-sold">SOLD</span>}<span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
                     <td className="num">{r.qty}</td>
                     <td className="num">{hm(r.entryTime)}</td>
                     <td className="num">{price(r.entryPrice)}</td>
@@ -287,7 +289,7 @@ export default function TodayApp() {
                 {shown.closed.map((r) => (
                   <tr key={r.id} className={`td-row ${mood(r.pnl)}`}>
                     <td><span className={`td-tag ${tagOf(r.who)}`}>{whoName(r.who)}</span><span className="td-where">{whoWhere(r.who)}</span></td>
-                    <td className="txt"><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
+                    <td className="txt">{r.short && <span className="td-sold">SOLD</span>}<span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}</td>
                     <td className="num">{r.qty}</td>
                     <td className="num">{hm(r.entryTime)}</td>
                     <td className="num">{hm(r.exitTime)}</td>

@@ -324,6 +324,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
                                 journal=jr)
         sig_service.register(app, signals)
         app.state.signals = signals
+        if getattr(signals, "selling", None) is not None:
+            import sell_desk
+            sell_desk.register(app, signals.selling)
         if signals.phone is not None:
             import notify
             notify.register(app, signals.phone)
@@ -374,6 +377,17 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
     svc = sig_service.SignalService(cfg, sources, trader, orderflow=flow, paper=paper)
     svc.phone, svc.rows_today = phone, rows_today
     svc_ref["svc"] = svc
+    svc.selling = None
+    if paper and cfg.get("selling", {}).get("enabled", False):  # Rs 3 lakh option SELLING paper book (owner 28-Oct-2026)
+        import sell_desk
+
+        def on_sell(trade, event):
+            if journal is not None:
+                journal.record(trade, event, tracker.clock())
+            if event != "carry":
+                phone.on_order(trade, event, notify.day_pnl(rows_today()) if event.startswith("exit") else None)
+        svc.selling = sell_desk.SellDesk(cfg["selling"], paper, candles, on_event=on_sell, data_dir="data")
+        paper.tick_listeners.append(svc.selling)
     return svc
 
 

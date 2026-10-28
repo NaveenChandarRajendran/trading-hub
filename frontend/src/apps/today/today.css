@@ -60,6 +60,8 @@
 .td .td-tag.s4 { --tag: var(--warn); }
 .td .td-tag.s5 { --tag: var(--series-3); }
 .td .td-tag.s6 { --tag: var(--text-2); }
+.td .td-tag.s7, .td .td-tag.s8, .td .td-tag.s9 { --tag: var(--series-3); }
+.td .td-sold { font-size: 0.75em; font-weight: 600; color: var(--warn); margin-right: 4px; }
 .td .td-tag.s0 { --tag: var(--border-strong); }
 @media (max-width: 900px) { .td .td-strat { grid-template-columns: 1fr auto; } .td .td-strat-detail { grid-column: 1 / -1; } }
 .td button.td-phone { border: 0; font: inherit; font-size: var(--fs-xs); cursor: pointer; }

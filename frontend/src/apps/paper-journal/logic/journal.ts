@@ -50,6 +50,9 @@ export interface JTrade {
   charges: number | null;
   netPnl: number | null;
   status: 'open' | 'closed';
+  short?: boolean; // the Selling book's legs: sold first, bought back to exit
+  securityId?: number | null;
+  entryDay?: string | null; // a positional leg's first day
 }
 
 export const fetchDays = (signal?: AbortSignal) => getJson<{ days: string[] }>(API_BASE, '/api/journal/days', signal);

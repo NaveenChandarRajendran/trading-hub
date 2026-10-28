@@ -1,6 +1,15 @@
 # Current state
 
-_Last updated: 2026-10-28 (Trend, 4 Pillar, SuperTrend set to watch-only on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-28 (paper Option Selling book; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
+
+## Option Selling book, Rs 3 L PAPER (owner 28-Oct-2026)
+Rules: `docs/strategies/option-selling.md`. `sell_rules.py` (pure rules) + `sell_desk.py` (`SellDesk`): its own state
+file `data/books/selling/state.json`, a 1-second loop thread for entries / time exits / the 15:05 strangle check, and
+`PaperService.tick_listeners` for live books (stops, buy-backs). The buying PaperEngine is untouched (long-only,
+intraday). Legs go to the journal as account "App · Selling" with `short: true` (entry order SELL, exit BUY; a
+positional leg is re-recorded each morning with event "carry") and to the phone ("🟠 SELL"). API: GET
+`/api/selling/state`, POST `/api/selling/exit/{leg_id}` (Today page Exit button on a SOLD row). Switch:
+autopaper.json `selling.enabled` and each rule's `enabled`. Tests: `backend/test_sell_desk.py`.
 
 ## Trend, 4 Pillar and SuperTrend are watch-only (owner 28-Oct-2026)
 autopaper.json `watchOnly: ["tradingHub", "fourPillar", "superTrend"]`: `AutoTrader.on_signal` returns
