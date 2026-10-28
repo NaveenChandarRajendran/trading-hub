@@ -131,6 +131,8 @@ TP / SL zones (28-Oct): TradingView-style green (entry → target) and red (stop
 opening buy's candle (`logic/zones.ts` `openingTime`) to the right edge; a stop above the entry (trailed) shows as a
 stronger green "locked" band; a dragged line moves its zone live. Drawn behind the candles: the Scalper chart background
 is now transparent and the zones sit in `.sc-zones` under the canvas (portal from `PositionOverlay.tsx`).
+TP / SL grips moved to the left edge (28-Oct): at the right (by the price axis) their text covered the newest candles; a
+grip level with the position label sits just right of it.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

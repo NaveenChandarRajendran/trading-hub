@@ -28,6 +28,7 @@ export interface ChartPosition {
 }
 
 const GRIP_HALF_PX = 10; // a grip's half height: kept inside the price pane when its line is at the edge
+const GRIP_LEFT_PX = 8; // grips sit at the left edge (older candles), never over the newest ones by the price axis
 
 type Drag = { kind: Level; from: 'label' | 'line'; y: number; price: number | null };
 
@@ -135,7 +136,12 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
   };
 
   const labelY = series.priceToCoordinate(pos.avg);
-  const right = chart.priceScale('right').width();
+  // a grip level with the position label moves just right of it
+  const labelBox = label.current?.getBoundingClientRect();
+  const gripLeft = (y: number) => {
+    if (!labelBox || labelY == null || Math.abs(y - labelY) > labelBox.height / 2 + GRIP_HALF_PX) return GRIP_LEFT_PX;
+    return labelBox.right - (root.current?.getBoundingClientRect().left ?? 0) + 6;
+  };
   const pnl = pos.ltp != null ? pnlAt(pos.ltp, pos.avg, pos.qty) : null;
   const yOf = (p: number | null) => (p == null ? null : series.priceToCoordinate(p));
   const tpY = drag?.kind === 'tp' && drag.from === 'line' ? null : yOf(pos.target);
@@ -187,7 +193,7 @@ export function PositionOverlay({ chart, series, frame, times, step, zonesHost, 
         </div>
       )}
       {([['tp', tpY, pos.target], ['sl', slY, pos.stop]] as const).map(([kind, y, level]) => y != null && level != null && (
-        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: Math.min(Math.max(y, GRIP_HALF_PX), (chart.panes()[0]?.getHeight() ?? y) - GRIP_HALF_PX), right: right + 4 }}
+        <button key={kind} type="button" className={`sc-grip num ${kind === 'tp' ? 'up' : 'down'}`} style={{ top: Math.min(Math.max(y, GRIP_HALF_PX), (chart.panes()[0]?.getHeight() ?? y) - GRIP_HALF_PX), left: gripLeft(y) }}
           disabled={!enabled} title="Drag to move · drop on the position label to cancel" onPointerDown={start(kind, 'line')}>
           {lineLabel(kind, level, pos.avg, pos.qty)}{kind === 'sl' && pos.raw.trail ? ` · ${trailLabel(pos.raw.trail)}` : ''} ⋮
         </button>
