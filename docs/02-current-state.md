@@ -112,6 +112,10 @@ Drawings are pinned to time + price (`logic/drawings.ts`: bar-index interpolatio
 gaps), drawn as an SVG over the price pane (`DrawingLayer.tsx`), saved in this browser only (`localStorage`
 `scalper.drawings.v1`, per index / per option security id; an option's drawings are dropped after its expiry).
 Limits: not on other PCs / browsers (no backend save), one colour, no extended (ray) lines.
+Chart gap fix (28-Oct): the minute-by-minute history refresh (Dhan intraday, newest minutes still forming, backend cache
+up to 60 s) replaced complete live minutes with stale copies, so the bar before a bucket boundary stayed cut (a gap to
+the next bar; seen at 13:00, NIFTY really closed 12:59 at 22,761). `withHistory` now keeps the live close of minutes
+the feed built (history adds open / wider high-low / missed minutes). The Dashboard loads history once: not affected.
 
 ## OI breakout algo (branch `feature/oi-breakout-algo`, ADR 0005, rules `docs/strategies/oi-breakout.md`)
 PAPER ONLY. Runs inside the backend all day for NIFTY and BANKNIFTY: levels locked at 09:30, breakout-pullback and range

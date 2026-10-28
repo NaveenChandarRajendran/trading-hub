@@ -44,6 +44,24 @@ describe('live candles for option instruments', () => {
     expect(withHistory(s, [m(0, 1), m(1, 1)]).minutes.map((c) => c.time)).toEqual([T0, T0 + 60, T0 + 180]);
   });
 
+  it('a stale history copy never cuts a minute the live feed built (the 12:59 -> 13:00 gap)', () => {
+    let s = withHistory(emptySeries(), [m(0, 100, 650)]);
+    s = withLiveCandle(s, { time: T0 + 60, open: 100, high: 125, low: 99, close: 124 }); // the whole minute, live
+    s = withLiveCandle(s, { time: T0 + 120, open: 124, high: 125, low: 123, close: 125 });
+    // Dhan's copy of minute 1 taken mid-minute (close 110), served after the minute ended
+    s = withHistory(s, [m(0, 100, 650), { time: T0 + 60, open: 101, high: 111, low: 98, close: 110, volume: 900 }]);
+    expect(s.minutes[1]).toEqual({ time: T0 + 60, open: 101, high: 125, low: 98, close: 124, volume: 900 });
+    expect(s.minutes.map((c) => c.time)).toEqual([T0, T0 + 60, T0 + 120]);
+    expect(aggregate(s.minutes, 3)[0].close).toBe(125); // the 3-minute bar is whole
+  });
+
+  it('history still fills minutes the live feed missed, and replaces minutes it never built', () => {
+    let s = withLiveCandle(emptySeries(), { time: T0 + 120, open: 5, high: 5, low: 5, close: 5 });
+    s = withHistory(s, [m(0, 1), m(1, 2), m(2, 3)]); // 0 and 1 missed by the feed
+    expect(s.minutes.map((c) => c.close)).toEqual([1, 2, 5]);
+    expect(withHistory(withHistory(emptySeries(), [m(0, 1)]), [m(0, 7)]).minutes[0].close).toBe(7); // history-only minute
+  });
+
   it("previous close = the last candle of the previous session (index ticks don't carry it)", () => {
     const yesterday = { ...m(0, 22700), time: T0 - 86400 + 374 * 60 }; // 20-Oct 15:29
     expect(previousClose([yesterday, m(0, 22750), m(1, 22760)])).toBe(22700);

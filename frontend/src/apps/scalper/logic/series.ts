@@ -27,24 +27,42 @@ export function alignSeries(list: Candle[][]): { grid: number[]; series: Bar[][]
 export interface MinuteSeries {
   minutes: Candle[];
   pendingVolume: Map<number, number>; // volume that arrived before its minute's candle
+  live: Set<number>; // minutes the live feed built (their close is the last tick, newer than any history copy)
 }
 
-export const emptySeries = (): MinuteSeries => ({ minutes: [], pendingVolume: new Map() });
+export const emptySeries = (): MinuteSeries => ({ minutes: [], pendingVolume: new Map(), live: new Set() });
 
-/** History (1-minute candles) replaces what is known, keeping live minutes newer than the history. */
+/**
+ * History (Dhan 1-minute candles, re-read every minute) fills what the live feed doesn't know. Dhan's newest minutes
+ * are a snapshot (still forming, and cached up to a minute by the backend), so a minute the live feed built keeps its
+ * close: history only adds its open and a wider high / low. Without this a stale copy of the minute before a bucket
+ * boundary replaced the complete live one, and the bar stayed cut short (gap to the next bar).
+ */
 export function withHistory(s: MinuteSeries, history: Candle[]): MinuteSeries {
   const last = history[history.length - 1]?.time ?? -Infinity;
-  return { ...s, minutes: [...history, ...s.minutes.filter((m) => m.time > last)] };
+  const known = new Map(s.minutes.map((m) => [m.time, m]));
+  const merged = history.map((h) => {
+    const m = known.get(h.time);
+    if (!m || !s.live.has(h.time)) return h;
+    const volume = Math.max(h.volume ?? 0, m.volume ?? 0);
+    return {
+      time: h.time, open: h.open, high: Math.max(h.high, m.high), low: Math.min(h.low, m.low), close: m.close,
+      ...(h.volume != null || m.volume != null ? { volume } : {}),
+    };
+  });
+  return { ...s, minutes: [...merged, ...s.minutes.filter((m) => m.time > last)] };
 }
 
 /** The live 1-minute candle of an instrument. */
 export function withLiveCandle(s: MinuteSeries, c: LiveCandle): MinuteSeries {
   const pending = s.pendingVolume.get(c.time);
   const minutes = applyMinute(s.minutes, c, pending);
-  if (pending == null) return { ...s, minutes };
+  if (minutes === s.minutes) return s; // an older minute: ignored
+  const live = s.live.has(c.time) ? s.live : new Set(s.live).add(c.time);
+  if (pending == null) return { ...s, minutes, live };
   const pendingVolume = new Map(s.pendingVolume);
   pendingVolume.delete(c.time);
-  return { minutes, pendingVolume };
+  return { minutes, pendingVolume, live };
 }
 
 /** The live volume of one minute (kept until that minute's candle arrives). */
