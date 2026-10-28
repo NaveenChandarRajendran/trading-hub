@@ -2,12 +2,13 @@
 // positions and capital; create a strategy; archived ones read-only under the Archived filter. Trading happens in
 // Paper Trading and Power Scalper ("Trading into"); the algo's strategy is its owner's only.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ApiError } from '../../shared/api';
 import { strategyApi, type Strategy, type StrategyNumbers } from '../../shared/strategy/api';
 import { Alert, EmptyState, Pill, Segmented } from '../../shared/ui';
 import { rupees, signedRupees, toneOf } from '../paper-trade/format';
 import { cards, type Card, type CardSort } from './logic/cards';
+import { StrategyView } from './StrategyView';
 import '../../shared/strategy/strategy.css';
 import './strategies.css';
 
@@ -31,6 +32,11 @@ function save(k: string, v: string) {
 }
 
 export default function StrategiesApp() {
+  const m = useLocation().pathname.match(/^\/strategies\/(\d+)/);
+  return m ? <StrategyView key={m[1]} id={Number(m[1])} /> : <StrategiesHome />;
+}
+
+function StrategiesHome() {
   const [filter, setFilter] = useState<'active' | 'archived'>('active');
   const [sort, setSort] = useState<CardSort>(() => (load('sort') === 'pnl' ? 'pnl' : 'recent'));
   const [layout, setLayout] = useState<'grid' | 'list'>(() => (load('layout') === 'list' ? 'list' : 'grid'));
@@ -119,7 +125,7 @@ function StrategyCard({ c, onChanged }: { c: Card; onChanged: () => void }) {
   return (
     <section className="card sts-card">
       <div className="sts-card-head">
-        <h3 className="sts-name" title={c.description || c.name}>{c.name}</h3>
+        <h3 className="sts-name" title={c.description || c.name}><Link to={`/strategies/${c.id}`}>{c.name}</Link></h3>
         <Pill tone={c.kind === 'algo' ? 'accent' : 'neutral'}>{c.kind === 'algo' ? 'ALGO' : 'MANUAL'}</Pill>
       </div>
       <dl className="sts-nums">
@@ -152,7 +158,7 @@ function TableRow({ c, onChanged }: { c: Card; onChanged: () => void }) {
   const arch = useArchive(c, onChanged);
   return (
     <tr>
-      <td title={c.description || c.name}>{c.name}{arch.error && <span className="down"> · {arch.error}</span>}</td>
+      <td title={c.description || c.name}><Link to={`/strategies/${c.id}`}>{c.name}</Link>{arch.error && <span className="down"> · {arch.error}</span>}</td>
       <td>{c.kind === 'algo' ? 'Algo' : 'Manual'}</td>
       <td><Money v={c.numbers?.total} /></td>
       <td><Money v={c.numbers?.unbooked} /></td>

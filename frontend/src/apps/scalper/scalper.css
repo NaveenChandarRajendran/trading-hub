@@ -98,3 +98,4 @@
 .sc .sc-report-split { align-items: start; }
 .sc tr.sc-click { cursor: pointer; }
 .sc .sc-presets, .sc .sc-inline { display: inline-flex; gap: var(--sp-2); }
+.sc .sc-plan { margin-top: var(--sp-1); }

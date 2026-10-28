@@ -10,6 +10,7 @@ import { longDate, rupees, signedRupees, toneOf } from './format';
 import { api, paperStrategy, type Chain } from './logic/api';
 import { unseenShifts } from './logic/levels';
 import { keyOf } from './logic/feed';
+import { PlanStrip } from '../growth-plan/PlanStrip';
 import { OrderTicket, type TicketTarget } from './OrderTicket';
 import { OrdersView } from './OrdersView';
 import { PnlView } from './PnlView';
@@ -184,6 +185,7 @@ function PaperTradePage({ into }: { into: TradingInto }) {
             <Settings paper={paper} onNotice={onNotice} />
           </div>
         </div>
+        <div className="pt-gap"><PlanStrip strategyId={into.selected!.id} version={paper.tradeVersion} /></div>
         {(paper.error || notice || paper.meta?.lastError) && (
           <div className="pt-gap pt-alerts">
             {paper.error && <Alert kind="error">{paper.error}</Alert>}

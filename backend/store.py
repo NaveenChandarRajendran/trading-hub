@@ -31,6 +31,7 @@ SUMMARY_COLS = ("is_live", "signals", "entries", "wins", "losses", "points", "gr
 SCALPER_SUMMARY_COLS = ("trades", "wins", "losses", "fills", "realized", "charges", "net", "best_trade", "worst_trade")
 STRATEGY_EDITABLE = ("name", "description", "notes", "archived_at")
 DAILY_SUMMARY_KEYS = ("strategy_id", "account_id", "trade_date", *SCALPER_SUMMARY_COLS)
+PLAN_EDITABLE = ("name", "years", "archived_at")
 OPEN_ORDER_STATES = ("PENDING", "TRIGGERED")
 
 
@@ -522,6 +523,65 @@ class PaperJsonStore:
     def user_pref(self, user_id, key):
         return self.d.get("prefs", {}).get(f"{user_id}|{key}")
 
+    # ---- growth plans (same interface as PaperPgStore)
+    @staticmethod
+    def _iso(v):
+        return v.isoformat() if hasattr(v, "isoformat") else v
+
+    def add_plan(self, user_id, name, yearly_pct, method, initial_capital, start_month, years, now):
+        rows = self.d.setdefault("plans", [])
+        pl = {"id": len(rows) + 1, "user_id": user_id, "name": name, "yearly_pct": float(yearly_pct), "method": method,
+              "initial_capital": float(initial_capital), "start_month": start_month, "years": int(years),
+              "created_at": now.isoformat(), "archived_at": None}
+        rows.append(pl)
+        self._write()
+        return dict(pl)
+
+    def plans(self, user_id):
+        return [dict(p) for p in self.d.get("plans", []) if p["user_id"] == user_id]
+
+    def plan(self, pid):
+        return next((dict(p) for p in self.d.get("plans", []) if p["id"] == pid), None)
+
+    def update_plan(self, pid, **fields):
+        pl = next(p for p in self.d["plans"] if p["id"] == pid)
+        pl.update({k: self._iso(v) for k, v in fields.items() if k in PLAN_EDITABLE})
+        self._write()
+        return dict(pl)
+
+    def apply_plan(self, strategy_id, plan_id, initial_capital, now):
+        rows = self.d.setdefault("strategy_plans", [])
+        for m in rows:
+            if m["strategy_id"] == strategy_id and not m["ended_at"]:
+                m["ended_at"] = now.isoformat()
+        m = {"id": len(rows) + 1, "strategy_id": strategy_id, "plan_id": plan_id,
+             "initial_capital": float(initial_capital), "applied_at": now.isoformat(), "ended_at": None}
+        rows.append(m)
+        self._write()
+        return dict(m)
+
+    def end_plans(self, now, strategy_id=None, plan_id=None):
+        for m in self.d.get("strategy_plans", []):
+            if not m["ended_at"] and (strategy_id is None or m["strategy_id"] == strategy_id) \
+                    and (plan_id is None or m["plan_id"] == plan_id):
+                m["ended_at"] = now.isoformat()
+        self._write()
+
+    def plan_mappings(self, strategy_id=None, plan_id=None):
+        """Newest first."""
+        rows = [dict(m) for m in self.d.get("strategy_plans", [])
+                if (strategy_id is None or m["strategy_id"] == strategy_id) and (plan_id is None or m["plan_id"] == plan_id)]
+        return sorted(rows, key=lambda m: m["id"], reverse=True)
+
+    def add_capital_event(self, strategy_id, at, kind, amount, capital_after):
+        rows = self.d.setdefault("capital_events", [])
+        rows.append({"id": len(rows) + 1, "strategy_id": strategy_id, "at": at.isoformat(), "kind": kind,
+                     "amount": float(amount), "capital_after": float(capital_after)})
+        self._write()
+
+    def capital_events(self, strategy_id):
+        return [dict(e) for e in self.d.get("capital_events", []) if e["strategy_id"] == strategy_id]
+
     def set_user_pref(self, user_id, key, value):
         self.d.setdefault("prefs", {})[f"{user_id}|{key}"] = str(value)
         self._write()
@@ -808,6 +868,88 @@ class PaperPgStore:
             cur.execute("SELECT value FROM th_user_prefs WHERE user_id=%s AND key=%s", (user_id, key))
             r = cur.fetchone()
             return r[0] if r else None
+
+    # ---- growth plans (th_growth_plans, th_strategy_plans, th_capital_events)
+    _PLAN_COLS = "id, user_id, name, yearly_pct, method, initial_capital, start_month, years, created_at, archived_at"
+
+    @staticmethod
+    def _plan(r):
+        iso = lambda t: t.astimezone(IST).isoformat() if t else None  # noqa: E731
+        return {"id": r[0], "user_id": r[1], "name": r[2], "yearly_pct": r[3], "method": r[4], "initial_capital": r[5],
+                "start_month": r[6].isoformat()[:7], "years": r[7], "created_at": iso(r[8]), "archived_at": iso(r[9])}
+
+    def add_plan(self, user_id, name, yearly_pct, method, initial_capital, start_month, years, now):
+        with self.pg._cursor() as cur:
+            cur.execute(f"INSERT INTO th_growth_plans (user_id, name, yearly_pct, method, initial_capital, start_month, "
+                        f"years, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING {self._PLAN_COLS}",
+                        (user_id, name, yearly_pct, method, initial_capital, f"{start_month}-01", years, now))
+            return self._plan(cur.fetchone())
+
+    def plans(self, user_id):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._PLAN_COLS} FROM th_growth_plans WHERE user_id=%s ORDER BY id", (user_id,))
+            return [self._plan(r) for r in cur.fetchall()]
+
+    def plan(self, pid):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._PLAN_COLS} FROM th_growth_plans WHERE id=%s", (pid,))
+            r = cur.fetchone()
+            return self._plan(r) if r else None
+
+    def update_plan(self, pid, **fields):
+        fields = {k: v for k, v in fields.items() if k in PLAN_EDITABLE}
+        with self.pg._cursor() as cur:
+            cur.execute(f"UPDATE th_growth_plans SET {', '.join(f'{k}=%s' for k in fields)} WHERE id=%s "
+                        f"RETURNING {self._PLAN_COLS}", (*fields.values(), pid))
+            return self._plan(cur.fetchone())
+
+    @staticmethod
+    def _mapping(r):
+        iso = lambda t: t.astimezone(IST).isoformat() if t else None  # noqa: E731
+        return {"id": r[0], "strategy_id": r[1], "plan_id": r[2], "initial_capital": r[3], "applied_at": iso(r[4]),
+                "ended_at": iso(r[5])}
+
+    def apply_plan(self, strategy_id, plan_id, initial_capital, now):
+        """Ends the strategy's active plan (kept as history) and applies this one, in one transaction."""
+        with self.pg._cursor() as cur:
+            cur.execute("UPDATE th_strategy_plans SET ended_at=%s WHERE strategy_id=%s AND ended_at IS NULL",
+                        (now, strategy_id))
+            cur.execute("INSERT INTO th_strategy_plans (strategy_id, plan_id, initial_capital, applied_at) "
+                        "VALUES (%s, %s, %s, %s) RETURNING id, strategy_id, plan_id, initial_capital, applied_at, ended_at",
+                        (strategy_id, plan_id, initial_capital, now))
+            return self._mapping(cur.fetchone())
+
+    def end_plans(self, now, strategy_id=None, plan_id=None):
+        q, args = "UPDATE th_strategy_plans SET ended_at=%s WHERE ended_at IS NULL", [now]
+        if strategy_id is not None:
+            q, args = q + " AND strategy_id=%s", args + [strategy_id]
+        if plan_id is not None:
+            q, args = q + " AND plan_id=%s", args + [plan_id]
+        with self.pg._cursor() as cur:
+            cur.execute(q, args)
+
+    def plan_mappings(self, strategy_id=None, plan_id=None):
+        """Newest first."""
+        q, args = "SELECT id, strategy_id, plan_id, initial_capital, applied_at, ended_at FROM th_strategy_plans WHERE true", []
+        if strategy_id is not None:
+            q, args = q + " AND strategy_id=%s", args + [strategy_id]
+        if plan_id is not None:
+            q, args = q + " AND plan_id=%s", args + [plan_id]
+        with self.pg._cursor() as cur:
+            cur.execute(q + " ORDER BY id DESC", args)
+            return [self._mapping(r) for r in cur.fetchall()]
+
+    def add_capital_event(self, strategy_id, at, kind, amount, capital_after):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO th_capital_events (strategy_id, at, kind, amount, capital_after) "
+                        "VALUES (%s, %s, %s, %s, %s)", (strategy_id, at, kind, amount, capital_after))
+
+    def capital_events(self, strategy_id):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT id, strategy_id, at, kind, amount, capital_after FROM th_capital_events "
+                        "WHERE strategy_id=%s ORDER BY at, id", (strategy_id,))
+            return [{"id": r[0], "strategy_id": r[1], "at": r[2].astimezone(IST).isoformat(), "kind": r[3],
+                     "amount": r[4], "capital_after": r[5]} for r in cur.fetchall()]
 
     def set_user_pref(self, user_id, key, value):
         with self.pg._cursor() as cur:

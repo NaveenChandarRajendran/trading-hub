@@ -80,7 +80,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to={apps[0].path} replace />} />
               {visible.map((a) => (
-                <Route key={a.id} path={a.path} element={<a.component />} />
+                <Route key={a.id} path={`${a.path}/*`} element={<a.component />} />
               ))}
             </Routes>
           </Suspense>

@@ -11,6 +11,7 @@ import { Alert, Pill, Segmented, Status, Toasts, useToasts } from '../../shared/
 import { longDate, pct, price, toneOf } from '../paper-trade/format';
 import { cacheQuotes } from '../paper-trade/logic/chain';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
+import { PlanStrip } from '../growth-plan/PlanStrip';
 import { BottomStrip } from './BottomStrip';
 import {
   CHAIN_CACHE_REFRESH_MS, DEFAULT_TIMEFRAME, HISTORY_REFRESH_MS, STALE_AFTER_MS, STORAGE_PREFIX, SYMBOLS, TIMEFRAMES, type Timeframe,
@@ -416,6 +417,7 @@ function ScalperPage({ into }: { into: TradingInto }) {
             <PageStatus sc={sc} />
           </div>
         </div>
+        <div className="sc-plan"><PlanStrip strategyId={into.selected!.id} version={sc.tradeVersion} /></div>
         {(sc.error || error || status.kind === 'token') && (
           <div className="sc-alerts">
             {status.kind === 'token' && <Alert kind="error">Dhan token expired: Buy / Sell are off and prices are frozen. Send a new token (POST /api/token, or backend/.env.local + restart).</Alert>}

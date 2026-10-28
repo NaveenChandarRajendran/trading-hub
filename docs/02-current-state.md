@@ -18,6 +18,14 @@ _Last updated: 2026-10-28 (users + login, step 1, on `feature/users-strategies`)
 | Trending OI (`trending-oi`) | backend `/api/trending-oi` | older styles; grid polish 2026-10-21 (see below) |
 | Index Components (`components`) | backend `/api/quotes`, `/api/history` | own `--cp-*` palette |
 
+## Growth Plan + Plan Tracker (branch `feature/growth-plan`, `docs/features/growth-plan.md`, ADR 0009)
+Built 28-Oct-2026. Planner page (sidebar, under Strategies): compounded / simple monthly target, year + month tables,
++5 years up to 20, CopyValue, CSV, saved plans per user (`th_growth_plans`). Apply a plan to a strategy (one active per
+strategy, history kept: `th_strategy_plans`). Strategy view frame (`#/strategies/<id>`, cards link to it) with the Plan
+tab: 12 month boxes per plan year (met / below / loss / flat / future, current outlined), hover with catch-up figures,
+year summary (plan vs actual, ahead / on track / behind, needed % per month). Strip on Paper Trading and Power Scalper.
+Capital changes are cash flows (`th_capital_events`). Tests: `growth-plan/logic/*.test.ts`, `test_growth_plans.py`.
+
 ## Users and login (branch `feature/users-strategies`, ADR 0008, `docs/users-and-strategies.md`)
 Step 1 of 6 done (28-Oct-2026), not merged yet. The backend serves the UI at **http://127.0.0.1:8000**; everything is
 behind a login (default deny in `auth.AuthMiddleware`: 401 `{"login": true}` / WebSocket 4401; open: login + the UI

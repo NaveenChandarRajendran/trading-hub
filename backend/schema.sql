@@ -392,3 +392,40 @@ CREATE TABLE IF NOT EXISTS pt_daily_summary (
     PRIMARY KEY (account_id, trade_date)
 );
 CREATE INDEX IF NOT EXISTS pt_daily_summary_strategy ON pt_daily_summary (strategy_id, trade_date);
+
+-- ================================================================ growth plans (growth_plans.py, docs/features/growth-plan.md)
+CREATE TABLE IF NOT EXISTS th_growth_plans (
+    id               serial           PRIMARY KEY,
+    user_id          integer          NOT NULL REFERENCES th_users(id),
+    name             text             NOT NULL,
+    yearly_pct       double precision NOT NULL,
+    method           text             NOT NULL CHECK (method IN ('compounded', 'simple')),
+    initial_capital  double precision NOT NULL,
+    start_month      date             NOT NULL,               -- the 1st of the plan's first month
+    years            integer          NOT NULL CHECK (years BETWEEN 1 AND 20),
+    created_at       timestamptz      NOT NULL DEFAULT now(),
+    archived_at      timestamptz
+);
+CREATE INDEX IF NOT EXISTS th_growth_plans_user ON th_growth_plans (user_id);
+
+-- A plan applied to a strategy. One active row per strategy (ended_at NULL); replaced ones stay as history.
+CREATE TABLE IF NOT EXISTS th_strategy_plans (
+    id               serial           PRIMARY KEY,
+    strategy_id      integer          NOT NULL REFERENCES th_strategies(id),
+    plan_id          integer          NOT NULL REFERENCES th_growth_plans(id),
+    initial_capital  double precision NOT NULL,               -- the tracker's starting capital
+    applied_at       timestamptz      NOT NULL,
+    ended_at         timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS th_strategy_plans_active ON th_strategy_plans (strategy_id) WHERE ended_at IS NULL;
+
+-- Capital changes of a strategy: cash flows for the Plan Tracker, never profit. amount = the change in equity.
+CREATE TABLE IF NOT EXISTS th_capital_events (
+    id             serial           PRIMARY KEY,
+    strategy_id    integer          NOT NULL REFERENCES th_strategies(id),
+    at             timestamptz      NOT NULL,
+    kind           text             NOT NULL CHECK (kind IN ('start', 'set', 'reset')),
+    amount         double precision NOT NULL,
+    capital_after  double precision NOT NULL
+);
+CREATE INDEX IF NOT EXISTS th_capital_events_strategy ON th_capital_events (strategy_id, at);

@@ -75,8 +75,10 @@ class Strategies:
     def create(self, user, name, description="", capital=None):
         name, description = self._name(name), self._text(description, DESCRIPTION_MAX, "description")
         capital = self._capital(DEFAULT_CAPITAL if capital is None else capital)
-        return self._dup(lambda: self.store.create_strategy(user.id, name, description, capital, "manual", self.clock()),
-                         name)
+        st = self._dup(lambda: self.store.create_strategy(user.id, name, description, capital, "manual", self.clock()),
+                       name)
+        self.store.add_capital_event(st["id"], self.clock(), "start", capital, capital)
+        return st
 
     def edit(self, user, sid, name=None, description=None, notes=None):
         st = self._writable(user, sid)
@@ -91,14 +93,22 @@ class Strategies:
             return st
         return self._dup(lambda: self.store.update_strategy(st["id"], self.clock(), **fields), fields.get("name", ""))
 
+    # Capital changes are cash flows for the Plan Tracker (th_capital_events), never profit:
+    # set = new - old starting capital; reset = new capital - the closed period's equity (capital + its net P&L).
     def set_capital(self, user, sid, capital):
         st = self._money_ok(user, sid)
-        return self._reloaded(self.store.strategy_set_capital(st["id"], self._capital(capital), self.clock()))
+        capital = self._capital(capital)
+        out = self._reloaded(self.store.strategy_set_capital(st["id"], capital, self.clock()))
+        self.store.add_capital_event(st["id"], self.clock(), "set", capital - st["capital"], capital)
+        return out
 
     def reset(self, user, sid, capital=None):
         st = self._money_ok(user, sid)
-        return self._reloaded(self.store.strategy_reset(
-            st["id"], self._capital(st["capital"] if capital is None else capital), self.clock()))
+        capital = self._capital(st["capital"] if capital is None else capital)
+        equity = st["capital"] + (self.store.net_before(st["account_id"], "9999-12-31") if st["account_id"] else 0.0)
+        out = self._reloaded(self.store.strategy_reset(st["id"], capital, self.clock()))
+        self.store.add_capital_event(st["id"], self.clock(), "reset", round(capital - equity, 2), capital)
+        return out
 
     def archive(self, user, sid):
         st = self._writable(user, sid)
@@ -224,4 +234,7 @@ def bootstrap(pg, capital, now, log=print):
             cur.execute("DELETE FROM pt_accounts WHERE id=%s", (i,))
         if orphans:
             log(f"Removed {len(orphans)} empty paper account(s) from before users and strategies")
+        cur.execute("INSERT INTO th_capital_events (strategy_id, at, kind, amount, capital_after) "
+                    "SELECT s.id, s.created_at, 'start', s.capital, s.capital FROM th_strategies s WHERE NOT EXISTS "
+                    "(SELECT 1 FROM th_capital_events e WHERE e.strategy_id = s.id)")
     return no_password

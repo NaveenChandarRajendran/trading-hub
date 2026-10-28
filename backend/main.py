@@ -12,6 +12,7 @@ Open without one: POST /api/auth/login and the UI page (GET /).
 Endpoints:
     POST /api/auth/login | /api/auth/logout, GET /api/auth/me   (auth_api.py)
     /api/strategies[/{id}[/capital|reset|archive|unarchive]]   (the user's own strategies; strategies_api.py)
+    /api/plans[/{id}], /api/strategies/{id}/plan               (growth plans + tracker inputs; growth_plans_api.py)
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
@@ -52,6 +53,7 @@ import scalper_api
 import algo_config
 import dashboard_api
 import dashboard_levels_api
+import growth_plans_api
 from algo_filters import load_constituents
 from algo_service import AlgoData, AlgoService
 from auth import Auth, AuthMiddleware, AuthPgStore
@@ -65,6 +67,7 @@ from dhan_feed import DhanFeed
 from instruments import OptionInstruments, SecurityIds
 from envfile import load_env_file
 from store import IST, PaperPgStore, PgStore
+from growth_plans import Plans
 from strategies import Strategies, bootstrap
 from tracker import Tracker
 
@@ -398,7 +401,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if paper:
         strategies = Strategies(paper.store, paper.clock, books=paper)
         paper_api.register(app, paper, strategies)
-        strategies_api.register(app, strategies, live=lambda st: strategy_live(paper, algo, st))
+        live = lambda st: strategy_live(paper, algo, st)  # noqa: E731
+        strategies_api.register(app, strategies, live=live)
+        growth_plans_api.register(app, Plans(paper.store, strategies, paper.clock), live=live)
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo

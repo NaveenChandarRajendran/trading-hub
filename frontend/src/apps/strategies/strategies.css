@@ -12,3 +12,7 @@
 .ds .sts-card-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-sm);
   border-top: 1px solid var(--border); padding-top: var(--sp-2); }
 .ds .sts-small { font-size: var(--fs-sm); margin: 0; }
+.ds .sts-name a { color: inherit; text-decoration: none; }
+.ds .sts-name a:hover { color: var(--accent); }
+.ds .sts-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; align-self: center; }
+.ds .sts-head-nums { gap: var(--sp-4); font-size: var(--fs-md); }

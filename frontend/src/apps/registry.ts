@@ -38,6 +38,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./strategies/StrategiesApp')),
   },
   {
+    id: 'growth-plan',
+    group: 'home',
+    name: 'Growth Plan',
+    path: '/growth-plan',
+    icon: '↗',
+    component: lazy(() => import('./growth-plan/GrowthPlanApp')),
+  },
+  {
     id: 'option-strategy',
     group: 'manual',
     name: 'OI & OI Change',
