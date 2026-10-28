@@ -432,6 +432,27 @@ class SignalService:
         except Exception:
             log.exception("market open phone message failed")
 
+    def _market_detail(self):
+        """Per index, what the dashboard shows: OI verdicts, Trending OI, OI levels, order flow (phone updates)."""
+        out = []
+        for sym, name in (("NIFTY", "Nifty"), ("BANKNIFTY", "Bank Nifty")):
+            try:
+                st = (self.last.get(sym) or {}).get("state") or {}
+                sr = st.get("sr") or {}
+                lv = sr.get("levels", {}) if sr else {}
+                flow = None
+                if self.orderflow:
+                    _f, mins = self.orderflow.series(sym, 1)
+                    flow = mins[-1]["cumulative"] if mins else None
+                out.append({"name": name, "spot": st.get("spot"), "prev": (st.get("prev") or {}).get("close"),
+                            "oi": (st.get("oi") or {}).get("verdict"), "sb": (st.get("sb") or {}).get("verdict"),
+                            "toi": [r.get("strengthPct") for r in (st.get("toi") or [])[:5]],
+                            "support": (lv.get("S") or [{}])[0].get("strike"), "resistance": (lv.get("R") or [{}])[0].get("strike"),
+                            "flow": flow})
+            except Exception:
+                log.exception("market detail for the phone failed (%s)", sym)
+        return out
+
     def _hourly(self, now):
         """Phone update at 10:15, 11:15, 12:15, 13:15 and 14:15 (owner 27-Oct-2026); the day summary follows at 15:31."""
         slot = now.hour if now.minute >= 15 else now.hour - 1
@@ -450,8 +471,8 @@ class SignalService:
                 manual_live = round(sum(p.get("unrealized") or 0 for p in acc.paper.positions() if p["open_qty"] > 0), 2)
             with self.lock:
                 near, self._near["hour"] = dict(self._near["hour"]), {}
-            self.phone.send(notify.hourly_text(f"{now:%H:%M}", self.rows_today(), journal.STRATEGIES, self._market(),
-                                               near, live, manual_live))
+            self.phone.send(notify.with_market(notify.hourly_text(f"{now:%H:%M}", self.rows_today(), journal.STRATEGIES, None,
+                                                                  near, live, manual_live), self._market_detail()))
         except Exception:
             log.exception("hourly phone update failed")
 
@@ -654,8 +675,9 @@ class SignalService:
                 import journal
                 import notify
                 try:
-                    self.phone.send(notify.summary_text(f"{now:%d %b}", self.rows_today(), journal.STRATEGIES, self._market(),
-                                                        dict(self._near["all"]) if self._near["day"] == now.date() else {}))
+                    self.phone.send(notify.with_market(notify.summary_text(
+                        f"{now:%d %b}", self.rows_today(), journal.STRATEGIES, None,
+                        dict(self._near["all"]) if self._near["day"] == now.date() else {}), self._market_detail()))
                 except Exception:
                     log.exception("phone summary failed")
 

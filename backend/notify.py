@@ -170,6 +170,47 @@ def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=
     return "\n".join(lines)
 
 
+def _lakh(v):
+    a = abs(v)
+    num = f"{a / 100000:.2f} L" if a >= 100000 else f"{a / 1000:.1f} k" if a >= 1000 else f"{a:.0f}"
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}{num}"
+
+
+def oi_block(d):
+    """Market read of one index for the phone (owner 28-Oct-2026: OI, OI change, Trending OI last 5, OI levels, order flow).
+    d: {"name", "spot", "prev", "oi", "sb", "toi": [strength %, newest first], "support", "resistance", "flow"}."""
+    spot, prev = d.get("spot"), d.get("prev")
+    if not spot:
+        return []
+    pct = f" ({'+' if spot >= prev else '−'}{abs(spot / prev - 1) * 100:.1f}%)" if prev else ""
+    out = [f"📊 {d['name']} {spot:,.0f}{pct}"]
+    oi, sb = d.get("oi"), d.get("sb")
+    if oi or sb:
+        both = " → agree" if oi and oi == sb else " → mixed" if oi and sb else ""
+        out.append(f"• OI (Dhan): {oi or '—'} · OI change (Sensibull): {sb or '—'}{both}")
+    toi = [x for x in (d.get("toi") or [])[:5] if x is not None]
+    if toi:
+        bear = sum(1 for x in toi if x < 0)
+        side = "bearish" if bear > len(toi) / 2 else "bullish" if bear < len(toi) / 2 else "mixed"
+        trend = ""
+        if len(toi) >= 2 and side != "mixed":
+            trend = ", getting stronger" if abs(toi[0]) > abs(toi[-1]) else ", getting weaker"
+        out.append(f"• Trending OI last {len(toi)}: {' '.join(f'{x:+.0f}' for x in toi)} → {side}{trend}")
+    if d.get("support") or d.get("resistance"):
+        out.append(f"• OI support {d.get('support') or 0:,.0f} · resistance {d.get('resistance') or 0:,.0f}")
+    if d.get("flow") is not None:
+        f = d["flow"]
+        who = "buyers ahead" if f > 0 else "sellers ahead" if f < 0 else "even"
+        out.append(f"• Order flow: {_lakh(f)} ({who})")
+    return out
+
+
+def with_market(text, details):
+    """Adds the market blocks (oi_block per index) under a phone message."""
+    blocks = ["\n".join(b) for b in (oi_block(d) for d in details or ()) if b]
+    return "\n\n".join([text] + blocks)
+
+
 class Notifier:
     """Queues texts and sends them to Telegram on a background thread. Disabled when no keys are set up."""
 

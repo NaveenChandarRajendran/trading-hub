@@ -174,3 +174,19 @@ def test_market_open_message_once_at_9_15(tmp_path):
     svc._market_open_note(now.replace(minute=20))
     assert len(sent) == 1 and sent[0].startswith("🔔 Market open · 28 Oct 9:15")
     assert "Rebound Call" in sent[0] and "Manual" not in sent[0]
+
+
+def test_market_block_reads_like_the_dashboard():
+    d = {"name": "Nifty", "spot": 22635.0, "prev": 22760.0, "oi": "Bearish", "sb": "Bullish",
+         "toi": [-36.03, -48.24, -59.32, -58.39, -55.0], "support": 22500.0, "resistance": 22700.0, "flow": -159640}
+    assert notify.oi_block(d) == [
+        "📊 Nifty 22,635 (−0.5%)",
+        "• OI (Dhan): Bearish · OI change (Sensibull): Bullish → mixed",
+        "• Trending OI last 5: -36 -48 -59 -58 -55 → bearish, getting weaker",
+        "• OI support 22,500 · resistance 22,700",
+        "• Order flow: −1.60 L (sellers ahead)",
+    ]
+    assert notify.oi_block({"name": "Bank Nifty", "spot": None}) == []
+    text = notify.with_market("⏰ 11:15 update", [d, {"name": "Bank Nifty", "spot": 53900.0, "flow": 24960}])
+    assert text.split("\n\n")[0] == "⏰ 11:15 update"
+    assert "📊 Bank Nifty 53,900\n• Order flow: +25.0 k (buyers ahead)" in text
