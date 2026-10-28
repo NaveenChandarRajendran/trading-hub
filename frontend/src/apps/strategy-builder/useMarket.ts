@@ -145,6 +145,7 @@ export function useMarket(symbol: string): Market {
       bid: t ? t.bid ?? null : c?.top_bid_price ?? null,
       ask: t ? t.ask ?? null : c?.top_ask_price ?? null,
       iv: c?.implied_volatility ?? null,
+      oi: t?.oi ?? c?.oi ?? null,
     };
   };
 

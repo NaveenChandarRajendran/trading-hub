@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { breakevens, netPremium } from './payoff';
 import {
-  MAX_LEGS, duplicateLeg, shortExpiry, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
+  MAX_LEGS, addFromChain, duplicateLeg, heldOn, shortExpiry, midPrice, nearestStrike, newLeg, newTab, nextTabNumber, priceLegs, stepStrike, type Quote,
 } from './legs';
 import { buildTemplate, TEMPLATES } from './templates';
 
@@ -61,6 +61,35 @@ describe('legs and tabs', () => {
     expect(p.legs.map((l) => [l.strike, l.price, l.iv, l.lotSize])).toEqual([[22900, 100.5, 12, 65], [23000, 55, null, 65]]);
     expect(p.missingPrice).toEqual([rows[2].id]);
     expect(p.missingIv).toEqual([rows[1].id]);
+  });
+});
+
+describe('picking legs on the option chain', () => {
+  const pick = { expiry: '2026-11-03', strike: 23000, type: 'CE' as const, side: 'S' as const };
+
+  it('a click adds a 1-lot leg; the same click again adds a lot to it', () => {
+    let r = addFromChain([], pick);
+    expect(r.legs.map((l) => [l.side, l.strike, l.type, l.lots])).toEqual([['S', 23000, 'CE', 1]]);
+    r = addFromChain(r.legs, pick);
+    expect(r.legs.map((l) => l.lots)).toEqual([2]);
+    r = addFromChain(r.legs, { ...pick, side: 'B' }); // the other side is its own leg
+    expect(r.legs.map((l) => `${l.side}${l.lots}`)).toEqual(['S2', 'B1']);
+  });
+
+  it('an unticked leg is not added to; a 9th leg is refused', () => {
+    const off = { ...newLeg('2026-11-03', 23000, { side: 'S', type: 'CE' }), include: false };
+    expect(addFromChain([off], pick).legs).toHaveLength(2);
+    const full = Array.from({ length: MAX_LEGS }, (_, i) => newLeg('2026-11-03', 22000 + i * 100));
+    expect(addFromChain(full, pick)).toEqual({ legs: full, full: true });
+    expect(addFromChain(full, { ...pick, strike: 22000, side: 'B' }).legs[0].lots).toBe(2); // adding a lot still works
+  });
+
+  it('what the design holds on a chain cell', () => {
+    const legs = [newLeg('2026-11-03', 23000, { side: 'S', lots: 2 }), newLeg('2026-11-03', 23000, { side: 'B' }),
+      newLeg('2026-11-10', 23000, { side: 'B' })];
+    expect(heldOn(legs, '2026-11-03', 23000, 'CE')).toBe('B 1 · S 2');
+    expect(heldOn(legs, '2026-11-03', 23000, 'PE')).toBe('');
+    expect(heldOn(legs, '2026-11-10', 23000, 'CE')).toBe('B 1');
   });
 });
 

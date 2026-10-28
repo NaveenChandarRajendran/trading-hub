@@ -113,12 +113,12 @@ export function PayoffChart({ legs, multiplier, spot, whatIf, targetLabel, bands
           <line className="sb-zero" x1={M.l} x2={M.l + iw} y1={y0} y2={y0} />
           {whatIf && pts.length > 1 && <path className="sb-line-target" d={path((p) => p.target ?? 0)} />}
           {pts.length > 1 && <path className="sb-line-expiry" d={path((p) => p.expiry)} />}
-          {bes.map((b) => { // below spot: the label left of its line, above: right of it (two close ones never overlap)
+          {bes.map((b, i) => { // below spot: label left of its line, above: right of it; every other one a row higher
             const left = b < spot;
             return (
               <g key={b}>
                 <line className="sb-be" x1={sx(b)} x2={sx(b)} y1={M.t} y2={M.t + ih} />
-                <text className="sb-be-label" x={sx(b) + (left ? -4 : 4)} y={M.t + ih - 6} textAnchor={left ? 'end' : 'start'}>
+                <text className="sb-be-label" x={sx(b) + (left ? -4 : 4)} y={M.t + ih - 6 - (i % 2) * 14} textAnchor={left ? 'end' : 'start'}>
                   BE {inr(2)(b)} ({b > spot ? '+' : ''}{(((b - spot) / spot) * 100).toFixed(2)}%)
                 </text>
               </g>

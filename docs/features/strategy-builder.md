@@ -44,6 +44,11 @@ what a strategy already holds.
    `SummaryPanel.tsx` (`logic/summary.ts`): max profit / loss, reward : risk, POP (ATM IV of the nearest expiry; method
    in the tooltip), net premium, charges for entry + exit (rates from `/api/paper/chain` `chargeRates`, the engine's
    own), Greeks (Δ ₹/pt, Γ, Θ ₹/day, vega ₹/pt) and a per-leg table. Margin is a "step 4" placeholder.
+   Option chain for picking legs (Naveen, 28-Oct: "option chain only to select the legs"; the "+ Add leg" button is
+   gone): `OptionChainPanel.tsx`, CE | strike | PE with OI, IV, LTP and B / S buttons; a click adds a 1-lot leg, the
+   same click again adds a lot (`logic/legs.ts` `addFromChain`, max 8 legs); held lots shown on the strike and the used
+   B / S button filled; ATM row and ITM cells marked; its own expiry (follows the toolbar's) and ±10 / ±20 / All strikes;
+   live ticks for ±20 strikes around ATM at most. Templates still fill the legs too.
 4. Margin (`POST /v2/margincalculator/multi`, one live check after market close with Naveen's OK) + drafts
    (`th_builder_drafts`) + Analyze positions.
 

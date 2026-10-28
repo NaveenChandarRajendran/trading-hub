@@ -32,7 +32,7 @@ export interface Tab {
 }
 
 /** One strike's market: last price, best bid / ask and implied volatility (%) — live ticks over the chain cache. */
-export interface Quote { ltp: number | null; bid: number | null; ask: number | null; iv: number | null }
+export interface Quote { ltp: number | null; bid: number | null; ask: number | null; iv: number | null; oi?: number | null }
 
 const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) / 100;
 
@@ -70,6 +70,26 @@ export const duplicateLeg = (legs: BuilderLeg[], id: string): BuilderLeg[] => {
   const i = legs.findIndex((l) => l.id === id);
   return i < 0 ? legs : [...legs.slice(0, i + 1), { ...legs[i], id: newId() }, ...legs.slice(i + 1)];
 };
+
+export interface Pick { expiry: string; strike: number; type: OptionType; side: Side }
+
+/**
+ * A B / S click on the option chain: one more lot on a ticked leg with the same expiry, strike, type and side, else a
+ * new 1-lot leg. Returns the legs unchanged (and `full`) when a new leg would be the 9th.
+ */
+export function addFromChain(legs: BuilderLeg[], p: Pick): { legs: BuilderLeg[]; full: boolean } {
+  const same = legs.find((l) => l.include && l.expiry === p.expiry && l.strike === p.strike && l.type === p.type && l.side === p.side);
+  if (same) return { legs: legs.map((l) => (l === same ? { ...l, lots: Math.min(100, l.lots + 1) } : l)), full: false };
+  if (legs.length >= MAX_LEGS) return { legs, full: true };
+  return { legs: [...legs, newLeg(p.expiry, p.strike, { side: p.side, type: p.type })], full: false };
+}
+
+/** What the design holds on one chain cell: "B 2", "S 1", "B 1 · S 1" (ticked legs), or ''. */
+export function heldOn(legs: BuilderLeg[], expiry: string, strike: number, type: OptionType): string {
+  const lots = { B: 0, S: 0 };
+  for (const l of legs) if (l.include && l.expiry === expiry && l.strike === strike && l.type === type) lots[l.side] += l.lots;
+  return [lots.B ? `B ${lots.B}` : '', lots.S ? `S ${lots.S}` : ''].filter(Boolean).join(' · ');
+}
 
 export function newTab(n: number, symbol: string, expiry: string): Tab {
   return { id: newId('T'), name: String(n), symbol, expiry, multiplier: 1, legs: [] };

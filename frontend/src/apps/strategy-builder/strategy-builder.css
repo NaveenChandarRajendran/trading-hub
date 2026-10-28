@@ -35,7 +35,37 @@
 .ds .sb-price { display: inline-flex; align-items: center; gap: 2px; }
 .ds .sb-price input { width: 82px; }
 .ds .sb-iv { font-size: var(--fs-xs); min-width: 34px; }
-.ds .sb-add { align-self: flex-start; }
+.ds div.sb-left { gap: var(--sp-3); }
+
+/* option chain for picking legs (OptionChainPanel.tsx) */
+.ds .sb-oc { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ds .sb-oc-bar { display: flex; gap: var(--sp-3); align-items: flex-end; flex-wrap: wrap; }
+.ds .sb-oc-head, .ds .sb-oc-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); align-items: center; }
+.ds .sb-oc-head { font-size: var(--fs-xs); color: var(--text-3); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.ds .sb-oc-rows { overflow-y: auto; border-bottom: 1px solid var(--border); }
+.ds .sb-oc-row { border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); font-size: var(--fs-sm); }
+.ds .sb-oc-row.atm { background: var(--accent-soft); }
+.ds .sb-oc-strike { text-align: center; font-weight: 600; }
+.ds .sb-oc-side { position: relative; display: grid; grid-template-columns: 1fr 1fr 1.2fr auto; gap: 4px; align-items: center; height: 100%; padding: 0 6px; }
+.ds .sb-oc-side.pe { grid-template-columns: auto 1.2fr 1fr 1fr; }
+.ds .sb-oc-side.ce > :not(.sb-oc-btns):not(.sb-oc-held) { text-align: right; }
+.ds .sb-oc-row .sb-oc-side.itm { background: var(--itm-soft); }
+.ds .sb-oc-ltp { font-weight: 600; }
+.ds .sb-oc-btns { display: inline-flex; gap: 2px; }
+.ds .sb-oc-btn { font: inherit; font-size: var(--fs-xs); font-weight: 700; width: 22px; height: 20px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); opacity: 0.55; }
+.ds .sb-oc-row:hover .sb-oc-btn { opacity: 1; }
+.ds .sb-oc-btn.buy { color: var(--up); }
+.ds .sb-oc-btn.buy:hover { background: var(--up-soft); border-color: var(--up); }
+.ds .sb-oc-btn.sell { color: var(--down); }
+.ds .sb-oc-btn.sell:hover { background: var(--down-soft); border-color: var(--down); }
+.ds .sb-oc-btn.on { opacity: 1; }
+.ds .sb-oc-btn.buy.on { background: var(--up-soft); border-color: var(--up); }
+.ds .sb-oc-btn.sell.on { background: var(--down-soft); border-color: var(--down); }
+.ds .sb-oc-held { position: absolute; top: 1px; font-size: 10px; font-weight: 700; color: var(--accent); line-height: 1; }
+.ds .sb-oc-side.ce .sb-oc-held { left: 6px; }
+.ds .sb-oc-side.pe .sb-oc-held { right: 6px; }
+.ds .sb-oc-empty { padding: var(--sp-3); }
 .ds .sb-menu { position: relative; display: inline-flex; }
 .ds .sb-menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: flex; flex-direction: column; padding: var(--sp-1); box-shadow: var(--shadow-pop); min-width: 120px; }
 .ds .sb-menu-pop .btn { justify-content: flex-start; }

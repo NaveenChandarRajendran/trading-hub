@@ -1,11 +1,12 @@
 // The legs of one design: include tick, Buy / Sell, expiry, strike (dropdown with every strike, − / + one strike),
 // CE / PE, lots, price (live mid by default; type to override, ↺ back to live) and a row menu (duplicate, delete).
+// Legs are added on the option chain (OptionChainPanel.tsx) or by a template.
 import { useEffect, useRef, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { price as fmtPrice } from '../paper-trade/format';
 import { pickerItems } from '../scalper/logic/picker';
 import { StrikePicker } from '../scalper/StrikePicker';
-import { MAX_LEGS, duplicateLeg, midPrice, newLeg, shortExpiry, stepStrike, type BuilderLeg } from './logic/legs';
+import { MAX_LEGS, duplicateLeg, midPrice, shortExpiry, stepStrike, type BuilderLeg } from './logic/legs';
 import type { Market } from './useMarket';
 
 function RowMenu({ onDuplicate, onDelete, canDuplicate }: { onDuplicate: () => void; onDelete: () => void; canDuplicate: boolean }) {
@@ -30,19 +31,13 @@ function RowMenu({ onDuplicate, onDelete, canDuplicate }: { onDuplicate: () => v
   );
 }
 
-export function LegsTable({ legs, onChange, market, expiry }: {
+export function LegsTable({ legs, onChange, market }: {
   legs: BuilderLeg[];
   onChange: (legs: BuilderLeg[]) => void;
   market: Market;
-  expiry: string; // the toolbar's expiry: new legs use it
 }) {
   const set = (id: string, patch: Partial<BuilderLeg>) => onChange(legs.map((l) => (l.id === id ? { ...l, ...patch } : l)));
-  const add = () => {
-    const strikes = market.strikesOf(expiry);
-    const atm = market.spot != null && strikes.length
-      ? strikes.reduce((a, b) => (Math.abs(b - market.spot!) < Math.abs(a - market.spot!) ? b : a)) : strikes[0];
-    if (atm != null) onChange([...legs, newLeg(expiry, atm)]);
-  };
+  if (!legs.length) return null;
 
   return (
     <div className="sb-legs">
@@ -103,9 +98,7 @@ export function LegsTable({ legs, onChange, market, expiry }: {
           })}
         </tbody>
       </table>
-      <button type="button" className="btn sb-add" disabled={legs.length >= MAX_LEGS || !market.strikesOf(expiry).length} onClick={add}>
-        + Add leg {legs.length >= MAX_LEGS && <span className="muted">(max {MAX_LEGS})</span>}
-      </button>
+      {legs.length > 0 && <span className="muted sb-small">{legs.length} of {MAX_LEGS} legs</span>}
     </div>
   );
 }

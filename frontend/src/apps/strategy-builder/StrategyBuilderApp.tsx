@@ -1,17 +1,19 @@
 // Strategy Builder: design multi-leg NIFTY / BANKNIFTY option positions on live chain prices (PAPER ONLY: nothing here
-// places an order). Up to 6 tabs keep designs open (this browser until drafts are saved per user, step 4). Legs on the
-// left; payoff chart (target date and IV what-if sliders, weekly bands), summary and Greeks on the right.
+// places an order). Up to 6 tabs keep designs open (this browser until drafts are saved per user, step 4). Legs are picked
+// on the option chain (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary and Greeks on the right.
 import { useEffect, useMemo, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Status } from '../../shared/ui';
+import { strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { longDate, pct, toneOf } from '../paper-trade/format';
 import { SYMBOLS, TABS_KEY } from './config/settings';
-import { MAX_TABS, newTab, nextTabNumber, priceLegs, type BuilderLeg, type Tab } from './logic/legs';
+import { MAX_LEGS, MAX_TABS, addFromChain, newTab, nextTabNumber, priceLegs, type BuilderLeg, type Pick, type Tab } from './logic/legs';
 import { yearsToExpiry } from './logic/blackScholes';
 import { summarize } from './logic/summary';
 import { TEMPLATES, buildTemplate, type TemplateId } from './logic/templates';
 import { LegsTable } from './LegsTable';
+import { OptionChainPanel } from './OptionChainPanel';
 import { PayoffChart } from './PayoffChart';
 import { SummaryPanel } from './SummaryPanel';
 import { useMarket } from './useMarket';
@@ -41,6 +43,9 @@ export default function StrategyBuilderApp() {
   const [targetHours, setTargetHours] = useState(0); // the target date: hours after now (0 = T+0)
   const [ivShift, setIvShift] = useState(0); // volatility points added to every leg
   const [bands, setBands] = useState(false);
+  const [chainExpiry, setChainExpiry] = useState(''); // '' = the toolbar's expiry
+  const [range, setRange] = useState<StrikeRange>('10');
+  const [notice, setNotice] = useState('');
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
@@ -57,11 +62,18 @@ export default function StrategyBuilderApp() {
   const expiry = tab.expiry && market.expiries.includes(tab.expiry) ? tab.expiry : market.expiries[0] ?? '';
   useEffect(() => { if (expiry && expiry !== tab.expiry) update({ expiry }); }, [expiry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // strikes + quotes for every expiry in use, live ticks for every leg
-  const legExpiries = [...new Set([expiry, ...tab.legs.map((l) => l.expiry)].filter(Boolean))];
+  // the chain follows the toolbar's expiry until another is picked on it
+  useEffect(() => setChainExpiry(''), [expiry]);
+  const chainEx = chainExpiry && market.expiries.includes(chainExpiry) ? chainExpiry : expiry;
+
+  // strikes + quotes for every expiry in use; live ticks for every leg and the chain's strikes near ATM (±20 at most)
+  const legExpiries = [...new Set([expiry, chainEx, ...tab.legs.map((l) => l.expiry)].filter(Boolean))];
   useEffect(() => market.want(legExpiries), [legExpiries.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const keys = tab.legs.map((l) => market.securityOf(l.expiry, l.strike, l.type)).filter((x): x is number => x != null)
-    .map((id) => keyOf('NSE_FNO', id) as InstrumentKey);
+  const near = strikeWindow(strikeList(market.strikesOf(chainEx).map((strike) => ({ strike })), market.spot), range === '10' ? '10' : '20').rows;
+  const keys = [
+    ...tab.legs.map((l) => market.securityOf(l.expiry, l.strike, l.type)),
+    ...near.flatMap((r) => [market.securityOf(chainEx, r.strike, 'CE'), market.securityOf(chainEx, r.strike, 'PE')]),
+  ].filter((x): x is number => x != null).map((id) => keyOf('NSE_FNO', id) as InstrumentKey);
   useEffect(() => market.watch(keys), [keys.join(','), market.watch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const priced = priceLegs(tab.legs, (l) => market.quoteOf(l.expiry, l.strike, l.type), market.lotSizeOf);
@@ -77,6 +89,13 @@ export default function StrategyBuilderApp() {
     [legsKey, market.spot, tab.multiplier, nearest, now, market.chargeRates]); // eslint-disable-line react-hooks/exhaustive-deps
   const chartLegs = useMemo(() => priced.legs, [legsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // from the latest legs (quick clicks never overwrite each other)
+  const pick = (p: Pick) => setTabs((ts) => ts.map((t) => {
+    if (t.id !== tab.id) return t;
+    const r = addFromChain(t.legs, p);
+    setNotice(r.full ? `Up to ${MAX_LEGS} legs: remove one first (⋯ → Delete).` : '');
+    return r.full ? t : { ...t, legs: r.legs };
+  }));
   const applyTemplate = (id: TemplateId) => {
     const legs = buildTemplate(id, market.strikesOf(expiry), market.spot, expiry);
     if (!legs.length) return;
@@ -154,13 +173,20 @@ export default function StrategyBuilderApp() {
       </section>
 
       <div className="sb-body">
+        <div className="sb-left">
+        <section className="card sb-left">
+          <div className="card-head"><span className="card-title">Option chain</span></div>
+          <OptionChainPanel market={market} legs={tab.legs} expiry={chainEx} onExpiry={setChainExpiry} range={range} onRange={setRange} onPick={pick} />
+          {notice && <Alert kind="warn">{notice}</Alert>}
+        </section>
         <section className="card sb-left">
           <div className="card-head"><span className="card-title">Legs</span><span className="muted sb-small">Price = live mid unless you type one</span></div>
-          {tab.legs.length === 0 && <EmptyState>Pick a template above, or add legs one by one.</EmptyState>}
-          <LegsTable legs={tab.legs} onChange={setLegs} market={market} expiry={expiry} />
+          {tab.legs.length === 0 && <EmptyState>Pick legs on the option chain above (B / S), or a template.</EmptyState>}
+          <LegsTable legs={tab.legs} onChange={setLegs} market={market} />
           {priced.missingPrice.length > 0 && <p className="muted sb-small">{priced.missingPrice.length} leg(s) have no price yet: they are left out until one arrives (or type one).</p>}
           {priced.missingIv.length > 0 && <p className="muted sb-small">IV missing for {priced.missingIv.length} leg(s): the target-date curve values them at intrinsic.</p>}
         </section>
+        </div>
         <section className="card sb-right">
           <div className="card-head">
             <span className="card-title">Payoff</span>
