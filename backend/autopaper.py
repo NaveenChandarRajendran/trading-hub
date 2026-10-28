@@ -346,6 +346,8 @@ class AutoTrader:
                     "maxTrades": self.cfg["limits"]["maxTradesPerDay"], "maxLoss": self.cfg["limits"]["maxLossPerDay"],
                     "funds": acc.funds() if key in APP and hasattr(acc, "funds") else None,
                 }
+            import journal
+            out["watchOnly"] = [journal.STRATEGY.get(k, k) for k in self.cfg.get("watchOnly", [])]  # owner 28-Oct-2026
             out["open"] = [self._public(t) for t in self.state["trades"] if t["status"] == "open"]
             out["today"] = [self._public(t) for t in self.state["trades"]]
             return out

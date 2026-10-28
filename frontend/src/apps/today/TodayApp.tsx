@@ -114,7 +114,7 @@ export default function TodayApp() {
   }, [openIds, subscribe]);
 
   const shown = forIndex(rows, index);
-  const sum = summarize(index === 'both' ? rows : [...shown.open, ...shown.closed]);
+  const sum = summarize(index === 'both' ? rows : [...shown.open, ...shown.closed], auto?.watchOnly ?? []);
   const left = minutesToExit(now);
   const marketOpen = paper.meta?.marketOpen ?? sig.data?.meta.marketOpen ?? false;
   const loading = trades == null && error == null;

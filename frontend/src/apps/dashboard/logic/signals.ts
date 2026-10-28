@@ -157,6 +157,7 @@ export interface AutoStatus {
   accounts: Partial<Record<AccountKey, AccountStatus>>;
   open: AutoTrade[];
   today: AutoTrade[];
+  watchOnly?: string[]; // strategy names that only watch (no paper trades), owner 28-Oct-2026
 }
 
 export interface AlertRow {

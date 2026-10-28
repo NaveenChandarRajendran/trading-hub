@@ -79,4 +79,9 @@ describe('today', () => {
     const s = summarize([r]);
     expect(s.byWho.find((w) => w.who === 'Expiry Straddle (sell)')?.status).toBe('in-trade');
   });
+  it('leaves rules on hold (watch only) off the board unless they traded today', () => {
+    const s = summarize([], ['Trend Rules', '4 Pillar Rules']);
+    expect(s.byWho.map((w) => w.who)).not.toContain('Trend Rules');
+    expect(s.byWho.map((w) => w.who)).toContain('Dharani Rules');
+  });
 });

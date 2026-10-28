@@ -94,6 +94,7 @@ export interface WhoTotal {
   lost: number;
   holding: string[]; // options it is in right now
   status: 'in-trade' | 'up' | 'down' | 'flat' | 'none'; // what the strategy board says in a word
+  watchOnly: boolean; // checks signals but takes no paper trades (listed last)
 }
 
 /** One word per strategy for the board: in a trade now, else up / down / flat on the day, or no trade today. */
@@ -111,7 +112,7 @@ export interface DaySummary {
   byWho: WhoTotal[];
 }
 
-export function summarize(rows: TodayRow[]): DaySummary {
+export function summarize(rows: TodayRow[], watchOnly: string[] = []): DaySummary {
   const closed = rows.filter((r) => !r.open);
   const open = rows.filter((r) => r.open);
   const sum = (xs: TodayRow[]) => r2(xs.reduce((s, r) => s + (r.pnl ?? 0), 0));
@@ -121,7 +122,7 @@ export function summarize(rows: TodayRow[]): DaySummary {
     total: r2(booked + running), booked, running, open: open.length, closed: closed.length,
     won: closed.filter((r) => (r.pnl ?? 0) > 0).length, lost: closed.filter((r) => (r.pnl ?? 0) <= 0 && r.pnl != null).length,
     // a strategy the page does not know yet still gets its row, after the known ones
-    byWho: [...WHO_ORDER, ...new Set(rows.map((r) => r.who).filter((w) => !WHO_ORDER.includes(w)))].map((who) => {
+    byWho: [...WHO_ORDER, ...new Set(rows.map((r) => r.who).filter((w) => !WHO_ORDER.includes(w)))].map((who): WhoTotal => {
       const mine = rows.filter((r) => r.who === who);
       const done = mine.filter((r) => !r.open && r.pnl != null);
       const pnl = sum(mine);
@@ -129,9 +130,9 @@ export function summarize(rows: TodayRow[]): DaySummary {
       const status: WhoTotal['status'] = !mine.length ? 'none' : holding.length ? 'in-trade' : pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'flat';
       return {
         who, pnl, trades: mine.length, open: holding.length, won: done.filter((r) => (r.pnl as number) > 0).length,
-        lost: done.filter((r) => (r.pnl as number) <= 0).length, holding, status,
+        lost: done.filter((r) => (r.pnl as number) <= 0).length, holding, status, watchOnly: watchOnly.includes(who),
       };
-    }),
+    }).filter((w) => !w.watchOnly || w.trades > 0), // owner 28-Oct-2026: rules on hold are not shown (tracked in the logs / Excel)
   };
 }
 
