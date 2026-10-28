@@ -349,12 +349,15 @@ CREATE TABLE IF NOT EXISTS th_strategies (
     description  text             NOT NULL DEFAULT '',
     notes        text             NOT NULL DEFAULT '',     -- markdown
     capital      double precision NOT NULL,                -- the open period's starting capital
-    kind         text             NOT NULL DEFAULT 'manual' CHECK (kind IN ('manual', 'algo')),
+    kind         text             NOT NULL DEFAULT 'manual' CHECK (kind IN ('manual', 'algo', 'options')),
     created_at   timestamptz      NOT NULL DEFAULT now(),
     updated_at   timestamptz      NOT NULL DEFAULT now(),
     archived_at  timestamptz                              -- archived: read-only, history kept (no hard delete)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS th_strategies_user_name ON th_strategies (user_id, lower(name));
+-- 'options' (ADR 0010): multi-leg positions with short legs, held overnight to expiry (options_engine.py).
+ALTER TABLE th_strategies DROP CONSTRAINT IF EXISTS th_strategies_kind_check;
+ALTER TABLE th_strategies ADD CONSTRAINT th_strategies_kind_check CHECK (kind IN ('manual', 'algo', 'options'));
 
 CREATE TABLE IF NOT EXISTS th_user_prefs (               -- e.g. 'trading_into.paper' -> '7'
     user_id  integer  NOT NULL REFERENCES th_users(id),
@@ -434,6 +437,20 @@ CREATE TABLE IF NOT EXISTS th_capital_events (
     capital_after  double precision NOT NULL
 );
 CREATE INDEX IF NOT EXISTS th_capital_events_strategy ON th_capital_events (strategy_id, at);
+
+-- Options strategies (ADR 0010, options_service.py): every fill in full (positions are rebuilt from them across days)
+-- and the margin blocked now. Fills are also written to pt_orders / pt_trades / pt_positions for the reports.
+CREATE TABLE IF NOT EXISTS op_fills (
+    account_id  integer     NOT NULL REFERENCES pt_accounts(id),
+    id          text        NOT NULL,            -- OF20261028-0001
+    trade_date  date        NOT NULL,
+    data        jsonb       NOT NULL,            -- options_engine.Fill.to_dict()
+    PRIMARY KEY (account_id, id)
+);
+CREATE TABLE IF NOT EXISTS op_state (
+    account_id      integer          PRIMARY KEY REFERENCES pt_accounts(id),
+    blocked_margin  double precision NOT NULL DEFAULT 0
+);
 
 -- Strategy Builder drafts (builder.py): a named design per user; legs as JSON. Designs only, never orders.
 CREATE TABLE IF NOT EXISTS th_builder_drafts (

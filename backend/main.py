@@ -14,6 +14,7 @@ Endpoints:
     /api/strategies[/{id}[/capital|reset|archive|unarchive]]   (the user's own strategies; strategies_api.py)
     /api/plans[/{id}], /api/strategies/{id}/plan               (growth plans + tracker inputs; growth_plans_api.py)
     /api/builder/drafts|margin|positions                      (Strategy Builder; builder_api.py)
+    /api/options/basket|exit|positions                        (options strategies, ADR 0010; options_api.py)
     GET  /api/trending-oi?symbol=NIFTY&expiry=2026-10-27&interval=5
     GET  /api/expiries?symbol=NIFTY
     GET  /api/option-chain?symbol=NIFTY&expiry=2026-10-27   (shared, cached Dhan chain for the live OI pages)
@@ -55,6 +56,7 @@ import algo_config
 import dashboard_api
 import dashboard_levels_api
 import builder_api
+import options_api
 import growth_plans_api
 from algo_filters import load_constituents
 from algo_service import AlgoData, AlgoService
@@ -90,8 +92,10 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def strategy_live(paper, algo, st):
-    """(unbooked P&L, open positions) of a strategy today: its paper Book, or the algo's broker."""
+def strategy_live(paper, algo, st, options=None):
+    """(unbooked P&L, open positions) of a strategy today: its paper Book, the algo's broker, or its options engine."""
+    if st["kind"] == "options":
+        return options.live(st) if options else (0.0, 0)
     if st["kind"] == "algo":
         broker = algo.broker if algo else None
         if broker is None or broker.engine is None:
@@ -170,6 +174,12 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         from scalper_service import ScalperService
         scalper = ScalperService(paper.store, paper, paper.instruments, clock=paper.clock,
                                  intraday=lambda sym, frm, to, sid: tracker.client.intraday(sym, frm, to, option_id=sid))
+    options = None
+    if paper:  # options strategies (ADR 0010): multi-leg baskets held to expiry
+        from options_service import OptionsService, dhan_spot_close
+        options = OptionsService(paper.store, paper, margin_multi=getattr(tracker.client, "margin_multi", None),
+                                 clock=paper.clock,
+                                 spot_close=dhan_spot_close(tracker.client) if hasattr(tracker.client, "intraday") else None)
     algo = None
     if paper and algo_mode in ("paper", "signals"):
         constituents = load_constituents()
@@ -228,6 +238,12 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             algo.start()
         if scalper:
             scalper.start()
+        if options:
+            try:
+                options.load_all()
+            except Exception:
+                logging.getLogger("main").exception("options strategies could not be loaded")
+            options.start()
         yield
         if scalper:
             scalper.stop()
@@ -404,11 +420,14 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if paper:
         strategies = Strategies(paper.store, paper.clock, books=paper)
         paper_api.register(app, paper, strategies)
-        live = lambda st: strategy_live(paper, algo, st)  # noqa: E731
+        live = lambda st: strategy_live(paper, algo, st, options)  # noqa: E731
         strategies_api.register(app, strategies, live=live)
         growth_plans_api.register(app, Plans(paper.store, strategies, paper.clock), live=live)
         builder_api.register(app, Drafts(paper.store, paper.clock), paper, strategies,
                              margin_multi=getattr(tracker.client, "margin_multi", None))
+        strategies.options = options
+        options_api.register(app, options, strategies)
+        app.state.options = options
     if algo:
         algo_api.register(app, algo)
         app.state.algo = algo

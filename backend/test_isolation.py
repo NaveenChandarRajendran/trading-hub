@@ -33,6 +33,7 @@ BODIES = {  # minimal valid bodies, so a refusal is about the strategy and never
     ("POST", "/api/scalper/orders"): {"securityId": CE, "side": "BUY", "lots": 1},
     ("PUT", "/api/scalper/protection/{security_id}"): {"stop": 90.0},
     ("PUT", "/api/scalper/trail/{security_id}"): {"distance": 10},
+    ("POST", "/api/options/basket"): {"legs": [{"securityId": 52175, "side": "S", "lots": 1}]},
     ("PUT", "/api/scalper/account/capital"): {"capital": 200000},
 }
 

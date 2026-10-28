@@ -13,10 +13,18 @@ let them settle at expiry. Options strategies only; Manual / Scalper / the algo 
 1. Engine (`backend/options_engine.py`, pure) + tests — done (`test_options_engine.py`, 10 tests: entry / margin /
    funds on the 3 Nov iron condor, all-or-nothing refusals, exits, flips, settlement worthless and at max loss with
    STT on the long put only, one expiry at a time, restore across days, per-day rows for the reports).
-2. Service + store + routes: the `options` strategy kind, one engine per options strategy loaded from all its fills,
-   live ticks, Dhan margin on every trade, the 15:30 expiry settlement job, records in `pt_orders` / `pt_trades` /
-   `pt_positions` + `pt_accounts.blocked_margin`; `POST /api/options/basket`, `POST /api/options/exit`,
-   `GET /api/options/positions`.
+2. Service + store + routes — done (`options_service.py`, `options_api.py`, `test_options_service.py`, 7 tests):
+   - `options` strategy kind (`POST /api/strategies {kind: "options"}`; schema check widened, live constraint name
+     checked); capital change / reset / archive only when flat; Paper Trading / Power Scalper still manual only.
+   - One engine per options strategy, rebuilt from `op_fills` (every fill in full) + `op_state` (margin blocked);
+     fills mirrored to `pt_orders` (source `builder`) / `pt_trades` / per-day `pt_positions`, so the strategy cards
+     (booked, unbooked, open) and day summaries read them unchanged.
+   - Live books from the paper feed (kept even before an engine loads); open legs and their index kept subscribed.
+   - Dhan margin of the book after each trade (net quantity per leg); entry refused without it, exits still go.
+   - Settlement timer (20 s): legs whose expiry reached 15:30 settle at that day's 15:30 spot (last index tick at or
+     before 15:30; else Dhan's 15:29 one-minute close; else pending, shown on the positions).
+   - Routes: `POST /api/options/basket`, `POST /api/options/exit`, `GET /api/options/positions` (own options
+     strategy only).
 3. Builder: "Paper trade" (pick an options strategy, confirm legs / net premium / margin), and an Options positions
    panel with live P&L, exit leg / exit all.
 4. Strategies page: create an Options strategy; its card numbers, P&L calendar and Growth Plan tracker (they read the

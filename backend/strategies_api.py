@@ -23,6 +23,7 @@ class CreateBody(BaseModel):
     name: str
     description: str = ""
     capital: float | None = None
+    kind: str = "manual"  # manual | options (ADR 0010)
 
 
 class EditBody(BaseModel):
@@ -109,7 +110,7 @@ def register(app, strategies, live=None):
 
     @app.post("/api/strategies")
     def create(body: CreateBody, request: Request):
-        return run(strategies.create, request.state.user, body.name, body.description, body.capital)
+        return run(strategies.create, request.state.user, body.name, body.description, body.capital, body.kind)
 
     @app.get("/api/strategies/{sid}")
     def get(sid: str, request: Request):

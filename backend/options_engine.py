@@ -257,11 +257,12 @@ class OptionsEngine:
             self.blocked_margin = max(float(margin_after), self.long_premium())
         return fills
 
-    def settle(self, expiry, spot, now):
-        """Expiry: every open leg of `expiry` closes at intrinsic value against `spot`. STT on ITM longs only."""
+    def settle(self, expiry, spot, now, symbol=None):
+        """Expiry: every open leg of `expiry` (of `symbol`'s index when given: NIFTY and BANKNIFTY can share an expiry
+        date) closes at intrinsic value against `spot`. STT on ITM longs only."""
         fills = []
         basket = None
-        for p in [p for p in self.open_positions() if p.expiry == expiry]:
+        for p in [p for p in self.open_positions() if p.expiry == expiry and (symbol is None or p.symbol == symbol)]:
             basket = basket or self._id("OB", now)
             price = r2(p.intrinsic(spot))
             qty = abs(p.qty)

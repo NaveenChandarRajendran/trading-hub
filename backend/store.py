@@ -582,6 +582,23 @@ class PaperJsonStore:
         self.d["builder_drafts"] = [d for d in self.d.get("builder_drafts", []) if d["id"] != did]
         self._write()
 
+    # ---- options strategies (options_service.py, ADR 0010)
+    def save_options_fill(self, acc, day, fill):
+        self.d.setdefault("op_fills", {}).setdefault(str(acc), {})[fill["id"]] = {**fill, "trade_date": day}
+        self._write()
+
+    def options_fills(self, acc):
+        rows = self.d.get("op_fills", {}).get(str(acc), {}).values()
+        return sorted((json.loads(json.dumps({k: v for k, v in r.items() if k != "trade_date"})) for r in rows),
+                      key=lambda f: (f["time"], f["id"]))
+
+    def set_options_margin(self, acc, value):
+        self.d.setdefault("op_state", {})[str(acc)] = float(value)
+        self._write()
+
+    def options_margin(self, acc):
+        return float(self.d.get("op_state", {}).get(str(acc), 0.0))
+
     def apply_plan(self, strategy_id, plan_id, initial_capital, now):
         rows = self.d.setdefault("strategy_plans", [])
         for m in rows:
@@ -982,6 +999,29 @@ class PaperPgStore:
     def delete_builder_draft(self, did):
         with self.pg._cursor() as cur:
             cur.execute("DELETE FROM th_builder_drafts WHERE id=%s", (did,))
+
+    # ---- options strategies (op_fills, op_state; options_service.py, ADR 0010)
+    def save_options_fill(self, acc, day, fill):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO op_fills (account_id, id, trade_date, data) VALUES (%s, %s, %s, %s) "
+                        "ON CONFLICT (account_id, id) DO UPDATE SET data=EXCLUDED.data", (acc, fill["id"], day, json.dumps(fill)))
+
+    def options_fills(self, acc):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT data FROM op_fills WHERE account_id=%s", (acc,))
+            rows = [r[0] if isinstance(r[0], dict) else json.loads(r[0]) for r in cur.fetchall()]
+        return sorted(rows, key=lambda f: (f["time"], f["id"]))
+
+    def set_options_margin(self, acc, value):
+        with self.pg._cursor() as cur:
+            cur.execute("INSERT INTO op_state (account_id, blocked_margin) VALUES (%s, %s) "
+                        "ON CONFLICT (account_id) DO UPDATE SET blocked_margin=EXCLUDED.blocked_margin", (acc, float(value)))
+
+    def options_margin(self, acc):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT blocked_margin FROM op_state WHERE account_id=%s", (acc,))
+            r = cur.fetchone()
+            return float(r[0]) if r else 0.0
 
     @staticmethod
     def _mapping(r):

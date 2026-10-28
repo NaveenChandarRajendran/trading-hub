@@ -49,6 +49,7 @@ class Strategies:
         """books: paper_api.PaperService (busy(strategy) from its live engines; reload(strategy) after a capital
         change, reset or archive). Without it (tests of the rules alone) the store's view of today is used."""
         self.store, self.clock, self.books = store, clock, books
+        self.options = None  # options_service.OptionsService (set by main): busy / reload of options strategies
 
     # ------------------------------------------------------------------ read
     def list(self, user, archived=False):
@@ -72,10 +73,13 @@ class Strategies:
         return st
 
     # ------------------------------------------------------------------ write
-    def create(self, user, name, description="", capital=None):
+    def create(self, user, name, description="", capital=None, kind="manual"):
+        """kind: manual (Paper Trading / Power Scalper) or options (Strategy Builder baskets, ADR 0010)."""
+        if kind not in ("manual", "options"):
+            raise Refused("Kind must be manual or options.", 400)
         name, description = self._name(name), self._text(description, DESCRIPTION_MAX, "description")
         capital = self._capital(DEFAULT_CAPITAL if capital is None else capital)
-        st = self._dup(lambda: self.store.create_strategy(user.id, name, description, capital, "manual", self.clock()),
+        st = self._dup(lambda: self.store.create_strategy(user.id, name, description, capital, kind, self.clock()),
                        name)
         self.store.add_capital_event(st["id"], self.clock(), "start", capital, capital)
         return st
@@ -112,7 +116,7 @@ class Strategies:
 
     def archive(self, user, sid):
         st = self._writable(user, sid)
-        if st["kind"] != "manual":
+        if st["kind"] == "algo":
             raise Refused("The algo's strategy can't be archived.")
         self._flat(st, "archiving")
         return self._reloaded(self.store.update_strategy(st["id"], self.clock(), archived_at=self.clock()))
@@ -132,13 +136,15 @@ class Strategies:
 
     def _money_ok(self, user, sid):
         st = self._writable(user, sid)
-        if st["kind"] != "manual":
+        if st["kind"] == "algo":
             raise Refused("The algo's capital can't be changed here.")
         self._flat(st, "changing capital")
         return st
 
     def _flat(self, st, doing):
-        if self.books is not None:
+        if st["kind"] == "options" and self.options is not None:
+            busy = self.options.busy(st)
+        elif self.books is not None:
             busy = self.books.busy(st)
         else:
             day = self.clock().astimezone(IST).date().isoformat()
@@ -149,6 +155,8 @@ class Strategies:
     def _reloaded(self, st):
         if self.books is not None:
             self.books.reload(st)
+        if self.options is not None:
+            self.options.reload(st)
         return st
 
     @staticmethod
