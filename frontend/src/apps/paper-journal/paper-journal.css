@@ -8,3 +8,4 @@
 .pj .pj-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-right: 10px; }
 .pj .pj-group-name { color: var(--text-3); font-size: var(--fs-xs); margin-right: 2px; }
 .pj .pj-subtotal td { font-weight: 600; border-top: 1px solid var(--border); }
+.pj .pj-block { display: block; }

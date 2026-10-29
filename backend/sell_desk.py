@@ -35,6 +35,7 @@ class SellDesk:
         self.path = os.path.join(data_dir, "books", ACCOUNT, "state.json")
         self.lock = threading.RLock()
         self.books = {}  # security id -> paper_engine.Book (latest depth)
+        self._price_saved = 0.0
         self.state = self._load()
         self.last_error = ""
         self._stop = threading.Event()
@@ -57,6 +58,7 @@ class SellDesk:
         st.setdefault("notes", {})      # rule -> what happened today, in words
         st.setdefault("cycle", None)    # running strangle: {"id", "expiry", "booked"}
         st.setdefault("seq", 0)
+        st.setdefault("lastPrice", {})  # security id -> [last traded price, IST time]: shown after the close / a restart
         return st
 
     def _save(self):
@@ -101,6 +103,11 @@ class SellDesk:
         """Every Full packet (PaperService.tick_listeners): keep the book, run stops and pending buy-backs."""
         with self.lock:
             self.books[security_id] = book
+            if book.ltp and any(lg["securityId"] == security_id for lg in self.open_legs()):
+                self.state["lastPrice"][str(security_id)] = [book.ltp, now.isoformat()]
+                if (now.timestamp() - self._price_saved) > 60:  # at most once a minute
+                    self._price_saved = now.timestamp()
+                    self._save()
             for lg in self.open_legs():
                 if lg["securityId"] != security_id:
                     continue
@@ -112,6 +119,15 @@ class SellDesk:
     def ltp(self, security_id):
         b = self.books.get(security_id)
         return b.ltp if b else None
+
+    def shown_price(self, security_id):
+        """(price, None) from the live feed, else (last saved price, its IST time) after the close or a restart
+        (owner 29-Oct-2026: "it should at least show where we are now"). Only for showing: stops and rolls use ltp()."""
+        live = self.ltp(security_id)
+        if live is not None:
+            return live, None
+        last = self.state.get("lastPrice", {}).get(str(security_id))
+        return (last[0], last[1]) if last else (None, None)
 
     def spot(self):
         """Latest NIFTY 1-minute close from the candle cache (at most 20 s old)."""
@@ -312,14 +328,15 @@ class SellDesk:
             self.state.pop("rollPending", None)
             self._save()
 
-    def cycle_pnl(self):
-        """The running strangle's total: booked (after charges) + open legs at LTP less their sell charges."""
+    def cycle_pnl(self, shown=False):
+        """The running strangle's total: booked (after charges) + open legs at LTP less their sell charges.
+        shown=True (status page only): after the close, the last saved prices; the ₹60k stop check uses live prices."""
         cyc = self.state["cycle"]
         if not cyc:
             return None
         total = cyc["booked"]
         for lg in self.open_legs(R.STRANGLE):
-            ltp = self.ltp(lg["securityId"])
+            ltp = self.shown_price(lg["securityId"])[0] if shown else self.ltp(lg["securityId"])
             if ltp is None:
                 return None
             total += (lg["entryPrice"] - ltp) * lg["qty"] - lg["entryCharges"]
@@ -411,10 +428,10 @@ class SellDesk:
             for lg in legs:
                 if lg["status"] != "open":
                     continue
-                ltp = self.ltp(lg["securityId"])
+                ltp, at = self.shown_price(lg["securityId"])
                 pnl = r2((lg["entryPrice"] - ltp) * lg["qty"]) if ltp is not None else None
                 unreal += pnl or 0
-                open_.append({**self.trade(lg), "ltp": ltp, "pnl": pnl, "expiry": lg["expiry"], "rule": R.NAMES[lg["rule"]]})
+                open_.append({**self.trade(lg), "ltp": ltp, "priceAt": at, "pnl": pnl, "expiry": lg["expiry"], "rule": R.NAMES[lg["rule"]]})
             closed = [lg for lg in legs if lg["status"] == "closed"]
             realized = r2(sum(lg["netPnl"] for lg in closed))
             today = self.state["day"]
@@ -422,7 +439,7 @@ class SellDesk:
                     "unrealized": r2(unreal), "equity": r2(self.cfg["capital"] + realized + unreal), "open": open_,
                     "closedToday": [self.trade(lg) for lg in closed if lg.get("exitDay") == today],
                     "notes": {R.NAMES[k]: v for k, v in self.state["notes"].items() if k in R.NAMES},
-                    "cycle": {**self.state["cycle"], "pnl": self.cycle_pnl()} if self.state["cycle"] else None,
+                    "cycle": {**self.state["cycle"], "pnl": self.cycle_pnl(shown=True)} if self.state["cycle"] else None,
                     "error": self.last_error}
 
     def exit_leg(self, leg_id):

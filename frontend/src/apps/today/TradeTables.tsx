@@ -138,7 +138,13 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                   <td className="txt"><OptionName r={r} /></td>
                   <td className="num">{r.qty}</td>
                   <td><span className="td-level"><span className="num">{price(r.entryPrice)}</span><span className="td-pct">{r.short ? 'sold' : 'bought'} {hm(r.entryTime)}</span></span></td>
-                  <td className="num">{price(r.price)}</td>
+                  <td>
+                    <span className="td-level"><span className="num">{price(r.price)}</span>
+                      {r.price != null && (r.priceAt || !data.marketOpen) && (
+                        <span className="td-pct" title="The market is closed: the last traded price">{r.priceAt ? `as of ${r.priceAt}` : 'at close'}</span>
+                      )}
+                    </span>
+                  </td>
                   <td><StopCell r={r} /></td>
                   <td><TargetCell r={r} /></td>
                   <td><span className="td-level"><Money v={r.pnl} /><span className={`td-pct ${toneOf(r.pnlPct)}`}>{pctText(r.pnlPct)}</span></span></td>

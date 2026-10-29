@@ -13,6 +13,8 @@ import {
   ACCOUNT_OF, STRATEGIES, STRATEGY_GROUPS, chipName, dailyRows, fetchDays, fetchOrders, fetchTrades, heldFor, openPositions, ordersCsv, pick, totals, tradesCsv,
   type IndexPick, type JOrder, type JTrade,
 } from './logic/journal';
+import { useToday } from '../today/useToday';
+import type { TodayRow } from '../today/logic/today';
 import './paper-journal.css';
 
 type View = 'orders' | 'trades' | 'positions' | 'calendar' | 'strategies';
@@ -106,6 +108,13 @@ export default function PaperJournalApp() {
     save(PICKED, JSON.stringify(next));
   };
 
+  // open trades: price and running P&L now (or at the close), the same as on Today (owner 29-Oct-2026: no blanks)
+  const live = useToday();
+  const liveById = useMemo(() => new Map(live.rows.filter((r) => r.open).map((r) => [r.id, r])), [live.rows]);
+  const running = (ts: JTrade[]) => {
+    const v = ts.filter((t) => t.status === 'open').map((t) => liveById.get(t.id)?.pnl).filter((x): x is number => x != null);
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+  };
   const shown = useMemo(() => (trades ? pick(trades, strategies, index) : []), [trades, strategies, index]);
   const dayTrades = useMemo(() => shown.filter((t) => t.day === day), [shown, day]);
   const dayOrders = useMemo(() => (orders ? pick(orders, strategies, index) : []), [orders, strategies, index]);
@@ -115,9 +124,10 @@ export default function PaperJournalApp() {
   const per = useMemo(() => STRATEGY_GROUPS.map((g) => {
     const mine = shown.filter((x) => (g.items as readonly string[]).includes(x.strategy));
     const rows = g.items.filter((s) => strategies.includes(s)).map((s) => ({ s, t: totals(mine.filter((x) => x.strategy === s)) }))
-      .filter(({ t }) => t.trades || t.open);
-    return { name: g.name, rows, t: totals(mine) };
-  }).filter((g) => g.rows.length), [shown, strategies]);
+      .filter(({ t }) => t.trades || t.open)
+      .map((x) => ({ ...x, run: running(mine.filter((m) => m.strategy === x.s)) }));
+    return { name: g.name, rows, t: totals(mine), run: running(mine) };
+  }).filter((g) => g.rows.length), [shown, strategies, liveById]);
   const cal = useMemo(() => buildCalendar(range.from, range.to, dailyRows(shown), [], today), [shown, range.from, range.to, today]);
   const dayChoices = useMemo(() => (days.includes(day) ? days : [day, ...days]), [days, day]);
 
@@ -153,10 +163,12 @@ export default function PaperJournalApp() {
 
       <section className="card pj-strip">
         <Stat label={`Net P&L · ${fyLabel(fy)}`} value={<span className={toneOf(sum.net)}>{signedRupees(sum.net)}</span>} delta={`${sum.trades} closed trades`} />
-        <Stat label={`Net · ${longDate(day)}`} value={<span className={toneOf(daySum.net)}>{signedRupees(daySum.net)}</span>} delta={`${daySum.trades} trades${daySum.open ? ` · ${daySum.open} open` : ''}`} />
+        <Stat label={`Net · ${longDate(day)}`} value={<span className={toneOf(daySum.net)}>{signedRupees(daySum.net)}</span>} delta={`${daySum.trades} closed${daySum.open ? ` · ${daySum.open} open` : ''}`} />
         <Stat label="Win rate" value={sum.winRate == null ? '–' : `${sum.winRate.toFixed(1)}%`} delta={`${sum.wins} won`} />
         <Stat label="Avg win / loss" value={<span className="num"><span className="up">{signedRupees(sum.avgWin)}</span> / <span className="down">{signedRupees(sum.avgLoss)}</span></span>} />
-        <Stat label="Open now" value={openNow.length} delta={<Link to="/today">Live P&amp;L on Today →</Link>} />
+        <Stat label="Open now" value={openNow.length} delta={running(openNow) != null
+          ? <>Running <span className={toneOf(running(openNow))}>{signedRupees(running(openNow))}</span> · <Link to="/today">Today →</Link></>
+          : <Link to="/today">Live P&amp;L on Today →</Link>} />
       </section>
 
       <section className="card">
@@ -192,9 +204,9 @@ export default function PaperJournalApp() {
 
         {view === 'trades' && (trades == null ? <EmptyState>Loading trades…</EmptyState> : !dayTrades.length ? (
           <EmptyState>No trades on {longDate(day)} for this selection.</EmptyState>
-        ) : <TradeTable rows={dayTrades} />)}
+        ) : <TradeTable rows={dayTrades} live={liveById} closed={!live.marketOpen} />)}
 
-        {view === 'positions' && (!openNow.length ? <EmptyState>No open paper positions right now.</EmptyState> : <TradeTable rows={openNow} />)}
+        {view === 'positions' && (!openNow.length ? <EmptyState>No open paper positions right now.</EmptyState> : <TradeTable rows={openNow} live={liveById} closed={!live.marketOpen} />)}
 
         {view === 'calendar' && (
           <>
@@ -210,17 +222,17 @@ export default function PaperJournalApp() {
               {!per.length && <tr><td colSpan={8}><EmptyState>No trades yet for this selection.</EmptyState></td></tr>}
               {per.map((g) => (
                 <Fragment key={g.name}>
-                  {g.rows.map(({ s, t }) => (
+                  {g.rows.map(({ s, t, run }) => (
                     <tr key={s}>
                       <td>{s}</td><td className="txt">{ACCOUNT_OF[s]}</td><td className="num">{t.trades}{t.open ? <span className="pj-sub"> +{t.open} open</span> : null}</td>
-                      <td>{t.winRate == null ? '–' : t.winRate.toFixed(1)}</td><td className={toneOf(t.net)}>{signedRupees(t.net)}</td>
+                      <td>{t.winRate == null ? '–' : t.winRate.toFixed(1)}</td><td><NetCell net={t.trades ? t.net : null} run={run} /></td>
                       <td className="up">{signedRupees(t.avgWin)}</td><td className="down">{signedRupees(t.avgLoss)}</td><td>{inr(2)(t.charges)}</td>
                     </tr>
                   ))}
                   {g.rows.length > 1 && (
                     <tr className="pj-subtotal">
                       <td>{g.name === 'Option Sell' ? 'Selling book (₹3L) total' : `${g.name} total`}</td><td className="txt" /><td className="num">{g.t.trades}</td>
-                      <td>{g.t.winRate == null ? '–' : g.t.winRate.toFixed(1)}</td><td className={toneOf(g.t.net)}>{signedRupees(g.t.net)}</td>
+                      <td>{g.t.winRate == null ? '–' : g.t.winRate.toFixed(1)}</td><td><NetCell net={g.t.trades ? g.t.net : null} run={g.run} /></td>
                       <td className="up">{signedRupees(g.t.avgWin)}</td><td className="down">{signedRupees(g.t.avgLoss)}</td><td>{inr(2)(g.t.charges)}</td>
                     </tr>
                   )}
@@ -245,7 +257,18 @@ export default function PaperJournalApp() {
   );
 }
 
-function TradeTable({ rows }: { rows: JTrade[] }) {
+/** Booked net, plus the open trades' running P&L (before charges) when there are any. */
+function NetCell({ net, run }: { net: number | null; run: number | null }) {
+  if (net == null && run == null) return <span className="pj-sub">no trades yet</span>;
+  return (
+    <>
+      {net != null && <span className={toneOf(net)}>{signedRupees(net)}</span>}
+      {run != null && <span className={`pj-sub ${net != null ? 'pj-block' : ''}`}><span className={toneOf(run)}>{signedRupees(run)}</span> running</span>}
+    </>
+  );
+}
+
+function TradeTable({ rows, live, closed }: { rows: JTrade[]; live: Map<string, TodayRow>; closed: boolean }) {
   return (
     <div className="pj-scroll">
       <table className="t">
@@ -257,15 +280,28 @@ function TradeTable({ rows }: { rows: JTrade[] }) {
               <td className="txt">{idx(t.symbol)}</td><td className="txt" title={t.instrument ?? ''}><span className={`pj-side ${t.short ? 'sell' : 'buy'}`}>{t.short ? 'SOLD' : 'BOUGHT'}</span> {t.instrument ?? '–'}</td><td className="num">{t.qty}</td>
               <td>{t.entryDay && t.entryDay !== t.day ? <span className="pj-sub">{t.entryDay.slice(8, 10)}-{t.entryDay.slice(5, 7)} </span> : null}{t.entryTime ?? '–'}
                 <span className="pj-sub"> {t.short ? 'sold' : 'bought'}</span></td><td>{price(t.entryPrice)}</td>
-              <td>{t.status === 'open' ? '–' : <>{t.exitTime ?? '–'}<span className="pj-sub"> {t.short ? 'bought back' : 'sold'}</span></>}</td>
-              <td>{t.status === 'open' ? <Pill tone="warn">Open</Pill> : price(t.exitPrice)}</td>
-              <td>{heldFor(t) || '–'}</td>
-              <td className="txt">{t.exitReason ?? '–'}</td><td>{t.charges == null ? '–' : inr(2)(t.charges)}</td>
-              <td className={toneOf(t.netPnl)}>{signedRupees(t.netPnl)}</td>
+              <td>{t.status === 'open' ? '' : <>{t.exitTime ?? '–'}<span className="pj-sub"> {t.short ? 'bought back' : 'sold'}</span></>}</td>
+              <td>{t.status === 'open' ? <OpenNow r={live.get(t.id)} closed={closed} /> : price(t.exitPrice)}</td>
+              <td>{t.status === 'open' ? <span className="pj-sub">held since {t.entryDay && t.entryDay !== t.day ? `${t.entryDay.slice(8, 10)}-${t.entryDay.slice(5, 7)} ` : ''}{t.entryTime?.slice(0, 5) ?? ''}</span> : heldFor(t) || '–'}</td>
+              <td className="txt">{t.status === 'open' ? <span className="pj-sub">still open</span> : t.exitReason ?? '–'}</td>
+              <td>{t.charges == null ? <span className="pj-sub">{t.status === 'open' ? 'on exit' : '–'}</span> : inr(2)(t.charges)}</td>
+              <td>{t.status === 'open' && live.get(t.id)?.pnl != null
+                ? <><span className={toneOf(live.get(t.id)?.pnl)}>{signedRupees(live.get(t.id)?.pnl)}</span><span className="pj-sub pj-block">running</span></>
+                : <span className={toneOf(t.netPnl)}>{signedRupees(t.netPnl)}</span>}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** An open trade's exit cell: "Open" and its price now (or at the close). */
+function OpenNow({ r, closed }: { r: TodayRow | undefined; closed: boolean }) {
+  return (
+    <>
+      <Pill tone="warn">Open</Pill>
+      {r?.price != null && <span className="pj-sub pj-block">now {price(r.price)}{r.priceAt ? ` · as of ${r.priceAt}` : closed ? ' · at close' : ''}</span>}
+    </>
   );
 }

@@ -13,3 +13,4 @@ backend/data/
 # Auto paper trading: local overrides and the MegaBull check output (keys live in ~/TradingHubKeys, never here)
 backend/autopaper.local.json
 backend/megabull_check.txt
+*.tsbuildinfo

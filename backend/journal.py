@@ -178,14 +178,20 @@ class Journal:
         return sorted((renamed(o) for o in rows), key=lambda o: (o.get("time") or "", o.get("side") != "BUY"))
 
     def trades(self, from_day, to_day):
+        """Trade rows of the days in range. A selling leg held over days is saved again on each day it changes, so
+        only its latest row counts (owner 29-Oct-2026: a bought-back leg must not stay "open" on its first day), and a
+        leg sold before from_day that is still open is added, so Today and Positions keep showing it."""
         out = [t for t in self.imported() if from_day <= t["day"] <= to_day]
-        d = Date.fromisoformat(from_day)
-        end = Date.fromisoformat(to_day)
-        have = self.days()
-        while d <= end:
-            if d.isoformat() in have:
-                out += list(self._read(d.isoformat())["trades"].values())
-            d += timedelta(days=1)
+        have = sorted(self.days())
+        latest = {}
+        for day in have:
+            if day > to_day:
+                break
+            for t in self._read(day)["trades"].values():
+                latest[t["id"]] = t
+        for t in latest.values():
+            if from_day <= t["day"] <= to_day or (t.get("short") and t["status"] == "open"):
+                out.append(t)
         return [renamed(t) for t in out]
 
 

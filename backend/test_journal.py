@@ -81,3 +81,20 @@ def test_rows_saved_as_dharani_read_back_as_power_breakout():
     old = {"id": "x", "strategy": "Dharani Rules", "account": "App · Dharani"}
     assert journal.renamed(old) == {"id": "x", "strategy": "Power Breakout", "account": "App · Power Breakout"}
     assert journal.renamed({"strategy": "Manual", "account": "App · Manual"}) == {"strategy": "Manual", "account": "App · Manual"}
+
+
+def test_a_selling_leg_held_over_days_shows_once_and_stays_on_today_while_open():
+    # owner 29-Oct-2026: the 2-month strangle legs must stay visible after their first day and not stay "open" there
+    from datetime import datetime
+    j = jr.Journal(tempfile.mkdtemp())
+    leg = {"id": "SL1", "account": "selling", "slot": "sellStrangle", "symbol": "NIFTY", "side": "CE", "short": True,
+           "instrument": {"name": "NIFTY 29 DEC 23400 CALL", "securityId": 62880}, "qty": 65, "entryDay": "2026-10-29",
+           "entryTime": "10:00:09", "entryPrice": 340.4, "status": "open", "entryOrderId": "SL1-S"}
+    j.record(leg, "entry", datetime(2026, 10, 29, 10, 0, 9))
+    today = j.trades("2026-10-30", "2026-10-30")
+    assert [(t["id"], t["status"], t["day"]) for t in today] == [("SL1", "open", "2026-10-29")]  # still held: shown
+    closed = {**leg, "status": "closed", "exitTime": "11:00:00", "exitPrice": 100.0, "exitReason": "Roll", "netPnl": 15500.0}
+    j.record(closed, "exit Roll", datetime(2026, 11, 2, 11, 0))
+    rows = j.trades("2026-10-01", "2026-11-30")
+    assert [(t["id"], t["status"], t["day"]) for t in rows] == [("SL1", "closed", "2026-11-02")]  # one row, booked on exit day
+    assert j.trades("2026-11-03", "2026-11-03") == []

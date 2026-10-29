@@ -9,7 +9,7 @@ import { inr } from '../../shared/grid';
 import { Alert, Pill, Segmented, Status } from '../../shared/ui';
 import { minutesToExit } from '../dashboard/logic/signals';
 import { longDate, signedRupees, toneOf } from '../paper-trade/format';
-import { useMomentum, useSelling } from '../strategies/hooks';
+import { useMomentum } from '../strategies/hooks';
 import { MomentumCards } from '../strategies/MomentumParts';
 import { StrategyCards } from '../strategies/StrategyCards';
 import { capitalByBook, forIndex, summarize } from './logic/today';
@@ -37,7 +37,7 @@ function useNow(ms = 1000) {
 export default function TodayApp() {
   const data = useToday();
   const { paper, sigN, sigB, auto, rows } = data;
-  const selling = useSelling();
+  const { selling } = data;
   const momentum = useMomentum();
   const now = useNow();
   const [index, setIndex] = useState<Index>('both');

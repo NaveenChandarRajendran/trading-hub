@@ -98,7 +98,7 @@ export function StrategyCards({ sections, rows, signals, selling, linkToPage = f
                     onClick={() => setOpen(isOpen ? null : info.who)}>
                     <span className="sg-card-top">
                       <span className={`td-tag ${tagOf(info.who)}`}>{info.name}</span>
-                      <Money v={pnl} />
+                      {pnl != null && <Money v={pnl} />}
                     </span>
                     <span className={`sg-chip ${st.kind}`}>{st.title}</span>
                     {st.lines.map((l) => <span key={l} className="sg-line">{l}</span>)}

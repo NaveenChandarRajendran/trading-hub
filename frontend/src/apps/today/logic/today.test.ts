@@ -80,6 +80,16 @@ describe('today', () => {
     const s = summarize([r]);
     expect(s.byWho.find((w) => w.who === 'Expiry Straddle (sell)')?.status).toBe('in-trade');
   });
+  it('after the close a sold leg shows the selling book\'s last saved price and its time', () => {
+    const leg: JTrade = { ...base, id: 'SL1', source: 'auto', strategy: '2-month Strangle (sell)', account: 'App · Selling', short: true,
+      instrument: 'NIFTY 29 DEC 23400 CALL', side: 'CE', entryPrice: 340.4, securityId: 62880, day: '2026-10-29' };
+    const sold = [{ id: 'SL1', ltp: 318, priceAt: '2026-10-29T15:29:58+05:30' }] as unknown as Parameters<typeof buildRows>[5];
+    const [r] = buildRows([leg], [], [], {}, {}, sold);
+    expect([r.price, r.priceAt, r.pnl, r.pnlPct]).toEqual([318, '15:29', 1456, 6.58]);
+    const [live] = buildRows([leg], [], [], { 62880: 300 }, {}, sold); // a live tick wins, no time shown
+    expect([live.price, live.priceAt]).toEqual([300, null]);
+  });
+
   it('leaves rules on hold (watch only) off the board unless they traded today', () => {
     const s = summarize([], ['Trend Rules', '4 Pillar Rules']);
     expect(s.byWho.map((w) => w.who)).not.toContain('Trend Rules');

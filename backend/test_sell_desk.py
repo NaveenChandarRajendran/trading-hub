@@ -1,6 +1,7 @@
 """Selling book (sell_rules.py + sell_desk.py): the three option SELLING rules on fake prices. PAPER ONLY."""
 from datetime import datetime, timedelta
 
+import os
 import pytest
 
 import sell_rules as R
@@ -247,3 +248,25 @@ def test_strangle_closes_on_its_expiry_day(make):
     desk.on_tick(5, bk(1.0), paper.now)
     desk.step(paper.now)
     assert desk.state["legs"]["x"]["exitReason"] == "Expiry day 15:14"
+
+
+def test_after_the_close_or_a_restart_the_page_shows_the_last_price(make, tmp_path):
+    # owner 29-Oct-2026: open strangle legs showed "–" once the feed stopped
+    exp = "2026-12-29"
+    one_min = minutes(WED, [22700.0] * 21, 22700.0)
+    cfg = {"sellStraddle": {"enabled": False}, "sellCalmCall": {"enabled": False}}
+    desk, paper, _ev = make(at(WED, 10, 0, 1), ["2026-11-10", exp], one_min, cfg)
+    ce, pe = sid("CE", exp, 23400), sid("PE", exp, 22000)
+    desk.on_tick(ce, bk(200.0), paper.now)
+    desk.on_tick(pe, bk(250.0), paper.now)
+    desk.step(paper.now)
+    desk.on_tick(ce, bk(180.0), at(WED, 15, 29, 50))
+    desk.on_tick(pe, bk(240.0), at(WED, 15, 29, 50))
+    live = {lg["side"]: lg for lg in desk.status()["open"]}
+    assert live["CE"]["ltp"] == 180.0 and live["CE"]["priceAt"] is None  # live feed: no time shown
+    desk._save()
+    again = SellDesk(cfg, paper, FakeCandles(one_min), data_dir=os.path.dirname(os.path.dirname(os.path.dirname(desk.path))), start=False)
+    shown = {lg["side"]: lg for lg in again.status()["open"]}
+    assert shown["CE"]["ltp"] == 180.0 and shown["CE"]["priceAt"].startswith("2026-11-04T15:29")
+    assert shown["CE"]["pnl"] == round((shown["CE"]["entryPrice"] - 180.0) * 65, 2)
+    assert again.cycle_pnl() is None and again.status()["cycle"]["pnl"] is not None  # the Rs 60k check never uses old prices

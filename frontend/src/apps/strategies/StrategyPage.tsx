@@ -17,7 +17,6 @@ import { capitalByBook, forIndex, summarize } from '../today/logic/today';
 import { ClosedTable, Money, OpenTable } from '../today/TradeTables';
 import { useToday } from '../today/useToday';
 import { inSection, sectionOf, type SectionId } from './catalog';
-import { useSelling } from './hooks';
 import { StrategyCards } from './StrategyCards';
 import '../today/today.css';
 import '../dashboard/dashboard.css';
@@ -73,7 +72,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
   const list = inSection(section);
   const data = useToday();
   const { sigN, sigB, auto, rows } = data;
-  const selling = useSelling();
+  const { selling } = data;
   const now = useMinute();
   const toggles = useToggles();
   const indices = useMemo(() => [...new Set(list.flatMap((s) => s.indices))], [list]);

@@ -3,6 +3,7 @@
 // account (MegaBull rules, the app's rule accounts, Manual) in one list with live P&L. Pure helpers, no UI.
 // Sources: GET /api/journal/trades for today (all accounts, open and closed), the signals state's auto trades (instrument
 // ids and the backend's last price of rule trades), the manual paper positions and the live feed's ticks.
+import type { SellLeg } from '../../dashboard/logic/board';
 import type { AutoTrade } from '../../dashboard/logic/signals';
 import type { Position } from '../../paper-trade/logic/api';
 import type { JTrade } from '../../paper-journal/logic/journal';
@@ -53,6 +54,7 @@ export interface TodayRow {
   exitReason: string | null;
   /** live price while open, the exit price once closed */
   price: number | null;
+  priceAt: string | null; // 'HH:MM' when price is the last saved one (market closed), else null
   pnl: number | null;
   pnlPct: number | null;
   afterCharges: boolean; // closed trades: net of charges; open trades: before charges
@@ -78,7 +80,9 @@ export function manualSecurityId(id: string): number | null {
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Position[], ticks: Record<number, number>,
-  spots: Record<string, number | null | undefined> = {}): TodayRow[] {
+  spots: Record<string, number | null | undefined> = {}, sold: SellLeg[] = []): TodayRow[] {
+  // the selling book's own price for its legs: live, or the last saved one after the close (owner 29-Oct-2026)
+  const soldById = new Map(sold.map((l) => [l.id, l]));
   const autoById = new Map(auto.map((t) => [t.id, t]));
   const posById = new Map(positions.map((p) => [p.security_id, p]));
   // a hand-bought position's stop + target (dashboard button) is an auto trade of the manual account on that option
@@ -95,10 +99,14 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
     let price: number | null = t.exitPrice;
     let pnl: number | null = t.netPnl ?? t.grossPnl;
     let qty = t.qty;
+    let priceAt: string | null = null;
     if (open) {
       const pos = sid != null ? posById.get(sid) : undefined;
       if (manual && pos && pos.open_qty > 0) qty = pos.open_qty;
-      price = (sid != null ? ticks[sid] : undefined) ?? a?.ltp ?? pos?.ltp ?? null;
+      const live = sid != null ? ticks[sid] : undefined;
+      const leg = short ? soldById.get(t.id) : undefined;
+      price = live ?? a?.ltp ?? pos?.ltp ?? leg?.ltp ?? null;
+      if (live == null && leg?.ltp != null && leg.priceAt) priceAt = leg.priceAt.slice(11, 16);
       pnl = price != null && t.entryPrice != null ? r2(sign * (price - t.entryPrice) * qty) : a?.pnl ?? null;
     }
     const pnlPct = price != null && t.entryPrice ? r2(sign * (price / t.entryPrice - 1) * 100) : null;
@@ -108,7 +116,7 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
       entryTime: t.entryTime, entryPrice: t.entryPrice, open, exitTime: t.exitTime, exitPrice: t.exitPrice,
       // a hand-bought option closed by its stop / target: say which (the journal only knows "Manual")
       exitReason: (br?.status === 'closed' && br.exitReason) || t.exitReason,
-      price, pnl, pnlPct, afterCharges: !open && t.netPnl != null, securityId: sid,
+      price, priceAt, pnl, pnlPct, afterCharges: !open && t.netPnl != null, securityId: sid,
       stop: t.stop ?? a?.stop ?? br?.stop ?? null, target: t.target ?? a?.target ?? br?.target ?? null,
       indexStop: a?.indexStop ?? null, indexTarget: a?.indexTarget ?? null,
       capital: !short && t.entryPrice != null ? r2(t.entryPrice * qty) : null, marginShared: 0,

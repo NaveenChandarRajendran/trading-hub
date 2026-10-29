@@ -111,6 +111,7 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
 export interface SellLeg {
   id: string; slot: string; rule?: string; side: 'CE' | 'PE'; qty: number; entryPrice: number; netPnl?: number | null;
   instrument: { name: string; securityId?: number }; ltp?: number | null; pnl?: number | null;
+  priceAt?: string | null; // set when ltp is the last saved price (after the close / a restart), IST ISO time
   stop?: number | null; entryDay?: string; entryTime?: string; exitTime?: string | null; exitPrice?: number | null;
   exitReason?: string | null; expiry?: string; status?: 'open' | 'closed';
 }

@@ -9,6 +9,7 @@ import { fetchTrades, type JTrade } from '../paper-journal/logic/journal';
 import { api as paperApi } from '../paper-trade/logic/api';
 import { keyOf } from '../paper-trade/logic/feed';
 import { usePaper } from '../paper-trade/usePaper';
+import { useSelling } from '../strategies/hooks';
 import { buildRows, type TodayRow } from './logic/today';
 
 const REFRESH_MS = 10000;
@@ -17,6 +18,7 @@ export function useToday() {
   const paper = usePaper();
   const sigN = useSignals('NIFTY');
   const sigB = useSignals('BANKNIFTY');
+  const selling = useSelling();
   const [trades, setTrades] = useState<JTrade[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -53,8 +55,8 @@ export function useToday() {
     return m;
   }, [paper.ticks]);
   const rows = useMemo(
-    () => buildRows(trades ?? [], auto?.today ?? [], [...paper.positions.values()], ticks, { NIFTY: spotN, BANKNIFTY: spotB }),
-    [trades, auto, paper.positions, ticks, spotN, spotB],
+    () => buildRows(trades ?? [], auto?.today ?? [], [...paper.positions.values()], ticks, { NIFTY: spotN, BANKNIFTY: spotB }, selling.data?.open ?? []),
+    [trades, auto, paper.positions, ticks, spotN, spotB, selling.data],
   );
 
   // live prices for every open trade
@@ -94,7 +96,7 @@ export function useToday() {
 
   const marketOpen = paper.meta?.marketOpen ?? sigN.data?.meta.marketOpen ?? false;
   return {
-    paper, sigN, sigB, auto, rows, trades, error, busy, notice, today, marketOpen, act, exitRow, placeBracket,
+    paper, sigN, sigB, auto, selling, rows, trades, error, busy, notice, today, marketOpen, act, exitRow, placeBracket,
     loading: trades == null && error == null,
     context: { NIFTY: ctx('NIFTY'), BANKNIFTY: ctx('BANKNIFTY') },
     bracketDefaults: { stopPct: 10, targetPct: 20 }, // owner 29-Oct-2026: option buying stop −10 % / target +20 %
