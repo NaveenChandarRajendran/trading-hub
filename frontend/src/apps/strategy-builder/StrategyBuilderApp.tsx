@@ -1,4 +1,4 @@
-// Strategy Builder: design multi-leg NIFTY / BANKNIFTY option positions on live chain prices (PAPER ONLY: nothing here
+// Strategy Builder: design multi-leg NIFTY / BANKNIFTY / SENSEX option positions on live chain prices (PAPER ONLY: nothing here
 // places an order). Up to 6 tabs keep designs open in this browser; Save stores one to your account as a draft (Drafts
 // menu: open, rename, delete). Analyze positions loads a strategy's open positions. Paper trade places the design
 // into an options strategy (all-or-nothing, PAPER ONLY; ADR 0010) and Paper positions below shows / exits what is held. Legs are picked on the option chain
@@ -100,7 +100,7 @@ export default function StrategyBuilderApp() {
   const keys = [
     ...tab.legs.map((l) => market.securityOf(l.expiry, l.strike, l.type)),
     ...near.flatMap((r) => [market.securityOf(chainEx, r.strike, 'CE'), market.securityOf(chainEx, r.strike, 'PE')]),
-  ].filter((x): x is number => x != null).map((id) => keyOf('NSE_FNO', id) as InstrumentKey);
+  ].filter((x): x is number => x != null).map((id) => keyOf(market.segment, id) as InstrumentKey);
   useEffect(() => market.watch(keys), [keys.join(','), market.watch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const priced = priceLegs(tab.legs, (l) => market.quoteOf(l.expiry, l.strike, l.type), market.lotSizeOf);

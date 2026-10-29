@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import os
+import logging
 import threading
 import time
 
@@ -75,24 +76,40 @@ class SecurityIds:
 
 
 # ---------------------------------------------------------------- index options (paper trading)
-OPTION_UNDERLYINGS = ("NIFTY", "BANKNIFTY")
+log = logging.getLogger("instruments")
+
+OPTION_UNDERLYINGS = ("NIFTY", "BANKNIFTY", "SENSEX")
+EXCHANGE_OF = {"NIFTY": "NSE", "BANKNIFTY": "NSE", "SENSEX": "BSE"}  # where each index's options trade
+SEGMENT_OF_EXCHANGE = {"NSE": "NSE_FNO", "BSE": "BSE_FNO"}  # Dhan exchange segment of those options
+CACHE_VERSION = 2  # 2: SENSEX (BSE) options and a segment per option; an older cache is downloaded again
+
+
+def segment_of(inst):
+    """Dhan exchange segment of an option (rows cached before SENSEX have none: NSE)."""
+    return (inst or {}).get("segment") or "NSE_FNO"
 
 
 def parse_index_options(text, underlyings=OPTION_UNDERLYINGS):
-    """NSE index options from Dhan's instrument CSV: {"35000": {"securityId": 35000, "symbol": "BANKNIFTY",
-    "expiry": "2026-12-29", "strike": 69400.0, "optionType": "CE", "lotSize": 30, "tickSize": 0.05,
-    "name": "BANKNIFTY 29 DEC 69400 CALL"}}. Lot sizes always come from this file, never from code."""
-    out = {}
-    for row in csv.DictReader(io.StringIO(text)):
-        if row.get("SEM_EXM_EXCH_ID") != "NSE" or row.get("SEM_INSTRUMENT_NAME") != "OPTIDX":
+    """Index options from Dhan's instrument CSV (NIFTY / BANKNIFTY on NSE, SENSEX on BSE): {"35000": {"securityId": 35000,
+    "symbol": "BANKNIFTY", "segment": "NSE_FNO", "expiry": "2026-12-29", "strike": 69400.0, "optionType": "CE",
+    "lotSize": 30, "tickSize": 0.05, "name": "BANKNIFTY 29 DEC 69400 CALL"}}. Lot sizes always come from this file,
+    never from code. Security IDs are per exchange; everything here keys options by ID alone, so a BSE option whose ID
+    is also an NSE option is left out (logged) rather than mixed up with it."""
+    out, clashes = {}, 0
+    for row in sorted(csv.DictReader(io.StringIO(text)), key=lambda r: r.get("SEM_EXM_EXCH_ID") != "NSE"):  # NSE first
+        if row.get("SEM_INSTRUMENT_NAME") != "OPTIDX":
             continue
         symbol = (row.get("SEM_TRADING_SYMBOL") or "").split("-")[0]
-        if symbol not in underlyings:
+        if symbol not in underlyings or row.get("SEM_EXM_EXCH_ID") != EXCHANGE_OF.get(symbol):
             continue
         try:
             sid = int(row["SEM_SMST_SECURITY_ID"])
+            if str(sid) in out:
+                clashes += 1
+                continue
             out[str(sid)] = {
-                "securityId": sid, "symbol": symbol, "expiry": row["SEM_EXPIRY_DATE"][:10],
+                "securityId": sid, "symbol": symbol, "segment": SEGMENT_OF_EXCHANGE[EXCHANGE_OF[symbol]],
+                "expiry": row["SEM_EXPIRY_DATE"][:10],
                 "strike": float(row["SEM_STRIKE_PRICE"]), "optionType": row["SEM_OPTION_TYPE"],
                 "lotSize": int(float(row["SEM_LOT_UNITS"])),
                 "tickSize": round(float(row.get("SEM_TICK_SIZE") or 5) / 100, 2),  # the CSV gives paise
@@ -100,10 +117,12 @@ def parse_index_options(text, underlyings=OPTION_UNDERLYINGS):
             }
         except (KeyError, ValueError):
             continue
+    if clashes:
+        log.warning("instrument list: %d option IDs appear on both NSE and BSE; the BSE ones were left out", clashes)
     return out
 
 
-def parse_index_futures(text, underlyings=OPTION_UNDERLYINGS):
+def parse_index_futures(text, underlyings=("NIFTY", "BANKNIFTY")):
     """NSE index futures from the same CSV: [{"securityId": 52162, "symbol": "NIFTY", "expiry": "2026-10-27",
     "lotSize": 65, "name": "NIFTY OCT FUT"}] (the Dashboard shows their volume, an index has none)."""
     out = []
@@ -138,7 +157,7 @@ class OptionInstruments:
         try:
             with open(cache_path, encoding="utf-8") as f:
                 d = json.load(f)
-            self._rows, self._day = d["rows"], d["day"]
+            self._rows, self._day = d["rows"], d["day"] if d.get("version") == CACHE_VERSION else ""
             self._futures = d.get("futures", [])  # caches written before futures were kept have none
         except (OSError, ValueError, KeyError):
             pass
@@ -152,7 +171,7 @@ class OptionInstruments:
         self._rows, self._day, self._futures = rows, self._today(), parse_index_futures(r.text)
         os.makedirs(os.path.dirname(self.cache_path) or ".", exist_ok=True)
         with open(self.cache_path, "w", encoding="utf-8") as f:
-            json.dump({"day": self._day, "rows": rows, "futures": self._futures}, f)
+            json.dump({"version": CACHE_VERSION, "day": self._day, "rows": rows, "futures": self._futures}, f)
 
     def _fresh(self, unknown_key=None):
         """Downloads when there is no cache, the cache is from an earlier IST day, or an unknown ID was asked for
@@ -191,7 +210,7 @@ class OptionInstruments:
         return {f["securityId"] for f in self._futures}
 
     def get(self, security_id):
-        """Option details, or None if the ID is not a NIFTY / BANKNIFTY option."""
+        """Option details, or None if the ID is not a NIFTY / BANKNIFTY / SENSEX option."""
         key = str(int(security_id))
         with self._lock:
             self._fresh(key)

@@ -62,6 +62,20 @@ what a strategy already holds.
    - Analyze positions: `GET /api/builder/positions?strategy=` (your own manual strategies) -> a tab with the open
      positions at their average buy, prices locked (one index per tab; others counted). The algo is on its own page.
 
+## SENSEX (29-Oct-2026, branch `feature/sensex`)
+Naveen: SENSEX in the Strategy Builder only (not Paper Trading / Power Scalper / Trade Window).
+- SENSEX options trade on **BSE** (Dhan segment `BSE_FNO`), weekly expiry Thursday, 1 lot = 20 (from Dhan's
+  instrument list); index `IDX_I` 51 for the spot, chain, candles and the 15:30 settlement spot.
+- `instruments.py` loads BSE SENSEX `OPTIDX` rows with `"segment": "BSE_FNO"` (NSE rows `NSE_FNO`; cache version 2, an
+  older cache is downloaded again). Options are keyed by security ID alone, so a BSE ID that is also an NSE option is
+  left out and logged (none on 29-Oct: 3,208 SENSEX IDs, no overlap).
+- `/api/paper/chain` returns `segment` and that exchange's `chargeRates`; the page subscribes `BSE_FNO` keys
+  (Full mode, depth). Dhan's margin calculator gets each leg's `exchangeSegment`.
+- Charges: as NSE except the exchange transaction charge, BSE 0.0325 % of premium (`paper_charges.BSE_TXN_RATE`;
+  re-check against a Dhan contract note). Holidays: the NSE list.
+- The manual paper engine (Paper Trading, Power Scalper, Trade Window) refuses SENSEX IDs.
+- Checked live on 29-Oct after hours: expiries, the chain via index 51, instruments `BSE_FNO` lot 20, margin answered.
+
 ## Open questions
 - Iron Condor A (95 %) / B (90 %): short-strike rule (% from spot for CE / PE), rounding direction, wing width, expiry.
   The 3 Nov IC (21950 / 23800) does not match +4.31 % / −3.73 % of 28-Oct spot: need the spot used or the written rule.

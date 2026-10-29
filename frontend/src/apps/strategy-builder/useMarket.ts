@@ -10,7 +10,7 @@ import { BUILDER_API, PRICES_WS, QUOTES_REFRESH_MS, STALE_AFTER_MS } from './con
 import type { OptionType } from './logic/blackScholes';
 import { nearestStrike, type Quote } from './logic/legs';
 
-type Chain = PaperChain & { chargeRates?: ChargeRates };
+type Chain = PaperChain & { chargeRates?: ChargeRates; segment?: string }; // segment: NSE_FNO, or BSE_FNO for SENSEX
 
 export interface Market {
   expiries: string[];
@@ -22,6 +22,8 @@ export interface Market {
   /** ATM implied volatility (%) of an expiry: the mean of the CE and PE IV at the strike nearest spot. */
   atmIvOf: (expiry: string) => number | null;
   chargeRates: ChargeRates | null;
+  /** The options' Dhan exchange segment for the live feed: NSE_FNO, or BSE_FNO for SENSEX. */
+  segment: string;
   spot: number | null;
   spotChange: number | null; // % vs the previous close
   marketOpen: boolean | null;
@@ -119,6 +121,7 @@ export function useMarket(symbol: string): Market {
   }, []);
 
   const anyChain = chains.values().next().value as Chain | undefined;
+  const segment = anyChain?.segment ?? 'NSE_FNO';
   const spotKey = anyChain ? keyOf(anyChain.spot.segment, anyChain.spot.securityId) : null;
   const watch = useCallback((keys: InstrumentKey[]) => {
     const all = [...new Set([...(spotKey ? [spotKey] : []), ...keys])];
@@ -138,7 +141,7 @@ export function useMarket(symbol: string): Market {
     const cached = caches.get(expiry)?.rows.find((r) => r.strike === strike);
     const c = type === 'CE' ? cached?.ce : cached?.pe;
     const id = securityOf(expiry, strike, type);
-    const t = id != null ? ticks.get(keyOf('NSE_FNO', id)) : undefined;
+    const t = id != null ? ticks.get(keyOf(segment, id)) : undefined;
     if (!c && !t) return null;
     return {
       ltp: t?.ltp ?? c?.last_price ?? null,
@@ -169,6 +172,7 @@ export function useMarket(symbol: string): Market {
     expiries,
     atmIvOf,
     chargeRates: anyChain?.chargeRates ?? null,
+    segment,
     chainOf: (ex) => chains.get(ex),
     strikesOf: (ex) => chains.get(ex)?.rows.map((r) => r.strike) ?? [],
     lotSizeOf: (ex) => chains.get(ex)?.lotSize ?? null,

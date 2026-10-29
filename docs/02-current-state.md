@@ -107,6 +107,10 @@ Chart-free 1Cliq-style order window, PAPER ONLY, buy only, same "Trading into" s
 carry SL / target points (OCO on fill) and market protection %; Cancel all; a day MTM limit per strategy
 (`backend/mtm_limit.py`: cancel + sell everything, no new buys that day). Needs a backend restart to go live.
 
+## SENSEX in the Strategy Builder — 29-Oct-2026 (`feature/sensex`)
+SENSEX (BSE) options in the Builder and its options paper trading (chain, margin, Paper trade, settlement, Portfolios);
+not in the other trading screens. Details in `docs/features/strategy-builder.md` → SENSEX.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills

@@ -41,6 +41,8 @@ from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
 from mtm_limit import breach, hit_text, loads, parse_limit
 from paper_charges import RATES as CHARGE_RATES
+from paper_charges import rates_for
+from instruments import segment_of
 from paper_engine import KEEP, OPEN_STATES, OrderError, PaperEngine
 from paper_levels import opening_order, order_snapshot, shifts_near
 from scalper_reports import day_rows, round_trips, summary_row, tiles
@@ -530,7 +532,7 @@ class PaperService:
             need |= keys
         add, drop = need - self._feed_subs, self._feed_subs - need
         for mode in (FULL, TICKER):
-            keys = [k for k in add if (k[0] == FNO) == (mode == FULL)]
+            keys = [k for k in add if k[0].endswith("_FNO") == (mode == FULL)]  # options (NSE / BSE): depth
             if keys:
                 self.feed.subscribe(keys, mode)
         if drop:
@@ -592,7 +594,7 @@ class PaperService:
     # ---------- commands (book = the strategy's Book; strategies.Strategies.tradable checked owner + kind) ----------
     def place_order(self, book, security_id, side, lots, order_type, price=None, trigger_price=None, source="manual"):
         inst = self._instrument(security_id)
-        if inst is None:
+        if inst is None or segment_of(inst) != FNO:  # SENSEX (BSE) options: Strategy Builder paper trading only
             raise LookupError(f"{security_id} is not a NIFTY / BANKNIFTY option in Dhan's instrument list")
         now = self.clock()
         with self.lock:
@@ -856,8 +858,10 @@ def register(app, svc, strategies):
             raise HTTPException(404, f"no {symbol} options for expiry {expiry}")
         slim = lambda leg: {"securityId": leg["securityId"], "name": leg["name"]} if leg else None  # noqa: E731
         lot = next((r[k]["lotSize"] for r in rows for k in ("ce", "pe") if r[k]), None)
+        segment = next((segment_of(r[k]) for r in rows for k in ("ce", "pe") if r[k]), FNO)
         return {"meta": svc.meta(), "symbol": symbol, "expiry": expiry, "expiries": expiries, "lotSize": lot,
-                "chargeRates": CHARGE_RATES,  # the Strategy Builder estimates charges with the engine's own rates
+                "segment": segment,  # the options' Dhan exchange segment: NSE_FNO, or BSE_FNO for SENSEX
+                "chargeRates": rates_for(segment),  # the Strategy Builder estimates charges with the engine's own rates
                 "spot": {"segment": "IDX_I", "securityId": SPOT_IDS[symbol]},
                 "rows": [{"strike": r["strike"], "ce": slim(r["ce"]), "pe": slim(r["pe"])} for r in rows]}
 

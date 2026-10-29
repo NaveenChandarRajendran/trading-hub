@@ -57,3 +57,12 @@ def test_r2_rounds_half_up():
     assert r2(0.225) == 0.23
     assert r2(2.675) == 2.68             # round(2.675, 2) would give 2.67
     assert r2(-1.005) == -1.01
+
+
+def test_bse_sensex_options_differ_only_in_the_transaction_charge():
+    from paper_charges import BSE_TXN_RATE, RATES, rates_for
+    nse, bse = order_charges("SELL", 6000.0), order_charges("SELL", 6000.0, "BSE_FNO")
+    assert (nse.transaction, bse.transaction) == (2.1, 1.95)  # 0.03503 % vs 0.0325 % of the premium
+    assert (bse.brokerage, bse.stt, bse.sebi, bse.stamp) == (nse.brokerage, nse.stt, nse.sebi, nse.stamp)
+    assert bse.gst == round((20 + 1.95 + 0.01) * 0.18, 2)
+    assert rates_for("BSE_FNO") == {**RATES, "transaction": BSE_TXN_RATE} and rates_for() == RATES

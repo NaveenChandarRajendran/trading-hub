@@ -62,9 +62,13 @@ class FakeInstruments:
         return {"securityId": FUT, "symbol": "NIFTY", "expiry": "2026-10-27", "lotSize": 65, "name": "NIFTY OCT FUT"}
 
     def expiries(self, symbol, today=None):
-        return ["2026-10-27", "2026-11-03"] if symbol == "NIFTY" else ["2026-10-27"]
+        return {"NIFTY": ["2026-10-27", "2026-11-03"], "SENSEX": ["2026-10-29"]}.get(symbol, ["2026-10-27"])
 
     def chain(self, symbol, expiry):
+        if symbol == "SENSEX" and expiry == "2026-10-29":
+            sx = {"symbol": "SENSEX", "segment": "BSE_FNO", "expiry": expiry, "strike": 80000.0, "lotSize": 20, "tickSize": 0.05}
+            return [{"strike": 80000.0, "ce": {**sx, "securityId": 1100801, "optionType": "CE", "name": "SENSEX 29 OCT 80000 CALL"},
+                     "pe": {**sx, "securityId": 1100802, "optionType": "PE", "name": "SENSEX 29 OCT 80000 PUT"}}]
         if symbol != "NIFTY" or expiry != "2026-10-27":
             return []
         return [{"strike": 25100.0, "ce": INSTRUMENTS[CE], "pe": INSTRUMENTS[PE]}]
@@ -337,6 +341,15 @@ def test_chain_from_instrument_list(env):
                           "pe": {"securityId": PE, "name": "NIFTY 27 OCT 25100 PUT"}}]
     assert c.get("/api/paper/chain?symbol=NIFTY&expiry=2026-11-03").status_code == 404
     assert c.get("/api/paper/chain?symbol=FINNIFTY").status_code == 400
+    assert (r["segment"], r["chargeRates"]["transaction"]) == ("NSE_FNO", 0.0003503)
+
+
+def test_sensex_chain_is_on_bse(env):
+    """The Strategy Builder's SENSEX chain: BSE options (feed segment BSE_FNO), BSE transaction rate, index IDX_I 51."""
+    c, *_ = env
+    r = c.get("/api/paper/chain?symbol=SENSEX").json()
+    assert (r["expiry"], r["lotSize"], r["segment"]) == ("2026-10-29", 20, "BSE_FNO")
+    assert r["spot"] == {"segment": "IDX_I", "securityId": 51} and r["chargeRates"]["transaction"] == 0.000325
 
 
 

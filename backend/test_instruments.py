@@ -16,15 +16,39 @@ ROWS = [
     "NSE,D,52170,FUTIDX,0,NIFTY-Nov2026-FUT,65.0,NIFTY NOV FUT,2026-11-24 14:30:00,-0.01000,XX,10.0000,M,FUTIDX,,",
     "NSE,D,52175,FUTIDX,0,BANKNIFTY-Oct2026-FUT,30.0,BANKNIFTY OCT FUT,2026-10-27 14:30:00,-0.01000,XX,20.0000,M,FUTIDX,,",
     "NSE,D,52180,FUTIDX,0,FINNIFTY-Oct2026-FUT,65.0,FINNIFTY OCT FUT,2026-10-27 14:30:00,-0.01000,XX,10.0000,M,FUTIDX,,",
+    # BSE (29-Oct-2026): SENSEX options are kept (BSE_FNO), BANKEX left out; a made-up SENSEX row reusing an NSE ID
+    # (35009) is dropped by the clash guard, before or after the NSE row in the file
+    "BSE,D,1100742,OPTIDX,0,SENSEX-Nov2026-70800-PE,20.0,SENSEX 26 NOV 70800 PUT,2026-11-26 15:30:00,70800.00000,PE,5.0000,M,OPTIDX,,BSXOPT",
+    "BSE,D,1100897,OPTIDX,0,BANKEX-Nov2026-70400-CE,30.0,BANKEX 26 NOV 70400 CALL,2026-11-26 15:30:00,70400.00000,CE,5.0000,M,OPTIDX,,BKXOPT",
+    "BSE,D,35009,OPTIDX,0,SENSEX-Nov2026-70900-CE,20.0,SENSEX 26 NOV 70900 CALL,2026-11-26 15:30:00,70900.00000,CE,5.0000,M,OPTIDX,,BSXOPT",
 ]
 CSV = "\n".join([HEADER, *ROWS])
 
 
 def test_parse_index_options():
     r = parse_index_options(CSV)
-    assert set(r) == {"35000", "35008", "35009"}  # FINNIFTY and equities left out
-    assert r["35000"] == {"securityId": 35000, "symbol": "BANKNIFTY", "expiry": "2026-12-29", "strike": 69400.0,
-                          "optionType": "CE", "lotSize": 30, "tickSize": 0.05, "name": "BANKNIFTY 29 DEC 69400 CALL"}
+    assert set(r) == {"35000", "35008", "35009", "1100742"}  # FINNIFTY, BANKEX and equities left out
+    assert r["35000"] == {"securityId": 35000, "symbol": "BANKNIFTY", "segment": "NSE_FNO", "expiry": "2026-12-29",
+                          "strike": 69400.0, "optionType": "CE", "lotSize": 30, "tickSize": 0.05,
+                          "name": "BANKNIFTY 29 DEC 69400 CALL"}
+    assert r["1100742"] == {"securityId": 1100742, "symbol": "SENSEX", "segment": "BSE_FNO", "expiry": "2026-11-26",
+                            "strike": 70800.0, "optionType": "PE", "lotSize": 20, "tickSize": 0.05,
+                            "name": "SENSEX 26 NOV 70800 PUT"}
+    assert r["35009"]["symbol"] == "NIFTY"  # the clashing BSE row never replaces the NSE option
+
+
+def test_clash_guard_keeps_nse_wherever_the_bse_row_sits():
+    reordered = "\n".join([HEADER, ROWS[-1], *ROWS[:-1]])  # the clashing SENSEX row first
+    assert parse_index_options(reordered)["35009"]["symbol"] == "NIFTY"
+
+
+def test_a_cache_from_before_sensex_is_downloaded_again(tmp_path):
+    path = tmp_path / "opts.json"
+    path.write_text(json.dumps({"day": "2026-10-20", "rows": {"35000": {"securityId": 35000, "symbol": "BANKNIFTY"}}}))
+    s = FakeSession()
+    inst = OptionInstruments(str(path), session=s, today=lambda: "2026-10-20")  # same day, but no version 2
+    assert inst.get(1100742)["segment"] == "BSE_FNO" and s.calls == 1
+    assert json.loads(path.read_text())["version"] == 2
 
 
 class FakeSession:

@@ -113,8 +113,10 @@ def test_margin_from_dhan_cached_per_basket(env):
     a, _, _, _, client = env
     r = a.post("/api/builder/margin", json=MARGIN).json()
     assert r == {"total": 48210.5, "span": 15973.1, "exposure": 32237.4, "hedgeBenefit": 110000.0, "cached": False}
-    assert client.calls[0] == [{"securityId": 41001, "transactionType": "SELL", "quantity": 65, "price": 19.2},
-                               {"securityId": 41002, "transactionType": "BUY", "quantity": 65, "price": 8.85}]
+    assert client.calls[0] == [{"securityId": 41001, "transactionType": "SELL", "quantity": 65, "price": 19.2,
+                                "exchangeSegment": "NSE_FNO"},
+                               {"securityId": 41002, "transactionType": "BUY", "quantity": 65, "price": 8.85,
+                                "exchangeSegment": "NSE_FNO"}]  # 41001 / 41002 are not in the instrument list: NSE
     assert a.post("/api/builder/margin", json={"legs": MARGIN["legs"][::-1]}).json()["cached"] is True  # same basket
     assert len(client.calls) == 1
 

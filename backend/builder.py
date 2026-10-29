@@ -4,14 +4,14 @@ builder.py - Strategy Builder drafts: a named design (index, multiplier, up to 8
 
 Rules
 - Drafts are private: someone else's draft is "not found" (404), like one that doesn't exist.
-- name 1-60 characters; symbol NIFTY | BANKNIFTY; multiplier 1-50; at most 8 legs, each with side B | S, type CE | PE,
+- name 1-60 characters; symbol NIFTY | BANKNIFTY | SENSEX; multiplier 1-50; at most 8 legs, each with side B | S, type CE | PE,
   expiry YYYY-MM-DD, strike > 0, lots 1-100, include true | false and priceOverride null or >= 0 (null = live price).
 """
 import re
 
 from strategies import NotFound, Refused
 
-SYMBOLS = ("NIFTY", "BANKNIFTY")
+SYMBOLS = ("NIFTY", "BANKNIFTY", "SENSEX")
 NAME_MAX = 60
 MAX_LEGS = 8
 
@@ -66,7 +66,7 @@ class Drafts:
     def _symbol(v):
         v = str(v or "").upper()
         if v not in SYMBOLS:
-            raise Refused("Index must be NIFTY or BANKNIFTY.", 400)
+            raise Refused("Index must be NIFTY, BANKNIFTY or SENSEX.", 400)
         return v
 
     @staticmethod

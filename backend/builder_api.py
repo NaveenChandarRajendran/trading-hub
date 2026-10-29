@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from builder import Drafts, public_draft
 from dhan_client import DhanError, TokenExpired
+from instruments import segment_of
 from paper_api import resolve
 from strategies import NotFound, Refused
 
@@ -79,6 +80,13 @@ def register(app, drafts: Drafts, paper, strategies, margin_multi=None, clock=ti
         run(drafts.delete, request.state.user, did)
         return {"ok": True}
 
+    def segment(security_id):
+        """NSE_FNO / BSE_FNO (SENSEX) from Dhan's instrument list; NSE_FNO when unknown."""
+        try:
+            return segment_of(paper.instruments.get(security_id)) if paper is not None else "NSE_FNO"
+        except Exception:  # the instrument list is unreachable: Dhan answers for NSE as before
+            return "NSE_FNO"
+
     @app.post("/api/builder/margin")
     def margin(body: MarginBody):
         legs = body.legs
@@ -94,7 +102,7 @@ def register(app, drafts: Drafts, paper, strategies, margin_multi=None, clock=ti
             if hit and clock() - hit[0] < MARGIN_TTL_SECONDS:
                 return {**hit[1], "cached": True}
         scripts = [{"securityId": l.securityId, "transactionType": "BUY" if l.side == "B" else "SELL",
-                    "quantity": l.qty, "price": l.price} for l in legs]
+                    "quantity": l.qty, "price": l.price, "exchangeSegment": segment(l.securityId)} for l in legs]
         try:
             m = margin_multi(scripts)
         except TokenExpired as e:

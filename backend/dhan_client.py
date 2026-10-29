@@ -12,8 +12,8 @@ import requests
 
 BASE = "https://api.dhan.co/v2"
 SEGMENT = "IDX_I"
-SCRIP = {"NIFTY": 13, "BANKNIFTY": 25}
-STRIKE_STEP = {"NIFTY": 50, "BANKNIFTY": 100}
+SCRIP = {"NIFTY": 13, "BANKNIFTY": 25, "SENSEX": 51}  # IDX_I security IDs (SENSEX: BSE index, options on BSE_FNO)
+STRIKE_STEP = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100}
 MIN_GAP_SECONDS = 3.1
 QUOTE_GAP_SECONDS = 1.1
 HISTORY_GAP_SECONDS = 0.25  # data API: about 4 requests / second
@@ -132,11 +132,12 @@ class DhanClient:
 
     def margin_multi(self, scripts):
         """Basket margin for orders that are not placed (Dhan /margincalculator/multi; a calculator, nothing is ordered).
-        scripts: [{securityId, transactionType BUY|SELL, quantity (units), price}], NSE_FNO, MARGIN product.
+        scripts: [{securityId, transactionType BUY|SELL, quantity (units), price, exchangeSegment? (NSE_FNO default,
+        BSE_FNO for SENSEX)}], MARGIN product.
         Returns {total, span, exposure, hedgeBenefit} (see parse_margin). Field names checked live on 28-Oct-2026: the
         body needs dhanClientId and scripList (as in Dhan's cURL example, not its field table)."""
         body = {"dhanClientId": self.client_id, "includePosition": False, "includeOrders": False, "scripList": [
-            {"exchangeSegment": "NSE_FNO", "transactionType": s["transactionType"], "quantity": int(s["quantity"]),
+            {"exchangeSegment": s.get("exchangeSegment") or "NSE_FNO", "transactionType": s["transactionType"], "quantity": int(s["quantity"]),
              "productType": "MARGIN", "securityId": str(s["securityId"]), "price": float(s["price"]), "triggerPrice": 0}
             for s in scripts]}
         return parse_margin(self._post("/margincalculator/multi", body, gap=MARGIN_GAP_SECONDS))

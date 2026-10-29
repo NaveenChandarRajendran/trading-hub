@@ -23,11 +23,13 @@ from dhan_feed import to_book
 from holidays import NSE_HOLIDAYS
 from options_engine import BUY, SELL, LegOrder, OptionsEngine, OrderError
 from options_report import report as build_report
+from instruments import segment_of
 from store import IST
 
 log = logging.getLogger("options")
 
 FNO, IDX = "NSE_FNO", "IDX_I"
+OPTION_SEGMENTS = ("NSE_FNO", "BSE_FNO")  # NIFTY / BANKNIFTY on NSE, SENSEX on BSE
 SETTLE_AT = time(15, 30)
 SETTLE_CHECK_SECONDS = 20
 SYMBOL_OF_SPOT = {v: k for k, v in SPOT_IDS.items()}
@@ -103,7 +105,7 @@ class OptionsService:
             if local.time() <= SETTLE_AT:
                 self.close_spot[(SYMBOL_OF_SPOT[key[1]], local.date().isoformat())] = float(pkt["ltp"])
             return
-        if key[0] != FNO or pkt["kind"] != "full":
+        if key[0] not in OPTION_SEGMENTS or pkt["kind"] != "full":
             return
         book = to_book(pkt)
         with self.lock:
@@ -115,7 +117,7 @@ class OptionsService:
         keys = set()
         for b in self.books.values():
             for p in b.engine.open_positions():
-                keys.add((FNO, p.security_id))
+                keys.add((p.segment, p.security_id))
                 if p.symbol in SPOT_IDS:
                     keys.add((IDX, SPOT_IDS[p.symbol]))
         self.paper.set_feed_keys("options", keys)
@@ -133,7 +135,9 @@ class OptionsService:
             pos = engine.positions.get(sid)
             book = engine.books.get(sid)
             price = book.ltp if book else (pos.avg if pos else 0.0)
-            scripts.append({"securityId": sid, "transactionType": BUY if q > 0 else SELL, "quantity": abs(q), "price": price})
+            seg = pos.segment if pos else segment_of(self.instruments.get(sid))
+            scripts.append({"securityId": sid, "transactionType": BUY if q > 0 else SELL, "quantity": abs(q), "price": price,
+                            "exchangeSegment": seg})
         if not scripts:
             return 0.0, ""
         if self.margin_multi is None:
@@ -153,10 +157,10 @@ class OptionsService:
         for leg in legs:
             inst = self.instruments.get(int(leg["securityId"]))
             if inst is None:
-                raise LookupError(f"{leg['securityId']} is not a NIFTY / BANKNIFTY option in Dhan's instrument list")
+                raise LookupError(f"{leg['securityId']} is not a NIFTY / BANKNIFTY / SENSEX option in Dhan's instrument list")
             side = BUY if leg["side"] in ("B", BUY) else SELL
             orders.append(LegOrder(int(inst["securityId"]), side, int(leg["lots"]), int(inst["lotSize"]), inst["symbol"],
-                                   inst["expiry"], float(inst["strike"]), inst["optionType"]))
+                                   inst["expiry"], float(inst["strike"]), inst["optionType"], segment_of(inst)))
         changes = {}
         for o in orders:
             changes[o.security_id] = changes.get(o.security_id, 0) + (o.qty if o.side == BUY else -o.qty)

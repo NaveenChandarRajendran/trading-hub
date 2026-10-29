@@ -16,6 +16,7 @@ from options_service import OptionsService
 from paper_api import PaperService
 from store import PaperJsonStore, PaperPgStore, PgStore
 from test_api import FakeClient
+from dhan_feed import FULL
 from test_paper_api import Clock, FakeFeed, FakeInstruments, at, full
 from tracker import Tracker
 
@@ -25,8 +26,16 @@ LEGS = {  # security id: (strike, type, price) - an iron condor, 1 lot of 65
     9101: (24400.0, "PE", 19.2), 9102: (25800.0, "CE", 4.4), 9103: (24150.0, "PE", 8.85), 9104: (26050.0, "CE", 2.85)}
 
 
+SX_EXP = "2026-10-29"  # a Thursday: SENSEX weekly expiry
+SX = {9201: (80000.0, "PE", 300.0), 9202: (80500.0, "CE", 250.0)}  # SENSEX (BSE_FNO), 1 lot = 20
+
+
 class Instruments(FakeInstruments):
     def get(self, sid):
+        if int(sid) in SX:
+            k, t, _ = SX[int(sid)]
+            return {"securityId": int(sid), "symbol": "SENSEX", "segment": "BSE_FNO", "expiry": SX_EXP, "strike": k,
+                    "optionType": t, "lotSize": 20, "tickSize": 0.05, "name": f"SENSEX 29 OCT {k:g} {t}"}
         if int(sid) in LEGS:
             k, t, _ = LEGS[int(sid)]
             return {"securityId": int(sid), "symbol": "NIFTY", "expiry": EXP, "strike": k, "optionType": t, "lotSize": 65,
@@ -251,3 +260,43 @@ def test_report_and_portfolios(env):
     rows = a.get("/api/options/portfolios").json()["rows"]
     assert [x["id"] for x in rows] == [st["id"]] and rows[0]["summary"]["trades"] == 1
     assert b.get("/api/options/portfolios").json()["rows"] == []
+
+
+# ---------- SENSEX (BSE) ----------
+def sx_ticks(paper, clock, hm="10:00", day="2026-10-21", spot=None):
+    clock.now = at(hm, day)
+    for sid, (_, _, p) in SX.items():
+        paper.on_packet({**full(sid, p, p, p), "segment": "BSE_FNO"})
+    if spot is not None:
+        paper.on_packet({"kind": "ticker", "segment": "IDX_I", "security_id": 51, "ltp": spot})
+
+
+def test_sensex_basket_uses_bse_segment_charges_margin_and_settles_at_its_spot(env):
+    a, _, paper, clock, client, svc, st, _ = env
+    sx_ticks(paper, clock)
+    r = a.post(f"/api/options/basket?strategy={st['id']}", json={"legs": [
+        {"securityId": 9201, "side": "S", "lots": 1}, {"securityId": 9202, "side": "S", "lots": 1}]})
+    assert r.status_code == 200, r.text
+    assert [(f["qty"], f["price"]) for f in r.json()["fills"]] == [(20, 300.0), (20, 250.0)]
+    assert {s["exchangeSegment"] for s in client.calls[-1]} == {"BSE_FNO"}  # Dhan's margin on the BSE legs
+    full_st = next(x for x in svc.store.all_strategies() if x["id"] == st["id"])
+    fill = svc.book(full_st).engine.fills[0]
+    assert fill.segment == "BSE_FNO" and fill.charges.transaction == 1.95  # 6,000 x 0.0325 % (NSE would be 2.10)
+    assert paper.feed.subs[("BSE_FNO", 9201)] == FULL and ("IDX_I", 51) in paper.feed.subs  # depth + the index
+    sx_ticks(paper, clock, "15:29", day=SX_EXP, spot=80200.0)  # between the strikes: both expire worthless
+    clock.now = at("15:31", SX_EXP)
+    fills = svc.settle_due()
+    assert [(f.kind, f.price, f.segment) for f in fills] == [("settle", 0.0, "BSE_FNO")] * 2
+    pos = a.get(f"/api/options/positions?strategy={st['id']}").json()
+    assert pos["positions"] == [] and pos["funds"]["realized"] == pytest.approx(550 * 20)
+    svc.books.clear()  # a restart rebuilds the SENSEX legs from op_fills
+    assert svc.book(full_st).engine.fills[0].segment == "BSE_FNO"
+
+
+def test_sensex_is_refused_by_the_manual_paper_engine(env):
+    a, _, paper, clock, *_ = env
+    sx_ticks(paper, clock)
+    manual = a.post("/api/strategies", json={"name": "Scalps", "capital": 100000}).json()["strategy"]
+    r = a.post(f"/api/paper/orders?strategy={manual['id']}", json={"securityId": 9201, "side": "BUY", "lots": 1,
+                                                                    "orderType": "MARKET"})
+    assert r.status_code == 404 and "NIFTY / BANKNIFTY" in r.json()["detail"]

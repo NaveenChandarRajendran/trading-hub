@@ -41,6 +41,7 @@ class LegOrder:
     expiry: str  # YYYY-MM-DD
     strike: float
     option_type: str  # CE | PE
+    segment: str = "NSE_FNO"  # Dhan exchange segment (BSE_FNO: SENSEX): its transaction charge
 
     @property
     def qty(self):
@@ -66,13 +67,14 @@ class Fill:
     option_type: str
     lot_size: int
     slippage_capped: bool = False
+    segment: str = "NSE_FNO"
 
     def to_dict(self):
         return {"id": self.id, "order_id": self.basket_id, "security_id": self.security_id, "side": self.side,
                 "qty": self.qty, "price": round(self.price, 4), "value": self.value, "charges": self.charges.to_dict(),
                 "time": self.time.isoformat(), "kind": self.kind, "realized": self.realized, "symbol": self.symbol,
                 "expiry": self.expiry, "strike": self.strike, "optionType": self.option_type, "lotSize": self.lot_size,
-                "slippageCapped": self.slippage_capped}
+                "slippageCapped": self.slippage_capped, "segment": self.segment}
 
     @classmethod
     def from_dict(cls, d):
@@ -80,7 +82,7 @@ class Fill:
         return cls(d["id"], d["order_id"], int(d["security_id"]), d["side"], int(d["qty"]), float(d["price"]),
                    float(d["value"]), Charges(**c), datetime.fromisoformat(d["time"]), d.get("kind", "open"),
                    float(d.get("realized", 0.0)), d["symbol"], d["expiry"], float(d["strike"]), d["optionType"],
-                   int(d["lotSize"]), bool(d.get("slippageCapped", False)))
+                   int(d["lotSize"]), bool(d.get("slippageCapped", False)), d.get("segment") or "NSE_FNO")
 
 
 @dataclass
@@ -94,6 +96,7 @@ class OptPosition:
     qty: int = 0  # signed units: long +, short −
     avg: float = 0.0  # average price of the open quantity
     realized: float = 0.0  # every fill of this instrument so far
+    segment: str = "NSE_FNO"
 
     def apply(self, side, qty, price):
         """Applies a fill; returns the P&L it booked."""
@@ -214,7 +217,7 @@ class OptionsEngine:
         for leg, (avg, value, _capped) in planned:
             pos = after.setdefault(leg.security_id, _new_position(leg))
             pos.apply(leg.side, leg.qty, avg)
-            charges += order_charges(leg.side, value).total
+            charges += order_charges(leg.side, value, leg.segment).total
         margin = max(float(margin_after), self.long_premium(after))
         f = self.funds()
         realized_now = sum(p.realized for p in after.values()) - sum(p.realized for p in self.positions.values())
@@ -247,7 +250,8 @@ class OptionsEngine:
         basket = self._id("OB", now)
         fills = []
         for p, side, (avg, value, capped) in planned:
-            leg = LegOrder(p.security_id, side, abs(p.qty) // p.lot_size, p.lot_size, p.symbol, p.expiry, p.strike, p.option_type)
+            leg = LegOrder(p.security_id, side, abs(p.qty) // p.lot_size, p.lot_size, p.symbol, p.expiry, p.strike, p.option_type,
+                           p.segment)
             if abs(p.qty) % p.lot_size:  # never expected: quantities are whole lots
                 leg.lots, leg.lot_size = abs(p.qty), 1
             fills.append(self._fill(leg, avg, value, capped, now, basket, kind="close"))
@@ -272,7 +276,7 @@ class OptionsEngine:
             booked = p.apply(side, qty, price)
             f = Fill(self._id("OF", now), basket, p.security_id, side, qty, price, value,
                      Charges(brokerage=0.0, stt=stt, transaction=0.0, sebi=0.0, stamp=0.0, gst=0.0), now, "settle",
-                     booked, p.symbol, p.expiry, p.strike, p.option_type, p.lot_size)
+                     booked, p.symbol, p.expiry, p.strike, p.option_type, p.lot_size, segment=p.segment)
             self.fills.append(f)
             fills.append(f)
         if fills and not self.open_positions():
@@ -284,8 +288,9 @@ class OptionsEngine:
         was = pos.qty
         booked = pos.apply(leg.side, leg.qty, avg)
         kind = kind or ("open" if was == 0 or (was > 0) == (leg.side == BUY) else "close")
-        f = Fill(self._id("OF", now), basket, leg.security_id, leg.side, leg.qty, avg, value, order_charges(leg.side, value),
-                 now, kind, booked, leg.symbol, leg.expiry, leg.strike, leg.option_type, leg.lot_size, capped)
+        f = Fill(self._id("OF", now), basket, leg.security_id, leg.side, leg.qty, avg, value, order_charges(leg.side, value, leg.segment),
+                 now, kind, booked, leg.symbol, leg.expiry, leg.strike, leg.option_type, leg.lot_size, capped,
+                 leg.segment)
         self.fills.append(f)
         return f
 
@@ -296,7 +301,7 @@ class OptionsEngine:
         for d in sorted(fills, key=lambda d: (d["time"], d["id"])):
             f = Fill.from_dict(d)
             pos = self.positions.setdefault(f.security_id, OptPosition(f.security_id, f.lot_size, f.symbol, f.expiry,
-                                                                       f.strike, f.option_type))
+                                                                       f.strike, f.option_type, segment=f.segment))
             pos.apply(f.side, f.qty, f.price)
             self.fills.append(f)
             for prefix, i in (("OF", f.id), ("OB", f.basket_id)):
@@ -324,11 +329,12 @@ class OptionsEngine:
 
 
 def _new_position(leg):
-    return OptPosition(leg.security_id, leg.lot_size, leg.symbol, leg.expiry, leg.strike, leg.option_type)
+    return OptPosition(leg.security_id, leg.lot_size, leg.symbol, leg.expiry, leg.strike, leg.option_type, segment=leg.segment)
 
 
 def _copy(p):
-    return OptPosition(p.security_id, p.lot_size, p.symbol, p.expiry, p.strike, p.option_type, p.qty, p.avg, p.realized)
+    return OptPosition(p.security_id, p.lot_size, p.symbol, p.expiry, p.strike, p.option_type, p.qty, p.avg, p.realized,
+                       p.segment)
 
 
 def _premium_flow(positions):
