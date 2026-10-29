@@ -1,7 +1,7 @@
 // Strategy board (owner 26-Oct-2026): one row per strategy, a column per index. Each box says in a word where the
 // strategy stands; click a strategy to put its indicators on the charts, click a box to open its checklist.
 import { Fragment } from 'react';
-import { BOARD, SELL_BOARD, cell, openTrade, sellCell, type ChartStrategy, type SellingState, type StrategyKey } from './logic/board';
+import { BOARD, SELL_BOARD, cell, doneTrades, openTrade, sellCell, type ChartStrategy, type SellingState, type StrategyKey } from './logic/board';
 import type { RuleResult, SignalsState } from './logic/signals';
 import { INDEX_NAME } from './ChartPanel';
 import { RuleCard } from './SignalPanels';
@@ -12,10 +12,11 @@ const FALLBACK: Record<StrategyKey, string> = {
   fourPillar: '4 PILLAR RULES', superTrend: 'SUPERTREND RULES', dharaniV2: 'POWER BREAKOUT', tradingHub: 'TREND RULES', reboundCall: 'REBOUND CALL', orbPullback: 'BOX PULLBACK 15/5', orbPullback5: 'BOX PULLBACK 5/1',
 };
 
-export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrategy, onOpen, selling }: {
+export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrategy, onOpen, selling, closed = false }: {
   signals: Record<string, SignalsState | null>;
   selling?: SellingState | null; // the option selling book (NIFTY only), owner 28-Oct-2026
   symbols: string[];
+  closed?: boolean; // market closed: boxes say how the day ended
   strategy: ChartStrategy;
   open: { key: StrategyKey; symbol: string } | null; // checklist shown under the board
   ltp: Record<number, number>;
@@ -48,7 +49,8 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
               }
               const s = signals[x];
               const t = openTrade(s?.auto, b.key, x);
-              const c = cell(ruleOf(s, b.key), t, t && typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined);
+              const c = cell(ruleOf(s, b.key), t, t && typeof t.instrument.id === 'number' ? ltp[t.instrument.id] : undefined,
+                { done: doneTrades(s?.auto, b.key, x), closed });
               const isOpen = open?.key === b.key && open.symbol === x;
               return (
                 <button key={x} type="button" className={`db-cell ${c.kind} ${isOpen ? 'open' : ''}`} aria-expanded={isOpen}
@@ -64,7 +66,7 @@ export function StrategyBoard({ signals, symbols, strategy, open, ltp, onStrateg
             <span className="db-board-name static"><b>{b.name}</b><span>{b.account}</span></span>
             {symbols.map((x) => {
               if (x !== 'NIFTY') return <span key={x} className="db-cell-empty" aria-hidden="true" />;
-              const c = sellCell(selling, b.key, ltp);
+              const c = sellCell(selling, b.key, ltp, closed);
               return <span key={x} className={`db-cell ${c.kind}`}><b>{c.title}</b><span>{c.sub}</span></span>;
             })}
           </Fragment>

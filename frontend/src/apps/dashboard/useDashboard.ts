@@ -85,6 +85,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [minutes, setMinutes] = useState<Candle[]>([]); // 1-minute candles: history + live
+  const [warmMinutes, setWarmMinutes] = useState<Candle[]>([]); // two earlier sessions, for the indicators only
   const minutesRef = useRef<Candle[]>([]);
   const pendingVolume = useRef(new Map<number, number>()); // futures volume that arrived before its index minute
   const [volumeInfo, setVolumeInfo] = useState<CandlesResponse['meta']['volume']>(null);
@@ -99,6 +100,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
     setMinutes(m);
   };
   const bars = useMemo(() => (isDaily ? daily : aggregate(minutes, interval)), [minutes, interval, isDaily, daily]);
+  const warmBars = useMemo(() => (isDaily ? [] : aggregate(warmMinutes, interval)), [warmMinutes, interval, isDaily]);
 
   const setSymbol = (s: string) => { write('symbol', s); setSymbolState(s); };
   const setInterval_ = (v: number) => { write('interval', String(v)); setIntervalState(v); };
@@ -155,8 +157,10 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
         setVolumeError('');
         setPrevSession(null);
       } else {
-        const r = await fetchCandles(symbol, 1, signal, day);
+        // owner 29-Oct-2026: EMA 200 (Rebound Call) was missing; two earlier sessions warm it up (same cache as the watcher)
+        const r = await fetchCandles(symbol, 1, signal, day, 2);
         putMinutes(r.candles);
+        setWarmMinutes(r.warm ?? []);
         setVolumeInfo(r.meta.volume);
         setVolumeError(r.meta.volumeError);
         setPrevSession(r.meta.prevSession ?? null);
@@ -265,7 +269,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
   return {
     symbol, setSymbol, expiries, expiry, setExpiry, interval, pickedInterval, setInterval: setInterval_, refreshSec, setRefreshSec,
     indicators, toggleIndicator,
-    summary, summaryError, loading, levelsBasis, bars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp, flow,
+    summary, summaryError, loading, levelsBasis, bars, warmBars, volumeInfo, volumeError, candlesError, feedState, refresh, optionLtp, flow,
     day, setDay, sessions, rangeDays, setRangeDays, isDaily, live, prevSession,
     status: liveStatus(summary?.chain.data?.meta ?? null, summaryError, loading, refreshSec, now),
   };

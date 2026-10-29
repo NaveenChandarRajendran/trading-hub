@@ -1,4 +1,4 @@
-// Candlestick chart (TradingView Lightweight Charts) with S1-S3 / R1-R3 and the pivot as dashed price lines and optional
+// Candlestick chart (TradingView Lightweight Charts) with S1-S3 / R1-R3 and the pivot as dashed price lines (near ones widen the scale) and optional
 // indicators: SuperTrend (red = bearish, green = bullish), Bollinger (20, 2), EMA 20, VWAP and futures volume on the
 // candles, RSI 14 in its own pane with the rule zones (put 30-45, call 55-70). Colours come from the design tokens and
 // follow the light / dark switch without a reload; level lines are updated in place (LevelLines); indicators update
@@ -131,12 +131,24 @@ function indicatorData(bars: Candle[], p: ChartParams) {
   };
 }
 type Data = ReturnType<typeof indicatorData>;
+
+/** Indicators on the shown candles, worked out from the warm-up candles before them (EMA 200 needs 200 candles). */
+function shownIndicators(warm: Candle[], bars: Candle[], p: ChartParams): Data {
+  if (!warm.length || !bars.length) return indicatorData(bars, p);
+  const first = bars[0].time;
+  const d = indicatorData([...warm.filter((b) => b.time < first), ...bars], p);
+  const keep = <T extends { time: number }>(pts: T[]) => pts.filter((x) => x.time >= first);
+  return { rsi: keep(d.rsi), ema: keep(d.ema), vwap: keep(d.vwap), st: keep(d.st), bbBasis: keep(d.bbBasis), bbUpper: keep(d.bbUpper), bbLower: keep(d.bbLower) };
+}
+const NO_BARS: Candle[] = [];
 type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, zoomKey, marks = [] }: {
+export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox = null, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, zoomKey, marks = [] }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
+  warm?: Candle[]; // earlier candles, not drawn: the indicators start from them
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
+  box?: { high: number; low: number } | null; // Box Pullback's opening box: two solid lines
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
@@ -156,8 +168,13 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
   levelsRef.current = levels;
   const pivotRef = useRef(pivot);
   pivotRef.current = pivot;
+  const boxLines = useRef<IPriceLine[]>([]);
+  const boxRef = useRef(openBox);
+  boxRef.current = openBox;
   const fitted = useRef('');
   const all = useRef<Candle[]>([]); // history + live candles, for the indicators
+  const warmRef = useRef(warm);
+  warmRef.current = warm;
   const lineSeries = useRef<Partial<Record<LineKey, ISeriesApi<'Line'>>>>({});
   const rsiGuides = useRef<IPriceLine[]>([]);
   const volSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -190,13 +207,13 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
 
   /** Whole indicator series (after history loads or an indicator is switched on). */
   const fillIndicators = () => {
-    const d = indicatorData(all.current, paramsRef.current);
+    const d = shownIndicators(warmRef.current, all.current, paramsRef.current);
     for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) s.setData((d[k] as Pt[]).map(asTime));
     volSeries.current?.setData(all.current.map(volumePoint));
   };
   /** Only the last point (each live tick). */
   const updateIndicators = () => {
-    const d: Data = indicatorData(all.current, paramsRef.current);
+    const d: Data = shownIndicators(warmRef.current, all.current, paramsRef.current);
     for (const [k, s] of Object.entries(lineSeries.current) as [LineKey, ISeriesApi<'Line'>][]) {
       const last = (d[k] as Pt[]).at(-1);
       if (last) s.update(asTime(last));
@@ -223,12 +240,17 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     });
     const s = c.addSeries(CandlestickSeries, {
       ...candleColors(),
-      // keep every S/R line and the pivot on screen: widen the price scale to them, not just the candles
+      // widen the price scale to the S/R lines and pivot near the candles; far ones (owner 29-Oct-2026: R3 / S3 squeezed
+      // the candles into a thin strip) stay off screen, as on TradingView
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
         const r = original();
-        const prices = levelPrices(levelsRef.current, pivotRef.current);
-        if (!r?.priceRange || !prices.length) return r;
-        return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...prices), maxValue: Math.max(r.priceRange.maxValue, ...prices) } };
+        if (!r?.priceRange) return r;
+        const { minValue: lo, maxValue: hi } = r.priceRange;
+        const pad = Math.max((hi - lo) * 0.5, ((hi + lo) / 2) * 0.003);
+        const b = boxRef.current;
+        const prices = [...levelPrices(levelsRef.current, pivotRef.current).filter((p) => p >= lo - pad && p <= hi + pad), ...(b ? [b.high, b.low] : [])];
+        if (!prices.length) return r;
+        return { ...r, priceRange: { minValue: Math.min(lo, ...prices), maxValue: Math.max(hi, ...prices) } };
       },
     });
     chart.current = c;
@@ -257,6 +279,7 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
       markers.current = null;
       c.remove();
       chart.current = series.current = lines.current = volSeries.current = pivotLine.current = deltaSeries.current = null;
+      boxLines.current = [];
       lineSeries.current = {};
       shown.current = { bars: [], key: '' };
       rsiGuides.current = [];
@@ -413,6 +436,10 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
       fitted.current = resetKey;
     }
   }, [bars, resetKey]);
+  // the warm-up candles can land after the shown ones: redo the indicator lines then
+  useEffect(() => {
+    if (all.current.length) fillIndicators();
+  }, [warm]);
 
   // buy / sell points of the strategy's trades, snapped to their candle
   useEffect(() => {
@@ -446,6 +473,19 @@ export function PriceChart({ bars, levels, pivot, resetKey, indicators, volumeLa
     if (pivotLine.current) pivotLine.current.applyOptions(spec);
     else pivotLine.current = s.createPriceLine(spec);
   }, [pivot]);
+
+  // Box Pullback: the opening box high and low
+  const boxHigh = openBox?.high ?? null, boxLow = openBox?.low ?? null;
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    for (const l of boxLines.current) s.removePriceLine(l);
+    boxLines.current = [];
+    if (boxHigh == null || boxLow == null) return;
+    const color = token('--accent');
+    boxLines.current = [[boxHigh, 'Box high'], [boxLow, 'Box low']].map(([price, title]) =>
+      s.createPriceLine({ price: price as number, color, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: title as string }));
+  }, [boxHigh, boxLow, mode]);
 
   return (
     <div className="chart-wrap">

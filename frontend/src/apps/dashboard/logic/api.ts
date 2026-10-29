@@ -34,6 +34,7 @@ export interface CandlesResponse {
     prevSession: { date: string; high: number; low: number; close: number } | null; // that day's pivot comes from it
   };
   candles: Candle[];
+  warm?: Candle[]; // earlier sessions, only to start the chart's long indicators (EMA 200) full
 }
 
 export function fetchSummary(symbol: string, expiry: string, stocks: string[], signal?: AbortSignal) {
@@ -42,8 +43,8 @@ export function fetchSummary(symbol: string, expiry: string, stocks: string[], s
 }
 
 /** date: '' = today (live), or an earlier trading day 'YYYY-MM-DD'. */
-export function fetchCandles(symbol: string, interval: number, signal?: AbortSignal, date = '') {
-  const q = new URLSearchParams({ symbol, interval: String(interval), ...(date ? { date } : {}) });
+export function fetchCandles(symbol: string, interval: number, signal?: AbortSignal, date = '', warm = 0) {
+  const q = new URLSearchParams({ symbol, interval: String(interval), ...(date ? { date } : {}), ...(warm ? { warm: String(warm) } : {}) });
   return getJson<CandlesResponse>(API_BASE, `/api/dashboard/candles?${q}`, signal);
 }
 

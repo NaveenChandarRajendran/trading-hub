@@ -77,7 +77,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
           ) : (
             <label className="field db-inline">Date
               <select value={d.day} onChange={(e) => d.setDay(e.target.value)}>
-                <option value="">Today (live)</option>
+                <option value="">{d.status.closed ? 'Today' : 'Today (live)'}</option>
                 {d.sessions.filter((x) => x !== todayIst).map((x) => <option key={x} value={x}>{nseDate(x)}</option>)}
               </select>
             </label>
@@ -96,7 +96,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
       {!d.bars.length ? (
         <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
       ) : (
-        <PriceChart bars={d.bars} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
+        <PriceChart bars={d.bars} warm={d.warmBars} box={!d.day && (strategy === 'orbPullback' || strategy === 'orbPullback5') ? sig?.rules[strategy]?.box ?? null : null} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
           resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`} zoomKey={d.isDaily ? undefined : d.symbol}
           indicators={shown} params={params} marks={marks}
           volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />

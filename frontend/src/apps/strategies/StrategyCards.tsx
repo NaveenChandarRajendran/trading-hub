@@ -16,13 +16,13 @@ export interface CardState { kind: Cell['kind'] | 'up' | 'down'; title: string; 
 const ruleOf = (s: SignalsState | null | undefined, k: StrategyInfo['ruleKey']): RuleResult | null | undefined => (k ? s?.rules[k] : undefined);
 
 /** Where one strategy stands: its trades today first, else the live rule boxes (or the selling desk's note). */
-export function cardState(info: StrategyInfo, rows: TodayRow[], signals: Record<string, SignalsState | null>, selling: SellingState | undefined): CardState {
+export function cardState(info: StrategyInfo, rows: TodayRow[], signals: Record<string, SignalsState | null>, selling: SellingState | undefined, closed = false): CardState {
   const mine = rows.filter((r) => r.who === info.who);
   const open = mine.filter((r) => r.open);
   const pnl = mine.reduce((s, r) => s + (r.pnl ?? 0), 0);
   const lines: string[] = [];
   if (info.sellKey) {
-    const c = sellCell(selling ?? null, info.sellKey);
+    const c = sellCell(selling ?? null, info.sellKey, {}, closed);
     if (open.length) return { kind: 'trade', title: `Sold · ${open.length} leg${open.length > 1 ? 's' : ''}`, lines: [open.map((r) => r.option.replace(/^NIFTY \S+ \S+ /, '')).join(' + ')] };
     if (mine.length) return { kind: pnl >= 0 ? 'up' : 'down', title: `Done today · ${mine.length} leg${mine.length > 1 ? 's' : ''}`, lines: [c.sub] };
     return { kind: selling ? c.kind : 'none', title: selling ? c.title : 'No reading yet', lines: [selling ? c.sub : 'selling book not running'] };
@@ -37,6 +37,7 @@ export function cardState(info: StrategyInfo, rows: TodayRow[], signals: Record<
   if (mine.length) return { kind: pnl >= 0 ? 'up' : 'down', title: `${pnl >= 0 ? 'Won' : 'Lost'} today · ${mine.length} trade${mine.length > 1 ? 's' : ''}`, lines };
   const cells = info.indices.map((x) => cell(ruleOf(signals[x], info.ruleKey), undefined));
   const best = cells.find((c) => c.kind === 'go') ?? cells.find((c) => c.kind === 'near') ?? cells.find((c) => c.kind === 'wait') ?? cells[0];
+  if (closed) return { kind: 'none', title: 'No trade today', lines }; // owner 29-Oct-2026: after the close, no stale "Waiting"
   const title = best.kind === 'go' ? 'GO · entering' : best.kind === 'near' ? 'Close · one condition away' : best.kind === 'none' ? 'No reading yet' : 'Waiting for its setup';
   return { kind: best.kind, title, lines };
 }
@@ -70,8 +71,9 @@ function Detail({ info, signals, selling, rows, linkToPage }: {
   );
 }
 
-export function StrategyCards({ sections, rows, signals, selling, linkToPage = false }: {
+export function StrategyCards({ sections, rows, signals, selling, linkToPage = false, closed = false }: {
   sections: SectionId[]; rows: TodayRow[]; signals: Record<string, SignalsState | null>; selling: SellingState | undefined; linkToPage?: boolean;
+  closed?: boolean; // market closed: cards say how the day ended
 }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
@@ -89,7 +91,7 @@ export function StrategyCards({ sections, rows, signals, selling, linkToPage = f
             )}
             <div className="sg-cards">
               {list.map((info) => {
-                const st = cardState(info, rows, signals, selling);
+                const st = cardState(info, rows, signals, selling, closed);
                 const mine = rows.filter((r) => r.who === info.who);
                 const pnl = mine.length ? mine.reduce((s, r) => s + (r.pnl ?? 0), 0) : null;
                 const isOpen = open === info.who;

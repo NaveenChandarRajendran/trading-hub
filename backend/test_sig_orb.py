@@ -63,6 +63,7 @@ def test_put_side_and_no_pullback_by_1330():
     st = {"symbol": "BANKNIFTY", "hm": (13, 40), "marketOpen": True, "positions": {}, "orb": ev, "signalTime": "13:39"}
     r = orb_rule(st)
     assert not r["go"] and "No trade today" in r["blocked"][-1]
+    assert r["box"] == {"high": 45400, "low": 45200}  # drawn on the chart
 
 
 class Src:

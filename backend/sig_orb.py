@@ -146,5 +146,7 @@ def orb_rule(state):
         "symbol": state["symbol"], "side": ev.get("side") or "CE", "go": green and not blocked, "grade": "A" if green else None,
         "checks": cs, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
         "score": sum(c["state"] == PASS for c in cs), "total": 3, "interval": 1,
+        # the opening box, drawn on the chart (owner 29-Oct-2026); None until the box minutes are done
+        "box": {"high": ev["high"], "low": ev["low"]} if ev["high"] is not None else None,
     }
 

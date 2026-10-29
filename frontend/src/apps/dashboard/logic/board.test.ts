@@ -61,3 +61,12 @@ describe('strategy board', () => {
     expect(tradeMarks(auto, 'all', 'BANKNIFTY')).toHaveLength(1);
   });
 });
+
+describe('board after the close (owner 29-Oct-2026)', () => {
+  it('says how the day ended instead of Waiting', () => {
+    const r = rule({ checks: [ck('pass'), ck('fail')] });
+    expect(cell(r, undefined, undefined, { closed: true })).toEqual({ kind: 'none', title: 'No trade today', sub: 'market closed · last check 1 of 2' });
+    const done = [{ netPnl: -820 }, { netPnl: 300 }] as never;
+    expect(cell(r, undefined, undefined, { done, closed: true })).toEqual({ kind: 'wait', title: 'Done today', sub: '2 trades · −₹520' });
+  });
+});

@@ -126,7 +126,7 @@ export default function TodayApp() {
           <h3 className="td-title">Strategies today</h3>
           <span className="td-label">Click a card for its live checklist</span>
         </div>
-        <StrategyCards sections={['optionBuy', 'optionSell', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage />
+        <StrategyCards sections={['optionBuy', 'optionSell', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage closed={data.marketClosed} />
         <div className="sg-section">
           <div className="sg-section-head">
             <Link to="/strategies/momentum" className="sg-section-name">Momentum</Link>

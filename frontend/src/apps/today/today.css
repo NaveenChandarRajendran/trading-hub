@@ -32,6 +32,7 @@
 .td .td-side.CE { background: var(--accent-soft); color: var(--accent); }
 .td .td-side.PE { background: var(--warn-soft); color: var(--warn); }
 .td .td-actions, .td .td-confirm { display: inline-flex; gap: var(--sp-2); }
+@media (max-width: 1400px) { .td .td-actions { flex-direction: column; align-items: stretch; gap: var(--sp-1); } .td table.td-table th, .td table.td-table td { padding-left: 6px; padding-right: 6px; } } /* two buttons stack on smaller screens */
 .td .btn.td-danger { background: var(--down); border-color: var(--down); color: var(--on-accent); }
 .td .td-foot { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
 @media (max-width: 760px) { .td .td-figs { grid-template-columns: 1fr; } }

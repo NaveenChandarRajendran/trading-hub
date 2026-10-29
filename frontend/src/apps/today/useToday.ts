@@ -95,8 +95,9 @@ export function useToday() {
       `Stop ${stop.toFixed(2)} and target ${target.toFixed(2)} placed on ${r.option}`);
 
   const marketOpen = paper.meta?.marketOpen ?? sigN.data?.meta.marketOpen ?? false;
+  const marketClosed = (paper.meta?.marketOpen ?? sigN.data?.meta.marketOpen) === false; // known closed (not just still loading)
   return {
-    paper, sigN, sigB, auto, selling, rows, trades, error, busy, notice, today, marketOpen, act, exitRow, placeBracket,
+    paper, sigN, sigB, auto, selling, rows, trades, error, busy, notice, today, marketOpen, marketClosed, act, exitRow, placeBracket,
     loading: trades == null && error == null,
     context: { NIFTY: ctx('NIFTY'), BANKNIFTY: ctx('BANKNIFTY') },
     bracketDefaults: { stopPct: 10, targetPct: 20 }, // owner 29-Oct-2026: option buying stop −10 % / target +20 %

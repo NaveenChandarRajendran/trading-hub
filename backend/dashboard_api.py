@@ -142,8 +142,8 @@ class CandleService:
             volume_error = f"Futures volume unavailable: {e}"
         return one_min, fut, volume_error, fut_candles
 
-    def get(self, symbol, max_age=None, day=None):
-        fetched, sessions, one_min, fut, volume_error, last_error, _fut_candles = self._get(symbol, max_age, day, 2)
+    def get(self, symbol, max_age=None, day=None, n=2):
+        fetched, sessions, one_min, fut, volume_error, last_error, _fut_candles = self._get(symbol, max_age, day, n)
         return fetched, sessions, one_min, fut, volume_error, last_error
 
     def get_with_futures(self, symbol, max_age=None, n=4):
@@ -276,7 +276,10 @@ def register(app, deps: DashboardDeps):
         return daily_cache[key]
 
     @app.get("/api/dashboard/candles")
-    def candles(symbol: str = "NIFTY", interval: int = 5, date: str = ""):
+    def candles(symbol: str = "NIFTY", interval: int = 5, date: str = "", warm: int = 0):
+        """Today and the session before as candles; warm = that many earlier sessions more, sent apart ("warm") so the
+        chart's long indicators (EMA 200 on 5-minute candles, Rebound Call) start full on the first shown candle.
+        warm=2 shares the signal watcher's 4-session cache, so it costs no extra Dhan call."""
         symbol = symbol.upper()
         if symbol not in SCRIP:
             raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
@@ -291,12 +294,17 @@ def register(app, deps: DashboardDeps):
             if day > tracker.clock().date():
                 raise HTTPException(400, "date can't be in the future")
         try:
-            fetched, sessions, one_min, fut, volume_error, last_error = candles_svc.get(symbol, day=day)
+            warm = max(0, min(warm, 4))
+            fetched, sessions, one_min, fut, volume_error, last_error = candles_svc.get(symbol, day=day, n=2 + warm)
         except TokenExpired as e:
             raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
         except DhanError as e:
             raise HTTPException(502, str(e))
         token = tracker.client.token_expired
+        shown = sessions[-2:]
+        early = [c for c in one_min if datetime.fromtimestamp(c["time"], IST).date() < shown[0]]
+        one_min = [c for c in one_min if datetime.fromtimestamp(c["time"], IST).date() >= shown[0]]
+        sessions = shown
         return {
             "meta": {
                 "symbol": symbol, "interval": interval, "sessions": [d.isoformat() for d in sessions],
@@ -310,6 +318,7 @@ def register(app, deps: DashboardDeps):
                 "prevSession": _prev_session(one_min, sessions),
             },
             "candles": aggregate(one_min, interval),
+            "warm": aggregate(early, interval) if early else [],
         }
 
     @app.get("/api/dashboard/summary")

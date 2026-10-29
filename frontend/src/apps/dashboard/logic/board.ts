@@ -51,13 +51,24 @@ export function score(r: RuleResult): { met: number; total: number } {
   return { met: counted.filter((c) => c.state === 'pass').length, total: counted.length };
 }
 
-export function cell(r: RuleResult | null | undefined, open: AutoTrade | undefined, ltp?: number): Cell {
+/** Closed auto trades of one strategy on one index today. */
+export function doneTrades(auto: AutoStatus | null | undefined, key: StrategyKey, symbol: string): AutoTrade[] {
+  return (auto?.today ?? []).filter((t) => t.status === 'closed' && t.symbol === symbol && byStrategy(t, key));
+}
+
+/** One box of the board. After the close (owner 29-Oct-2026: no stale "Waiting" once the day is over) it says how the day ended. */
+export function cell(r: RuleResult | null | undefined, open: AutoTrade | undefined, ltp?: number, opts: { done?: AutoTrade[]; closed?: boolean } = {}): Cell {
   if (open) {
     const now = ltp ?? open.ltp;
     const pnl = now != null ? (now - open.entryPrice) * open.qty : open.pnl;
     return { kind: 'trade', title: `In trade · ${sideWord(open.side)}`,
-      sub: `${open.instrument.strike} ${open.side} · ${pnl != null ? `${money(pnl)} now` : `bought ${open.entryPrice}`}` };
+      sub: `${open.instrument.strike} ${open.side} · ${pnl != null ? `${money(pnl)} ${opts.closed ? 'at close' : 'now'}` : `bought ${open.entryPrice}`}` };
   }
+  const done = opts.done ?? [];
+  if (done.length) {
+    return { kind: 'wait', title: 'Done today', sub: `${done.length} trade${done.length > 1 ? 's' : ''} · ${money(done.reduce((t, x) => t + (x.netPnl ?? x.pnl ?? 0), 0))}` };
+  }
+  if (opts.closed) return { kind: 'none', title: 'No trade today', sub: r ? `market closed · last check ${score(r).met} of ${score(r).total}` : 'market closed' };
   if (!r) return { kind: 'none', title: 'No reading yet', sub: 'waits for the first candle' };
   const s = score(r);
   const base = `${sideWord(r.side)} · ${s.met} of ${s.total}`;
@@ -102,9 +113,9 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 },
     note: 'EMA 200 and VWAP (BankNifty only). ATR and the 10-day average range are on the strategy box.' },
   orbPullback: { interval: 5, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
-    note: 'The 15-minute box (09:15-09:29 high / low), the break and the pullback are on the strategy box.' },
+    note: 'The 15-minute box (09:15-09:29 high / low) is the two solid lines; the break and the pullback are on the strategy box.' },
   orbPullback5: { interval: 1, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
-    note: 'The 5-minute box (09:15-09:19 high / low), the break and the pullback are on the strategy box.' },
+    note: 'The 5-minute box (09:15-09:19 high / low) is the two solid lines; the break and the pullback are on the strategy box.' },
 };
 
 /** The Rs 3 lakh option SELLING book (owner 28-Oct-2026, sell_desk.py): NIFTY only, its own state at /api/selling/state. */
@@ -130,7 +141,7 @@ export const SELL_BOARD: { key: string; name: string; account: string; idle: str
 ];
 
 /** One selling rule's box: sold legs and their P&L now, else today's result or note, else when it acts. */
-export function sellCell(st: SellingState | null | undefined, key: string, ltp: Record<number, number> = {}): Cell {
+export function sellCell(st: SellingState | null | undefined, key: string, ltp: Record<number, number> = {}, closed = false): Cell {
   const row = SELL_BOARD.find((b) => b.key === key);
   if (!st || !row) return { kind: 'none', title: 'No reading yet', sub: 'selling book not running' };
   const open = st.open.filter((l) => l.slot === key);
@@ -140,10 +151,11 @@ export function sellCell(st: SellingState | null | undefined, key: string, ltp: 
       return s + (now != null ? (l.entryPrice - now) * l.qty : l.pnl ?? 0);
     }, 0);
     return { kind: 'trade', title: `Sold · ${open.length} leg${open.length > 1 ? 's' : ''}`,
-      sub: `${open.map((l) => l.instrument.name.replace(/^NIFTY \S+ \S+ /, '')).join(' + ')} · ${money(pnl)} now` };
+      sub: `${open.map((l) => l.instrument.name.replace(/^NIFTY \S+ \S+ /, '')).join(' + ')} · ${money(pnl)} ${closed ? 'at close' : 'now'}` };
   }
   const done = st.closedToday.filter((l) => l.slot === key);
   if (done.length) return { kind: 'wait', title: 'Done today', sub: `${done.length} leg${done.length > 1 ? 's' : ''} · ${money(done.reduce((s, l) => s + (l.netPnl ?? 0), 0))}` };
   const note = st.notes[row.name];
+  if (closed) return { kind: 'none', title: 'No trade today', sub: note || row.idle };
   return { kind: 'wait', title: 'Waiting', sub: note || row.idle };
 }

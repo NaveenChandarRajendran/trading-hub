@@ -65,10 +65,10 @@ export function RuleCard({ r, fallbackName, emptyNote }: { r: RuleResult | null 
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>
       <div className="card-head">
         <h3 className="card-title">{title}</h3>
-        <span className={`db-banner ${r.go ? 'go' : 'nogo'}`}>{r.name}: {banner(r)}</span>
+        <span className={`db-banner ${r.go ? 'go' : 'nogo'}`}>{banner(r)}</span>
       </div>
       <p className="db-rule-note">
-        Trade goes to the <b>{r.account}</b> account. Candle {r.at ?? '—'} IST.
+        Paper account: <b>{r.account.replace(/ \(app paper\)$| book$/i, '')}</b> · last candle checked {r.at ?? '—'} IST.
         {r.blocked.length > 0 && <> Blocked: {r.blocked.join('; ')}.</>}
       </p>
       <ul className="db-checks">

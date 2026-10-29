@@ -55,13 +55,13 @@ function OiBlock({ symbol, sig }: { symbol: string; sig: SignalsState | null }) 
   return (
     <div className="db-context-index">
       <h3 className="card-title">{INDEX_NAME[symbol]} · OI and order flow</h3>
+      <TrendingOiCard rows={sig?.trendingOi ?? []} />
       <div className="db-two">
-        <TrendingOiCard rows={sig?.trendingOi ?? []} />
         <OiViewsCard views={sig?.oiViews ?? null} sr={sig?.sr ?? null} />
-      </div>
-      <div className="db-two">
-        <SrCard sr={sig?.sr ?? null} components="" />
-        <OrderFlowCard f={sig?.orderFlow} symbol={symbol} />
+        <div className="db-stack">
+          <SrCard sr={sig?.sr ?? null} components="" />
+          <OrderFlowCard f={sig?.orderFlow} symbol={symbol} />
+        </div>
       </div>
     </div>
   );
@@ -132,7 +132,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
           <h3 className="td-title">{info.name} strategies</h3>
           <span className="td-label">{list.length} on paper · click a card for its live checklist</span>
         </div>
-        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} />
+        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} />
       </section>
 
       {/* 3. chart */}

@@ -148,6 +148,16 @@ def test_candles_endpoint_today_and_previous_session():
     assert fake.calls == 2
 
 
+def test_candles_endpoint_warm_sessions_come_apart():
+    """warm=1: one more session for the chart's long indicators, sent as "warm", not among the shown candles."""
+    fake, clock, c = candle_app()
+    body = c.get("/api/dashboard/candles?symbol=NIFTY&interval=1&warm=1").json()
+    assert fake.args[1] == "2026-10-16 09:15:00"  # 19th, 16th (18th/17th weekend, 20th holiday)
+    assert body["meta"]["sessions"] == ["2026-10-19", "2026-10-21"]
+    assert [hm(x["time"]) for x in body["candles"]][0] == "2026-10-19 15:28" and body["warm"] == []
+    assert body["meta"]["prevSession"]["date"] == "2026-10-19"
+
+
 def test_candles_endpoint_errors():
     fake, clock, c = candle_app()
     assert c.get("/api/dashboard/candles?symbol=FINNIFTY").status_code == 400

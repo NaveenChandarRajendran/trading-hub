@@ -22,11 +22,13 @@ import constituents from '../components/config/constituents.json';
 import type { Constituent } from '../components/logic/components';
 import { ChartPanel, INDEX_NAME, strategyName } from './ChartPanel';
 import {
-  AccountCard, AutoSwitch, DayLevels, manualPnl, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TrendingOiCard,
+  AutoSwitch, DayLevels, OiViewsCard, OrderFlowCard, SnapshotBar, SrCard, TrendingOiCard,
 } from './SignalPanels';
 import { StrategyBoard } from './StrategyBoard';
 import { useDashboard, type Dashboard } from './useDashboard';
 import { useSignals } from './useSignals';
+import { useToday } from '../today/useToday';
+import { summarize } from '../today/logic/today';
 import './dashboard.css';
 
 const INDICATORS = [
@@ -184,13 +186,13 @@ export default function DashboardApp() {
 
   const left = minutesToExit(now);
   const vix = s?.context.find((c) => c?.vix != null)?.vix;
-  const rows = s?.auto?.today ?? [];
-  // the manual paper account counts too (owner 27-Oct-2026): its P&L before charges, at the live price
-  // hand-placed positions come per index (each signals state has its own); the Both tab shows both (owner 27-Oct-2026)
-  const manual = symbols.flatMap((x) => (x === 'NIFTY' ? sN : sB)?.paperPositions ?? []);
-  const dayPnl = rows.reduce((t, r) => t + (r.status === 'closed' ? r.netPnl ?? 0 : r.pnl ?? 0), 0)
-    + manual.reduce((t, p) => t + manualPnl(p, ltp[p.security_id]), 0);
-  const openCount = (s?.auto?.open ?? []).length + manual.filter((p) => p.open_qty !== 0).length;
+  // owner 29-Oct-2026: the strip shows the same Day P&L and open count as Today (selling book and manual trades included)
+  const todayData = useToday();
+  const daySum = summarize(todayData.rows, todayData.auto?.watchOnly ?? []);
+  const dayPnl = daySum.total;
+  const openCount = daySum.open;
+  const manualCount = todayData.rows.filter((r) => r.manual).length;
+  const marketClosed = !!dN.status.closed || todayData.marketClosed;
   const status = dN.status.kind === 'error' ? dN.status : dB.status.kind === 'error' ? dB.status : dN.status;
   const anyLoading = dN.loading || dB.loading;
   const refresh = () => {
@@ -220,9 +222,9 @@ export default function DashboardApp() {
           </Link>
           <span><span className="db-muted">VIX</span> <b className="num">{vix != null ? inr(2)(vix) : '—'}</b></span>
         </span>
-        <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>
+        {!marketClosed && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
         <div className="toolbar-end">
-          {dN.status.closed && <Pill tone="neutral">Market closed</Pill>}
+          {marketClosed && <Pill tone="neutral">Market closed</Pill>}
           <Status kind={status.kind}>{status.label} · {clock(now)}</Status>
           <button className="btn" onClick={refresh} disabled={anyLoading}>{anyLoading ? 'Refreshing…' : 'Refresh'}</button>
           <div className="db-settings">
@@ -257,7 +259,7 @@ export default function DashboardApp() {
 
       {/* 2. strategy board */}
       <StrategyBoard signals={signals} symbols={symbols} strategy={strategy} open={openBox} ltp={ltp}
-        onStrategy={setStrategy} onOpen={setOpenBox} selling={selling} />
+        onStrategy={setStrategy} onOpen={setOpenBox} selling={selling} closed={marketClosed} />
 
       {/* 3. charts */}
       <div className="db-section-head">
@@ -292,18 +294,12 @@ export default function DashboardApp() {
 
       {/* 4. paper trading */}
       <div className="db-section-head">
-        <h3 className="card-title">Rule accounts{tab !== 'both' ? ` · ${INDEX_NAME[tab]}` : ''}</h3>
+        <h3 className="card-title">Paper trading</h3>
         <AutoSwitch auto={s?.auto ?? null} busy={sigN.busy} notice={sigN.notice} onAuto={(on) => void sigN.toggleAuto(on)} />
-      </div>
-      <div className="db-accts">
-        {(['megabull', 'tradingHub', 'dharani'] as const).map((a) => (
-          <AccountCard key={a} account={a} auto={s?.auto ?? null} symbol={tab === 'both' ? '' : tab} ltp={ltp} now={now} busy={sigN.busy}
-            onExit={(id) => void sigN.exitTrade(id)} />
-        ))}
       </div>
       {/* owner 27-Oct-2026: every trade of the day (manual ones too) with live P&L lives on one page, Today */}
       <Link to="/today" className="card db-today-link">
-        <span><b>All of today&apos;s trades{manual.length ? `, including your ${manual.length} manual trade${manual.length > 1 ? 's' : ''},` : ''} are on Today</b>
+        <span><b>All of today&apos;s trades{manualCount ? `, including your ${manualCount} manual trade${manualCount > 1 ? 's' : ''},` : ''} are on Today</b>
           <span className="db-muted"> · open and closed, every account, live P&amp;L, Exit buttons</span></span>
         <span className={`num ${tone(dayPnl)}`}>{signed(0)(dayPnl)} →</span>
       </Link>
@@ -317,13 +313,13 @@ export default function DashboardApp() {
             <div key={x} className="db-context-index">
               <h3 className="card-title">{INDEX_NAME[x]}</h3>
               <LevelsRow d={dash[x]} pivot={signals[x]?.context.find((c) => c?.symbol === x)?.pivot} />
+              <TrendingOiCard rows={signals[x]?.trendingOi ?? []} />
               <div className="db-two">
-                <TrendingOiCard rows={signals[x]?.trendingOi ?? []} />
                 <OiViewsCard views={signals[x]?.oiViews ?? null} sr={signals[x]?.sr ?? null} />
-              </div>
-              <div className="db-two">
-                <SrCard sr={signals[x]?.sr ?? null} components={compText(x)} />
-                <OrderFlowCard f={signals[x]?.orderFlow} symbol={x} />
+                <div className="db-stack">
+                  <SrCard sr={signals[x]?.sr ?? null} components={compText(x)} />
+                  <OrderFlowCard f={signals[x]?.orderFlow} symbol={x} />
+                </div>
               </div>
             </div>
           ))}

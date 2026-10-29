@@ -42,10 +42,11 @@ function Who({ who }: { who: string }) {
 
 function OptionName({ r }: { r: TodayRow }) {
   return (
-    <>
-      <span className={`td-dir ${r.short ? 'sold' : 'bought'}`}>{r.short ? 'SOLD' : 'BOUGHT'}</span>
-      <span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span> {r.option}
-    </>
+    // two lines (owner 29-Oct-2026: the open table was wider than the page): the option, then SOLD / BOUGHT and CALL / PUT
+    <span className="td-level td-opt">
+      <span>{r.option}</span>
+      <span><span className={`td-dir ${r.short ? 'sold' : 'bought'}`}>{r.short ? 'SOLD' : 'BOUGHT'}</span><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span></span>
+    </span>
   );
 }
 
@@ -153,7 +154,7 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                     <span className="td-actions">
                       {canBracket && (
                         <button type="button" className="btn" disabled={data.busy} aria-expanded={editing === r.id}
-                          onClick={() => setEditing(editing === r.id ? null : r.id)}>Set stop + target</button>
+                          title="Set a stop and a target on this option" onClick={() => setEditing(editing === r.id ? null : r.id)}>Stop / target</button>
                       )}
                       {(r.manual ? r.securityId != null : true) && (
                         <ConfirmButton label={r.short ? 'Buy back' : 'Exit'} ask={r.short ? 'Buy back now' : 'Exit now'} busy={data.busy}
