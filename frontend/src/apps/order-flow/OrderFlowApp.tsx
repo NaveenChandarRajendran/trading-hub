@@ -167,8 +167,8 @@ export default function OrderFlowApp() {
       <p className="of-foot">
         Σ = cumulative delta since 09:15 · ΔΔ = change in delta from the previous candle · Δ = buy minus sell in the candle ·
         V = volume (units). Estimated from Dhan&apos;s live feed: Dhan gives a price snapshot about every 1.5 seconds, not every
-        trade with its buyer or seller, so the numbers follow Dext closely but not exactly (28 Oct: same direction on 40 of 41
-        clear Nifty candles; day end Nifty +2.7L vs Dext +3.5L, Bank Nifty +17K vs Dext +10K). {flow0Rules(flows) ? 'The rules use this estimate.' : 'The rules do not use it.'}
+        trade with its buyer or seller, so the numbers follow Dext but not exactly (checked on 28 + 29 Oct: same direction on
+        72 of 81 clear Nifty candles; day end Nifty +2.4L vs Dext +3.5L and +1.6L vs +1.8L, Bank Nifty +1K vs +10K and +92K vs +78K). {flow0Rules(flows) ? 'The rules use this estimate.' : 'The rules do not use it.'}
       </p>
 
       <section className="card">

@@ -4,15 +4,18 @@ orderflow.py - ESTIMATED order flow (buy / sell volume, delta, cumulative delta)
 Dext (Dhan's order-flow tool) has no export or API, and Dhan's data API has no aggressor side (owner, 23-Oct-2026). So
 delta is estimated from the live feed's Full packets of the future:
     traded qty since the last packet = day volume now - day volume at the previous packet
-    side (from 29-Oct-2026): last price above the middle of the best bid / ask just before this packet -> buy, below -> sell;
-          exactly in the middle (or no quote) -> price at or above the packet-before's best ask -> buy, at or below its
-          best bid -> sell, else tick rule (up from the last price -> buy, down -> sell, unchanged -> not counted)
-    Tuned on 28-Oct-2026 ticks against the owner's Dext screenshots (55 Nifty 5-min candles): same sign on 40 of 41
-    candles with |delta| >= 5K (was 37), total error 340K (was 505K); day end Nifty +269K vs Dext +354K (was +213K),
-    Bank Nifty +16.6K vs Dext +10K (was -10K). The rest is the opening half hour and a few big lumps: Dhan's Full
-    packet comes about every 1.5 s, Dhan's API has no trade-by-trade data or buyer/seller side (checked 29-Oct-2026:
-    Live Market Feed and 20/200-level depth only), so Dext's exact numbers can't be rebuilt.
-    (until 27-Oct-2026 "unchanged" took the last trade's side; that leaned to buying: Nifty +173K vs Dext ~+103K;
+    side (from 31-Oct-2026): two reads of each packet, mixed 60 / 40 (qty split buy / sell by the mix):
+          tick read (60%): price at or above the previous packet's best ask -> buy, at or below its best bid -> sell,
+                           else up from the last price -> buy, down -> sell, unchanged -> none
+          mid read (40%): price above the middle of this packet's best bid / ask -> buy, below -> sell (at the middle: tick)
+          both agree -> all the qty to that side; they disagree -> 80 / 20; tick none + mid -> 70 / 30
+    Tuned 29-Oct-2026 on the 28 + 29 Oct ticks against the owner's Dext screenshots (5-min Nifty candles):
+          day end Nifty 28 Oct +236K vs Dext +354K, 29 Oct +158K vs Dext +184K (the mid read alone: +271K / +32K,
+          the tick read alone: +213K / +242K); Bank Nifty 28 Oct +1K vs Dext +10K, 29 Oct +92K vs Dext +78K;
+          same sign on 72 of 81 Nifty candles with |Dext delta| >= 5K. Exact numbers can't be rebuilt: Dhan's Full
+          packet comes about every 1.5 s and Dhan's API has no trade-by-trade data or buyer / seller side (checked
+          29-Oct-2026: Live Market Feed and 20/200-level depth only), so several trades between two packets share one side.
+    (29-Oct-2026 the mid read alone; until 27-Oct-2026 "unchanged" took the last trade's side: Nifty +173K vs Dext ~+103K;
     28-Oct-2026 the previous bid / ask rule alone: Nifty +213K, Bank Nifty -10K vs Dext +354K / +10K)
     per IST minute: buy, sell, delta = buy - sell; cumulative delta = running sum over the day.
 Minutes when the backend was not running are missing (no backfill). Several trades between two packets get one side.
@@ -29,6 +32,9 @@ from datetime import datetime
 
 from candles import bucket_start, epoch, in_session
 from sig_indicators import IST
+
+
+TICK_WEIGHT = 0.6  # share of the tick read in a packet's side; the rest is the price-vs-mid read
 
 
 class DeltaBuilder:
@@ -49,25 +55,24 @@ class DeltaBuilder:
             self._st[security_id] = {"day": day, "vol": day_volume, "ltp": ltp, "bid": bid, "ask": ask, "side": 0}
             return None
         qty = day_volume - st["vol"]
-        side = 0
-        if qty > 0 and bid and ask and ltp != (bid + ask) / 2:
-            side = 1 if ltp > (bid + ask) / 2 else -1
-        elif qty > 0:
+        side = 0.0
+        if qty > 0:
+            # the two reads (tuned 29-Oct-2026 on 28 + 29 Oct ticks vs Dext): price vs the previous quote / last price,
+            # and price vs this packet's mid; 60 / 40 mix, so where they disagree the qty is split 80 / 20 not all-or-nothing
             if st["ask"] and ltp >= st["ask"]:
-                side = 1
+                tick = 1
             elif st["bid"] and ltp <= st["bid"]:
-                side = -1
-            elif ltp > st["ltp"]:
-                side = 1
-            elif ltp < st["ltp"]:
-                side = -1
+                tick = -1
+            else:
+                tick = 1 if ltp > st["ltp"] else -1 if ltp < st["ltp"] else 0
+            mid = (bid + ask) / 2 if bid and ask else None
+            at_mid = 1 if mid is not None and ltp > mid else -1 if mid is not None and ltp < mid else tick
+            side = TICK_WEIGHT * tick + (1 - TICK_WEIGHT) * at_mid
         minute = epoch(bucket_start(now, 1))
         bars = self.minutes.setdefault(security_id, {})
         m = bars.setdefault(minute, {"time": minute, "buy": 0, "sell": 0, "close": ltp, "open": ltp, "high": ltp, "low": ltp, "volume": 0})
-        if side > 0:
-            m["buy"] += qty
-        elif side < 0:
-            m["sell"] += qty
+        m["buy"] += qty * (1 + side) / 2
+        m["sell"] += qty * (1 - side) / 2
         m["close"] = ltp
         m["volume"] = m.get("volume", 0) + qty  # every traded qty, counted or not (Dext's V)
         m["high"], m["low"] = max(m.get("high", ltp), ltp), min(m.get("low", ltp), ltp)
@@ -81,9 +86,10 @@ class DeltaBuilder:
             rows = [m for m in rows if datetime.fromtimestamp(m["time"], IST).date() == day]
         out, cum = [], 0
         for m in rows:
-            d = m["buy"] - m["sell"]
+            buy, sell = round(m["buy"]), round(m["sell"])
+            d = buy - sell
             cum += d
-            out.append({**m, "delta": d, "cumulative": cum})
+            out.append({**m, "buy": buy, "sell": sell, "delta": d, "cumulative": cum})
         return out
 
 

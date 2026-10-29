@@ -1,4 +1,4 @@
-"""Estimated delta: side of the packet's bid / ask middle; at the middle the previous quote and the tick rule (orderflow.py)."""
+"""Estimated delta: tick read (previous quote, then price change) mixed 60 / 40 with the price-vs-mid read (orderflow.py)."""
 from datetime import datetime
 
 from orderflow import DeltaBuilder, aggregate_flow, dext_match
@@ -10,20 +10,20 @@ def at(hm, s=0):
     return datetime(2026, 10, 23, h, m, s, tzinfo=IST)
 
 
-def test_quote_rule_tick_rule_and_cumulative():
+def test_tick_and_mid_reads_mixed_and_cumulative():
     b = DeltaBuilder()
     sid = 1
     assert b.on_full(sid, 100.0, 1000, 99.5, 100.5, at("10:00")) is None  # first packet sets the base
-    b.on_full(sid, 100.8, 1300, 100.5, 101.0, at("10:00", 5))  # 300 above the packet's mid 100.75 -> buy
-    b.on_full(sid, 100.1, 1500, 100.0, 100.5, at("10:00", 9))  # 200 below its mid 100.25 -> sell
-    # exactly at the mid: the previous packet's quote and the tick rule decide
-    b.on_full(sid, 100.5, 1600, 100.0, 101.0, at("10:00", 20))  # 100 at the previous ask 100.5 -> buy
-    b.on_full(sid, 100.3, 1650, 100.1, 100.5, at("10:00", 30))  # 50 between previous 100.0 / 101.0, down from 100.5 -> sell
-    b.on_full(sid, 100.3, 1700, 100.1, 100.5, at("10:00", 40))  # 50 between, unchanged -> not counted
-    b.on_full(sid, 99.8, 1750, 99.7, 100.1, at("10:01", 2))  # 50 below mid 99.9 -> sell, next minute
+    b.on_full(sid, 100.8, 1300, 100.5, 101.0, at("10:00", 5))  # 300: above the previous ask and the mid -> all buy
+    b.on_full(sid, 100.1, 1500, 100.0, 100.5, at("10:00", 9))  # 200: below the previous bid and the mid -> all sell
+    b.on_full(sid, 100.5, 1600, 100.0, 101.0, at("10:00", 20))  # 100: at the previous ask, at the mid (tick decides) -> buy
+    b.on_full(sid, 100.3, 1650, 100.1, 100.5, at("10:00", 30))  # 50: between the previous quote, down -> sell
+    b.on_full(sid, 100.3, 1700, 100.1, 100.5, at("10:00", 40))  # 50: unchanged and at the mid -> 25 / 25
+    b.on_full(sid, 100.5, 1800, 100.4, 100.8, at("10:00", 50))  # 100: at the previous ask but below the new mid -> 60 / 40
+    b.on_full(sid, 99.8, 1850, 99.7, 100.1, at("10:01", 2))  # 50: below the previous bid and the mid -> sell, next minute
     s = b.series(sid)
-    assert [(m["buy"], m["sell"], m["delta"]) for m in s] == [(400, 250, 150), (0, 50, -50)]
-    assert [m["cumulative"] for m in s] == [150, 100]
+    assert [(m["buy"], m["sell"], m["delta"]) for m in s] == [(485, 315, 170), (0, 50, -50)]
+    assert [m["cumulative"] for m in s] == [170, 120]
 
 
 def test_volume_reset_and_outside_session_are_ignored():
