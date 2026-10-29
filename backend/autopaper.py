@@ -519,8 +519,6 @@ class AutoTrader:
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
                 "checkStates": {c["id"]: c["state"] for c in result["checks"]},
             }
-            if result.get("indexStop") is not None:  # Box Pullback: exits on index levels (on_minute_orb)
-                trade["indexStop"], trade["indexTarget"] = round(result["indexStop"], 2), round(result["indexTarget"], 2)
             with self.lock:
                 self.state["trades"].append(trade)
                 self._save()
@@ -761,16 +759,6 @@ class AutoTrader:
                 why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
-
-    def on_minute_orb(self, symbol, bar):
-        """Box Pullback exit check on a closed 1-minute index candle: index stop (box middle) or target (2R)."""
-        from sig_orb import orb_exit
-        for t in list(self.state["trades"]):
-            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) in (OB, OB5):
-                why = orb_exit(t, bar)
-                if why:
-                    reason = "Target" if why.startswith("Index target") else "Stop"
-                    threading.Thread(target=self._exit, args=(t, reason, why), daemon=True).start()
 
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]

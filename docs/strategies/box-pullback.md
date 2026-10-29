@@ -12,8 +12,10 @@ Two versions, each on its own book: 15/5 = 15-min box + 5-min close; 5/1 = 5-min
    Only the day's first break counts.
 3. Pullback: after that candle, the first 1-minute candle that touches the box edge again (low <= box high for a call,
    high >= box low for a put). Buy the ATM option at the next minute. No pullback by 13:30: no trade today.
-4. Stop: index back to the middle of the box. Target: 2 x (box edge - middle) beyond the edge (2R).
-   Checked on every closed 1-minute index candle, stop first. A 50 % premium stop is only a safety net.
+4. Stop -10 %, target +20 % on the option premium (owner 29-Oct-2026: uniform 10 / 20 for buying and scalping).
+   The video's index exits (stop at the box middle, 2R target) lost more in the 5-year test; with 10 / 20
+   (2021-24 / 2025-26): 15/5 NIFTY -1.04 L / -46 k, BANKNIFTY -1.65 L / -1.31 L; 5/1 NIFTY -1.53 L / -38 k,
+   BANKNIFTY -2.05 L / -1.18 L. Still losing: paper for learning only.
 5. 15:14: time exit.
 
 ## Backtest (honest warning)

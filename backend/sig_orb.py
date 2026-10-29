@@ -1,7 +1,8 @@
 """
 sig_orb.py - the "Box Pullback" rules (opening box + close outside + buy the pullback), from a YouTube video the owner
 shared. Two versions, each on its own Rs 1 lakh paper book: 15-min box + 5-min close (orbPullback, book "orb") and
-5-min box + 1-min close (orbPullback5, book "orb5", owner 29-Oct-2026 "we need to see all the combinations"). Owner asked for PAPER trading on 29-Oct-2026 although Claude's 5-year test lost money (project files
+5-min box + 1-min close (orbPullback5, book "orb5", owner 29-Oct-2026 "we need to see all the combinations"). Owner asked
+for PAPER trading on 29-Oct-2026 although Claude's 5-year test lost money (project files
 research/orb-pullback/: both versions lost money on 1 lot after costs). docs/strategies/box-pullback.md is the written
 rule; this file must match it.
 
@@ -11,9 +12,8 @@ NIFTY and BANKNIFTY, today's 1-minute index candles (09:15-aligned, IST), checke
               only the day's first break counts
     pullback  after that candle, the first 1-minute candle whose low touches the box high (call) / whose high touches the
               box low (put): buy the ATM option at the next minute. No pullback by 13:30: no trade today.
-    stop      index back to the middle of the box
-    target    index 2 x (box edge - middle) beyond the box edge (2R)
-    time      15:14 time exit (autopaper timeExit)
+    exit      premium stop -10 %, target +20 % (autopaper.json, owner 29-Oct-2026: uniform 10 / 20; in the 5-year test
+              it lost less than the video's index stop at the box middle / 2R target), else the 15:14 time exit
 Pure functions; build_state_orb wires them to the backend's candle cache (no Dhan calls of its own).
 """
 from datetime import datetime
@@ -27,7 +27,6 @@ SYMBOLS = ("NIFTY", "BANKNIFTY")
 # rule -> (box minutes, break candle minutes, name)
 VARIANTS = {RULE: (15, 5, "Box Pullback 15/5"), RULE5: (5, 1, "Box Pullback 5/1")}
 BOX_MIN, BREAK_TF = VARIANTS[RULE][:2]
-R_MULT = 2.0
 LAST_ENTRY = (13, 30)  # pullback must come before this (backtest "dead" = 13:30)
 
 
@@ -69,9 +68,7 @@ def evaluate(mins, box_min=BOX_MIN, break_tf=BREAK_TF):
             continue
         side = "CE" if up else "PE"
         lvl = hi if up else lo
-        risk = abs(lvl - out["mid"])
-        out.update(phase="pullback", side=side, breakAt=_hm(b["time"] + break_tf * 60), level=lvl,
-                   stop=out["mid"], target=lvl + R_MULT * risk if up else lvl - R_MULT * risk)
+        out.update(phase="pullback", side=side, breakAt=_hm(b["time"] + break_tf * 60), level=lvl)
         for m in rest:
             if m["time"] < b["time"] + break_tf * 60:
                 continue
@@ -124,8 +121,7 @@ def checks(state):
         out.append(check("break", f"{break_tf}-min close outside", FAIL, f"No {break_tf}-minute close outside the box yet", True))
     if ev["phase"] == "signal":
         out.append(check("pullback", "Pullback to the box", PASS,
-                         f"Touched {_f(ev['level'])} at {ev['touchAt'][0]:02d}:{ev['touchAt'][1]:02d}; stop {_f(ev['stop'])}, "
-                         f"target {_f(ev['target'])}", True))
+                         f"Touched {_f(ev['level'])} at {ev['touchAt'][0]:02d}:{ev['touchAt'][1]:02d}", True))
     else:
         out.append(check("pullback", "Pullback to the box", FAIL,
                          f"Waiting for price back to {_f(ev.get('level'))}" if ev["phase"] == "pullback" else "—", True))
@@ -150,23 +146,5 @@ def orb_rule(state):
         "symbol": state["symbol"], "side": ev.get("side") or "CE", "go": green and not blocked, "grade": "A" if green else None,
         "checks": cs, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
         "score": sum(c["state"] == PASS for c in cs), "total": 3, "interval": 1,
-        "indexStop": ev.get("stop"), "indexTarget": ev.get("target"), "noTarget": True,
     }
 
-
-def orb_exit(trade, bar):
-    """Index stop / target on a closed 1-minute candle (stop checked first, like the backtest). None = stay in."""
-    st, tg = trade.get("indexStop"), trade.get("indexTarget")
-    if st is None or tg is None:
-        return None
-    if trade["side"] == "CE":
-        if bar["low"] <= st:
-            return f"Index stop {st:,.2f} (box middle)"
-        if bar["high"] >= tg:
-            return f"Index target {tg:,.2f} (2R)"
-    else:
-        if bar["high"] >= st:
-            return f"Index stop {st:,.2f} (box middle)"
-        if bar["low"] <= tg:
-            return f"Index target {tg:,.2f} (2R)"
-    return None

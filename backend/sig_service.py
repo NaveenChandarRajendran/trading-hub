@@ -221,8 +221,8 @@ class SignalService:
         return OB_SYMBOLS if self.orb_rules() else ()
 
     def run_orb(self):
-        """Box Pullback, every minute: index stop / target exits on the last closed 1-minute candle, then the entry
-        (GO when price pulls back to the 15-minute box after a 5-minute close outside it)."""
+        """Box Pullback, every minute: the entry (GO when price pulls back to the opening box after a close outside it).
+        Exits are the normal premium stop / target (autopaper.json) and the 15:14 time exit."""
         for symbol in self.orb_symbols():
             for i, ob in enumerate(self.orb_rules()):
                 try:
@@ -232,8 +232,6 @@ class SignalService:
                     st, problems = None, [f"{symbol} Box Pullback: {e}"]
                 if not st:
                     break
-                if self.trader and i == 0:  # one exit check per candle covers both versions
-                    self.trader.on_minute_orb(symbol, st["bar"])
                 today = self.clock().date()
                 st["tradedToday"] = self._orb_day.get((ob, symbol)) == today
                 r = orb_rule(st)
