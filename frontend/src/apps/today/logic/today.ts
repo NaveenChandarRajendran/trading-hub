@@ -13,6 +13,7 @@ export type Who = string; // journal strategy name
 export const WHO: Record<Who, { name: string; where: string }> = {
   Manual: { name: 'My trades', where: 'Manual' },
   'Rebound Call': { name: 'Rebound Call', where: 'App account' }, // BankNifty Rebound Call, paper from 28-Oct-2026
+  'Box Pullback': { name: 'Box Pullback', where: 'App account' }, // 15-min box + pullback (YouTube), paper from 29-Oct-2026
   'Dharani Rules': { name: 'Dharani Rules', where: 'App account' },
   'Trend Rules': { name: 'Trend Rules', where: 'App account' },
   '4 Pillar Rules': { name: '4 Pillar Rules', where: 'MegaBull' },
@@ -28,7 +29,7 @@ export const WHO: Record<Who, { name: string; where: string }> = {
 };
 export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
   'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
-export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
+export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', 'Box Pullback', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {

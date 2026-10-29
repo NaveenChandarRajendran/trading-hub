@@ -39,13 +39,15 @@ FP, STR = "fourPillar", "superTrend"  # MegaBull rules, each on any index (owner
 DH = "dharani"  # the app's own Rs 1 lakh paper account for the Dharani rule (strategy_books.StrategyBook)
 MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): manual trades and "stop + target"
 RB, RBK = "reboundCall", "rebound"  # Rebound Call rule (sig_rebound.py) and its own Rs 1 lakh book (owner, 27-Oct-2026)
-ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", RBK: "Rebound Call book", MANUAL: "Paper Trading (manual)"}
+OB, OBK = "orbPullback", "orb"  # Box Pullback rule (sig_orb.py) and its own Rs 1 lakh book (owner, 29-Oct-2026)
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", RBK: "Rebound Call book", OBK: "Box Pullback book",
+                 MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
 # SuperTrend Rules); the app's paper trading = one Rs 1 lakh account per strategy (Trend Rules, Dharani Rules). A rule is
 # also a "slot": one open position per slot per index. MB as a slot = trades saved before the 4 Pillar / SuperTrend split.
-RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK}
-ACCOUNT_CFG = {RBK: RB}  # autopaper.json section per account when it is not the account key (default: the account key)
-APP = {TH, DH, RBK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
+RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK, OB: OBK}
+ACCOUNT_CFG = {RBK: RB, OBK: OB}  # autopaper.json section per account when it is not the account key (default: the account key)
+APP = {TH, DH, RBK, OBK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
 def _entry_rsi(state, side):
@@ -441,6 +443,8 @@ class AutoTrader:
             return "Dharani v2 is off (config dharaniV2.enabled)"
         if slot == RB and not self.cfg.get(RB, {}).get("enabled", False):
             return "Rebound Call is off (config reboundCall.enabled)"
+        if slot == OB and not self.cfg.get(OB, {}).get("enabled", False):
+            return "Box Pullback is off (config orbPullback.enabled)"
         if slot in self.cfg.get("watchOnly", []):  # owner 28-Oct-2026: signal is shadow-logged, no paper trade
             result["go"] = False  # the strategy board then shows "Blocked · Watch only" instead of "GO · order sent"
             result["blocked"] = list(result.get("blocked") or []) + ["Watch only (no paper trades)"]
@@ -513,6 +517,8 @@ class AutoTrader:
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
                 "checkStates": {c["id"]: c["state"] for c in result["checks"]},
             }
+            if result.get("indexStop") is not None:  # Box Pullback: exits on index levels (on_minute_orb)
+                trade["indexStop"], trade["indexTarget"] = round(result["indexStop"], 2), round(result["indexTarget"], 2)
             with self.lock:
                 self.state["trades"].append(trade)
                 self._save()
@@ -753,6 +759,16 @@ class AutoTrader:
                 why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
+
+    def on_minute_orb(self, symbol, bar):
+        """Box Pullback exit check on a closed 1-minute index candle: index stop (box middle) or target (2R)."""
+        from sig_orb import orb_exit
+        for t in list(self.state["trades"]):
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == OB:
+                why = orb_exit(t, bar)
+                if why:
+                    reason = "Target" if why.startswith("Index target") else "Stop"
+                    threading.Thread(target=self._exit, args=(t, reason, why), daemon=True).start()
 
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]

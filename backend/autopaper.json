@@ -8,6 +8,7 @@
   "megabull": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
   "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20, "_note": "The app's own Rs 1 lakh paper account for the Dharani rule (strategy book). stopPct = safety stop; the rule exits on SuperTrend, targetPct is not used."},
   "manual": {"lots": 1, "stopPct": 15, "targetPct": 20},
+  "orbPullback": {"enabled": true, "lots": 1, "stopPct": 50, "targetPct": 0, "_note": "Box Pullback (docs/strategies/box-pullback.md): NIFTY + BANKNIFTY, 15-min box, 5-min close outside, buy ATM on the pullback; exits on the INDEX (stop = box middle, target = 2R) or 15:14; stopPct 50 is only a safety stop on the premium. Own Rs 1 lakh 'orb' paper account (owner 29-Oct-2026)."},
   "reboundCall": {"enabled": true, "lots": 1, "stopPct": 25, "targetPct": 50, "_note": "Rebound Call (docs/strategies/rebound-call.md): BANKNIFTY only, 5-minute candles, ATM call, stop -25 %, target +50 %, on the app's own Rs 1 lakh 'rebound' paper account (owner 27-Oct-2026)."},
   "dharaniV2": {"enabled": true, "symbols": ["NIFTY", "BANKNIFTY"], "premiumNear": {"NIFTY": 250, "BANKNIFTY": 500}, "_note": "Dharani rule (teacher's tuned setups, docs/strategies/dharani-v2.md) on the app's 'dharani' paper account, 3-minute candles, SuperTrend exit; BANKNIFTY added by the owner (the teacher tested NIFTY)."},
   "selling": {"enabled": true, "capital": 300000, "lots": 1,

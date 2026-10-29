@@ -3,13 +3,14 @@
 import { DEFAULT_INDICATORS, type IndicatorToggles } from '../config/settings';
 import type { AutoStatus, AutoTrade, OiView, RuleResult, TrendingView } from './signals';
 
-export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub' | 'reboundCall';
+export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub' | 'reboundCall' | 'orbPullback';
 export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
   { key: 'dharaniV2', name: 'Dharani Rules', account: 'App · ₹1 lakh · 3-min' },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
   { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
+  { key: 'orbPullback', name: 'Box Pullback', account: 'App · ₹1 lakh · 15-min box + pullback' },
 ];
 
 export type CellKind = 'trade' | 'go' | 'near' | 'wait' | 'none';
@@ -99,6 +100,8 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
     bb: { period: 20, mult: 2 }, note: 'SuperTrend, VWAP, EMA 20, Bollinger (20, 2), RSI 14, pivot. Trending OI is on the strategy box.' },
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 },
     note: 'EMA 200 and VWAP (BankNifty only). ATR and the 10-day average range are on the strategy box.' },
+  orbPullback: { interval: 5, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
+    note: 'The 15-minute box (09:15-09:29 high / low), the break and the pullback are on the strategy box.' },
 };
 
 /** The Rs 3 lakh option SELLING book (owner 28-Oct-2026, sell_desk.py): NIFTY only, its own state at /api/selling/state. */
