@@ -91,7 +91,43 @@ def _names(rows, order):
     return list(order) + sorted({r["strategy"] for r in rows} - set(order))  # a rule not in the list still shows
 
 
-def summary_text(day, rows, order, market=None, near=None):
+def _sections(rows, order, hide=()):
+    """order: rule names, or [(section title, names)] (owner 29-Oct-2026: group like the app's menu). hide: watch-only
+    rules, left out even if they have rows. -> [(title or None, names)]; a rule with rows but not listed still shows."""
+    if order and isinstance(order[0], (tuple, list)):
+        secs = [(t, [n for n in ns if n not in hide]) for t, ns in order]
+        listed = {n for _, ns in order for n in ns}
+        extra = sorted({r["strategy"] for r in rows} - listed - set(hide) - {"Manual"})
+        if extra:
+            secs.append(("Other", extra))
+        secs.append((None, ["Manual"]))
+        return [(t, ns) for t, ns in secs if ns]
+    return [(None, [n for n in _names(rows, order) if n not in hide])]
+
+
+class Header(str):
+    """A section title line in a rule listing ("— Option Sell —")."""
+
+
+def _listing(rows, order, hide=()):
+    out = []
+    for title, names in _sections(rows, order, hide):
+        if title:
+            out.append(Header(f"— {title} —"))
+        out += names
+    return out
+
+
+def _held_text(held):
+    """Every open leg of a rule (a strangle has two): "NIFTY 29 DEC 23400 CALL + 22100 PUT"."""
+    names = [r.get("instrument") or "?" for r in held]
+    first = names[0].rsplit(" ", 2)[0] if len(names) > 1 else None  # "NIFTY 29 DEC" shared prefix
+    if first and all(n.startswith(first + " ") for n in names):
+        return f"{first} " + " + ".join(n[len(first) + 1:] for n in names)
+    return " + ".join(names)
+
+
+def summary_text(day, rows, order, market=None, near=None, hide=()):
     """Day summary from the journal's trade rows (all accounts, Manual too). order: strategy names in board order.
     market: see market_line. near: strategy name -> the day's closest call (near_text), shown for a rule with no trade."""
     closed = [r for r in rows if r["status"] == "closed"]
@@ -100,7 +136,10 @@ def summary_text(day, rows, order, market=None, near=None):
     lines = [f"📋 Day summary {day} · {rupees(total)}"]
     if market_line(market):
         lines.append(market_line(market))
-    for name in _names(rows, order):
+    for name in _listing(rows, order, hide):
+        if isinstance(name, Header):
+            lines.append(str(name))
+            continue
         mine = [r for r in closed if r["strategy"] == name]
         if not mine:
             if any(r["strategy"] == name for r in still_open):
@@ -116,13 +155,13 @@ def summary_text(day, rows, order, market=None, near=None):
     return "\n".join(lines)
 
 
-def open_text(day, order):
+def open_text(day, order, hide=()):
     """9:15 message (owner 27-Oct-2026: "Please allow 9:15 as well")."""
-    rules = ", ".join(n for n in order if n != "Manual")
+    rules = ", ".join(n for n in _listing([], order, hide) if n != "Manual" and not isinstance(n, Header))
     return f"🔔 Market open · {day} 9:15\nWatching: {rules}\nYou'll get a message on every entry and exit, and an update every hour from 10:15."
 
 
-def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=None):
+def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=None, hide=()):
     """Hourly update (owner 27-Oct-2026: "a short summary every hour, then the consolidated one at 3.30").
     rows: the day's journal rows. live: open trade id -> P&L now. manual_live: open P&L of the owner's own trades.
     near: strategy name -> this hour's closest call that did not trade (near_text)."""
@@ -134,7 +173,10 @@ def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=
     lines = [f"⏰ {at} update · Today so far: {rupees(total)}"]
     if market_line(market):
         lines.append(market_line(market))
-    for name in _names(rows, order):
+    for name in _listing(rows, order, hide):
+        if isinstance(name, Header):
+            lines.append(str(name))
+            continue
         mine = [r for r in closed if r["strategy"] == name]
         held = [r for r in still_open if r["strategy"] == name]
         if name == "Manual":
@@ -158,9 +200,9 @@ def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=
             else:
                 booked = f"{rupees(net)} ({len(mine)} trades, {won} won)"
         if held:
-            r = held[0]
-            pnl = live.get(r["id"])
-            text = f"🔵 {name}: in trade {r['instrument']}" + (f", {rupees(pnl)} now" if pnl is not None else "")
+            now = [live.get(r["id"]) for r in held]
+            pnl = None if any(v is None for v in now) else sum(now)
+            text = f"🔵 {name}: in trade {_held_text(held)}" + (f", {rupees(pnl)} now" if pnl is not None else "")
             lines.append(text + (f"; earlier {booked}" if booked else ""))
         elif mine:
             lines.append(f"{mark} {name}: {booked}")

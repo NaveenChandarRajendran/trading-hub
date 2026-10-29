@@ -301,7 +301,7 @@ def test_megabull_rule_and_dharani_trade_on_separate_accounts(tmp_path):
     assert pos["superTrend"] and pos["dharaniV2"] and not pos["fourPillar"] and not pos.get("tradingHub")
     assert t.on_signal(d, STATE) == "Position already open on this index"
     st = t.status()
-    assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "Dharani"
+    assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "Power Breakout"
 
 
 def test_dharani_entry_has_no_target_picks_strike_by_premium_and_exits_on_supertrend(tmp_path):
@@ -371,3 +371,50 @@ def test_target_exit_with_no_buyer_waits_for_the_fill_without_an_alert(tmp_path)
     acc.qty = 0
     t.tick()
     assert tr["status"] == "closed" and tr["exitReason"] == "Target" and tr["exitPrice"] == 120.5 and "exitPending" not in tr
+
+
+class ManualPaper(FakeAccount):
+    """The manual account: one hand-bought option (security 7) at 164.85."""
+    key, rule = "manual", "manual"
+
+    def __init__(self):
+        super().__init__()
+        self.instruments = {7: {"name": "NIFTY 03 NOV 22750 CALL", "strike": 22750, "expiry": "2026-11-03", "optionType": "CE",
+                                "lotSize": 65, "symbol": "NIFTY"}}
+
+    def open_qty(self, sid):
+        return 65 if sid == 7 else 0
+
+    def positions(self):
+        return [{"security_id": 7, "avg_buy": 164.85}]
+
+
+def make_manual(tmp_path):
+    th, man = FakeAccount(), ManualPaper()
+    t = AutoTrader({**CFG, "logDir": str(tmp_path)}, [th, man], clock=Clock(), alert=lambda k, m: None,
+                   state_path=os.path.join(str(tmp_path), "state.json"))
+    return t, man
+
+
+def test_bracket_defaults_to_trend_percentages(tmp_path):
+    t, man = make_manual(tmp_path)
+    tr = t.bracket(7)
+    assert (tr["stop"], tr["target"]) == (140.1, 197.85)  # -15 % / +20 % of 164.85
+    assert man.sent[-1] == ("SL-M", 140.1)
+
+
+def test_bracket_takes_the_owners_prices(tmp_path):
+    """Owner 29-Oct-2026: the page shows the stop / target before placing and the owner may change them."""
+    t, man = make_manual(tmp_path)
+    tr = t.bracket(7, stop_price=148.37, target_price=197.82)
+    assert (tr["stop"], tr["target"]) == (148.35, 197.85)  # rounded to the 0.05 tick (stop down, target up)
+
+
+def test_bracket_rejects_a_stop_above_the_buy_price(tmp_path):
+    import pytest
+    from autopaper import AccountError
+    t, _ = make_manual(tmp_path)
+    with pytest.raises(AccountError, match="stop must be below"):
+        t.bracket(7, stop_price=170, target_price=200)
+    with pytest.raises(AccountError, match="target must be above"):
+        t.bracket(7, stop_price=150, target_price=160)

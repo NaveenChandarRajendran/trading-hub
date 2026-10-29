@@ -14,7 +14,8 @@ Endpoints:
     GET  /api/signals/state?symbol=NIFTY     everything the dashboard's rule cards, OI section and paper card show
     GET  /api/signals/snapshots.csv?date=    the day's snapshot log (Download CSV)
     POST /api/autopaper/auto      {"on": true}
-    POST /api/autopaper/bracket   {"securityId": 12345}   stop + target on a hand-bought Trading Hub paper position
+    POST /api/autopaper/bracket   {"securityId": 12345, "stopPrice"?: 140.1, "targetPrice"?: 197.85}   stop + target on a
+                                  hand-bought paper position (default: the Trend percentages)
     POST /api/autopaper/exit      {"tradeId": "..."}
 """
 import csv
@@ -24,6 +25,7 @@ import os
 import threading
 import time
 from collections import Counter
+from typing import Optional
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
@@ -449,6 +451,13 @@ class SignalService:
                     if old is None or met / max(total, 1) > old["met"] / max(old["total"], 1):
                         bucket[name] = n
 
+    def _watch_only(self):
+        """Journal names of the watch-only rules: left out of the phone messages (owner 29-Oct-2026)."""
+        try:
+            return set(self.trader.status().get("watchOnly") or []) if self.trader else set()
+        except Exception:
+            return set()
+
     def _market(self):
         out = []
         for sym, name in (("NIFTY", "Nifty"), ("BANKNIFTY", "Bank Nifty")):
@@ -464,7 +473,7 @@ class SignalService:
         import journal
         import notify
         try:
-            self.phone.send(notify.open_text(f"{now:%d %b}", journal.STRATEGIES))
+            self.phone.send(notify.open_text(f"{now:%d %b}", journal.PHONE_GROUPS, self._watch_only()))
         except Exception:
             log.exception("market open phone message failed")
 
@@ -507,8 +516,8 @@ class SignalService:
                 manual_live = round(sum(p.get("unrealized") or 0 for p in acc.paper.positions() if p["open_qty"] > 0), 2)
             with self.lock:
                 near, self._near["hour"] = dict(self._near["hour"]), {}
-            self.phone.send(notify.with_market(notify.hourly_text(f"{now:%H:%M}", self.rows_today(), journal.STRATEGIES, None,
-                                                                  near, live, manual_live), self._market_detail()))
+            self.phone.send(notify.with_market(notify.hourly_text(f"{now:%H:%M}", self.rows_today(), journal.PHONE_GROUPS, None,
+                                                                  near, live, manual_live, self._watch_only()), self._market_detail()))
         except Exception:
             log.exception("hourly phone update failed")
 
@@ -682,7 +691,7 @@ class SignalService:
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
-                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Dharani Rules (app paper, Rs 1 lakh)"),
+                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Power Breakout (app paper, Rs 1 lakh)"),
                           (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)"),
                           ("orbPullback5", "Box Pullback 5/1 (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
@@ -713,8 +722,8 @@ class SignalService:
                 import notify
                 try:
                     self.phone.send(notify.with_market(notify.summary_text(
-                        f"{now:%d %b}", self.rows_today(), journal.STRATEGIES, None,
-                        dict(self._near["all"]) if self._near["day"] == now.date() else {}), self._market_detail()))
+                        f"{now:%d %b}", self.rows_today(), journal.PHONE_GROUPS, None,
+                        dict(self._near["all"]) if self._near["day"] == now.date() else {}, self._watch_only()), self._market_detail()))
                 except Exception:
                     log.exception("phone summary failed")
 
@@ -806,6 +815,8 @@ class AutoBody(BaseModel):
 
 class BracketBody(BaseModel):
     securityId: int
+    stopPrice: Optional[float] = None  # owner 29-Oct-2026: the page shows the stop / target and lets the owner change them
+    targetPrice: Optional[float] = None
 
 
 class ExitBody(BaseModel):
@@ -963,7 +974,7 @@ def register(app, svc):
     @app.post("/api/autopaper/bracket")
     def bracket(body: BracketBody):
         try:
-            return svc.trader.bracket(body.securityId)
+            return svc.trader.bracket(body.securityId, stop_price=body.stopPrice, target_price=body.targetPrice)
         except Exception as e:
             raise HTTPException(409, str(e))
 

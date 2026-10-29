@@ -7,7 +7,7 @@ export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHu
 export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
-  { key: 'dharaniV2', name: 'Dharani Rules', account: 'App · ₹1 lakh · 3-min' },
+  { key: 'dharaniV2', name: 'Power Breakout', account: 'App · ₹1 lakh · 3-min' },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
   { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
@@ -111,8 +111,14 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
 export interface SellLeg {
   id: string; slot: string; rule?: string; side: 'CE' | 'PE'; qty: number; entryPrice: number; netPnl?: number | null;
   instrument: { name: string; securityId?: number }; ltp?: number | null; pnl?: number | null;
+  stop?: number | null; entryDay?: string; entryTime?: string; exitTime?: string | null; exitPrice?: number | null;
+  exitReason?: string | null; expiry?: string; status?: 'open' | 'closed';
 }
-export interface SellingState { open: SellLeg[]; closedToday: SellLeg[]; notes: Record<string, string> }
+export interface SellingState {
+  open: SellLeg[]; closedToday: SellLeg[]; notes: Record<string, string>;
+  capital?: number; realized?: number; unrealized?: number; equity?: number; enabled?: boolean; error?: string | null;
+  cycle?: { pnl?: number; [k: string]: unknown } | null;
+}
 export const SELL_BOARD: { key: string; name: string; account: string; idle: string }[] = [
   { key: 'sellStraddle', name: 'Expiry Straddle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:20 on Nifty expiry days' },
   { key: 'sellCalmCall', name: 'Calm-day Call Sell', account: 'Selling · ₹3 lakh · Nifty only', idle: 'checks at 10:15 (calm days only)' },

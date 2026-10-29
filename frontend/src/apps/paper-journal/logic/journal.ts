@@ -4,11 +4,40 @@
 import { API_BASE, getJson } from '../../../shared/api';
 import type { PnlRow } from '../../paper-trade/logic/api';
 
-export const STRATEGIES = ['4 Pillar Rules', 'SuperTrend Rules', 'Dharani Rules', 'Trend Rules', 'Manual'] as const;
+// Every journal strategy name (backend/journal.py STRATEGIES), grouped like the app's Trading Strategies menu (owner 29-Oct-2026).
+export const STRATEGY_GROUPS = [
+  { name: 'Option Buy', items: ['Power Breakout', 'Rebound Call'] },
+  {
+    name: 'Option Sell',
+    items: ['Expiry Straddle (sell)', 'Expiry Straddle 9:40 (sell)', 'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)',
+      'Calm-day Call Sell', '2-month Strangle (sell)'],
+  },
+  { name: 'Scalping', items: ['Box Pullback 15/5', 'Box Pullback 5/1'] },
+  { name: 'Watch-only (history)', items: ['4 Pillar Rules', 'SuperTrend Rules', 'Trend Rules'] },
+  { name: 'Mine', items: ['Manual'] },
+] as const;
+export const STRATEGIES = STRATEGY_GROUPS.flatMap((g) => g.items);
 export type Strategy = (typeof STRATEGIES)[number];
 export const ACCOUNT_OF: Record<Strategy, string> = {
-  '4 Pillar Rules': 'MegaBull', 'SuperTrend Rules': 'MegaBull', 'Dharani Rules': 'App · Dharani', 'Trend Rules': 'App · Trend', Manual: 'App · Manual',
+  '4 Pillar Rules': 'MegaBull', 'SuperTrend Rules': 'MegaBull', 'Power Breakout': 'App · Power Breakout', 'Trend Rules': 'App · Trend',
+  'Rebound Call': 'App · Rebound Call', 'Box Pullback 15/5': 'App · Box Pullback 15/5', 'Box Pullback 5/1': 'App · Box Pullback 5/1',
+  'Expiry Straddle (sell)': 'App · Selling', 'Expiry Straddle 9:40 (sell)': 'App · Selling', 'Expiry Straddle 11:26 (sell)': 'App · Selling',
+  'Expiry Straddle 12:24 (sell)': 'App · Selling', 'Calm-day Call Sell': 'App · Selling', '2-month Strangle (sell)': 'App · Selling',
+  Manual: 'App · Manual',
 };
+/** Chip text: the selling rules without the "(sell)" tail (the group already says so). */
+export const chipName = (s: string) => s.replace(/ \(sell\)$/, '');
+
+/** Open positions: today's open trades plus the selling book's open legs from earlier days (one row per leg). */
+export function openPositions(trades: JTrade[], today: string): JTrade[] {
+  const seen = new Set<string>();
+  return trades.filter((t) => {
+    if (t.status !== 'open' || (t.day !== today && !t.short) || seen.has(t.id)) return false;
+    seen.add(t.id);
+    return true;
+  });
+}
+
 export type IndexPick = 'both' | 'NIFTY' | 'BANKNIFTY';
 
 export interface JOrder {
@@ -50,6 +79,8 @@ export interface JTrade {
   charges: number | null;
   netPnl: number | null;
   status: 'open' | 'closed';
+  stop?: number | null;
+  target?: number | null;
   short?: boolean; // the Selling book's legs: sold first, bought back to exit
   securityId?: number | null;
   entryDay?: string | null; // a positional leg's first day

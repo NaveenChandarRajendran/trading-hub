@@ -2,7 +2,7 @@
 // and trades for any past day (MegaBull's too: the app records each order it sends there), open positions, the daily
 // P&L calendar and the strategies side by side. History from 1 Oct 2026 (imported once from the Excel). Data:
 // GET /api/journal/* (backend/journal.py). Buying and selling by hand is on the Buy / Sell page (was Option Chain); today's live view is the Today page.
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { errorText } from '../../shared/live/liveStatus';
 import { inr } from '../../shared/grid';
@@ -10,7 +10,7 @@ import { Alert, EmptyState, Heatmap, Pill, Segmented, Stat, type Tone } from '..
 import { downloadCsv, longDate, price, signedRupees, toneOf } from '../paper-trade/format';
 import { buildCalendar, fyLabel, fyOf, fyRange, istToday } from '../paper-trade/logic/calendar';
 import {
-  ACCOUNT_OF, STRATEGIES, dailyRows, fetchDays, fetchOrders, fetchTrades, heldFor, ordersCsv, pick, totals, tradesCsv,
+  ACCOUNT_OF, STRATEGIES, STRATEGY_GROUPS, chipName, dailyRows, fetchDays, fetchOrders, fetchTrades, heldFor, openPositions, ordersCsv, pick, totals, tradesCsv,
   type IndexPick, type JOrder, type JTrade,
 } from './logic/journal';
 import './paper-journal.css';
@@ -23,6 +23,7 @@ const VIEWS = [
 const INDEXES = [{ value: 'both', label: 'Both' }, { value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
 const STORE = 'journal.';
 const REFRESH_MS = 30000;
+const PICKED = 'strategies2'; // new key 29-Oct-2026: an old saved pick would hide the rules added since
 
 const load = (k: string) => {
   try {
@@ -44,7 +45,7 @@ const idx = (s: string) => (s === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty');
 
 function readStrategies(): string[] {
   try {
-    const v = JSON.parse(load('strategies') ?? 'null');
+    const v = JSON.parse(load(PICKED) ?? 'null');
     const keep = Array.isArray(v) ? STRATEGIES.filter((s) => v.includes(s)) : [];
     if (keep.length) return keep;
   } catch {
@@ -97,21 +98,26 @@ export default function PaperJournalApp() {
   const toggle = (s: string) => {
     const next = strategies.includes(s) ? strategies.filter((x) => x !== s) : STRATEGIES.filter((x) => x === s || strategies.includes(x));
     setStrategies(next);
-    save('strategies', JSON.stringify(next));
+    save(PICKED, JSON.stringify(next));
   };
   const all = () => {
     const next = strategies.length === STRATEGIES.length ? [] : [...STRATEGIES];
     setStrategies(next);
-    save('strategies', JSON.stringify(next));
+    save(PICKED, JSON.stringify(next));
   };
 
   const shown = useMemo(() => (trades ? pick(trades, strategies, index) : []), [trades, strategies, index]);
   const dayTrades = useMemo(() => shown.filter((t) => t.day === day), [shown, day]);
   const dayOrders = useMemo(() => (orders ? pick(orders, strategies, index) : []), [orders, strategies, index]);
-  const openNow = useMemo(() => shown.filter((t) => t.status === 'open' && t.day === today), [shown, today]);
+  const openNow = useMemo(() => openPositions(shown, today), [shown, today]);
   const sum = useMemo(() => totals(shown), [shown]);
   const daySum = useMemo(() => totals(dayTrades), [dayTrades]);
-  const per = useMemo(() => STRATEGIES.filter((s) => strategies.includes(s)).map((s) => ({ s, t: totals(shown.filter((x) => x.strategy === s)) })), [shown, strategies]);
+  const per = useMemo(() => STRATEGY_GROUPS.map((g) => {
+    const mine = shown.filter((x) => (g.items as readonly string[]).includes(x.strategy));
+    const rows = g.items.filter((s) => strategies.includes(s)).map((s) => ({ s, t: totals(mine.filter((x) => x.strategy === s)) }))
+      .filter(({ t }) => t.trades || t.open);
+    return { name: g.name, rows, t: totals(mine) };
+  }).filter((g) => g.rows.length), [shown, strategies]);
   const cal = useMemo(() => buildCalendar(range.from, range.to, dailyRows(shown), [], today), [shown, range.from, range.to, today]);
   const dayChoices = useMemo(() => (days.includes(day) ? days : [day, ...days]), [days, day]);
 
@@ -122,9 +128,14 @@ export default function PaperJournalApp() {
           <div className="field">Strategy
             <span className="chips" role="group" aria-label="Strategies">
               <button type="button" className={`chip ${strategies.length === STRATEGIES.length ? 'on' : ''}`} onClick={all}>All</button>
-              {STRATEGIES.map((s) => (
-                <button key={s} type="button" className={`chip ${strategies.includes(s) && strategies.length !== STRATEGIES.length ? 'on' : ''}`}
-                  aria-pressed={strategies.includes(s)} title={`${ACCOUNT_OF[s]} account`} onClick={() => toggle(s)}>{s}</button>
+              {STRATEGY_GROUPS.map((g) => (
+                <span key={g.name} className="pj-group">
+                  <span className="pj-group-name">{g.name}</span>
+                  {g.items.map((s) => (
+                    <button key={s} type="button" className={`chip ${strategies.includes(s) && strategies.length !== STRATEGIES.length ? 'on' : ''}`}
+                      aria-pressed={strategies.includes(s)} title={`${s} · ${ACCOUNT_OF[s]} account`} onClick={() => toggle(s)}>{chipName(s)}</button>
+                  ))}
+                </span>
               ))}
             </span>
           </div>
@@ -196,12 +207,24 @@ export default function PaperJournalApp() {
           <table className="t">
             <thead><tr><th>Strategy</th><th className="txt">Account</th><th>Trades</th><th>Win %</th><th>Net (₹)</th><th>Avg win</th><th>Avg loss</th><th>Charges</th></tr></thead>
             <tbody>
-              {per.map(({ s, t }) => (
-                <tr key={s}>
-                  <td>{s}</td><td className="txt">{ACCOUNT_OF[s as keyof typeof ACCOUNT_OF]}</td><td className="num">{t.trades}</td>
-                  <td>{t.winRate == null ? '–' : t.winRate.toFixed(1)}</td><td className={toneOf(t.net)}>{signedRupees(t.net)}</td>
-                  <td className="up">{signedRupees(t.avgWin)}</td><td className="down">{signedRupees(t.avgLoss)}</td><td>{inr(2)(t.charges)}</td>
-                </tr>
+              {!per.length && <tr><td colSpan={8}><EmptyState>No trades yet for this selection.</EmptyState></td></tr>}
+              {per.map((g) => (
+                <Fragment key={g.name}>
+                  {g.rows.map(({ s, t }) => (
+                    <tr key={s}>
+                      <td>{s}</td><td className="txt">{ACCOUNT_OF[s]}</td><td className="num">{t.trades}{t.open ? <span className="pj-sub"> +{t.open} open</span> : null}</td>
+                      <td>{t.winRate == null ? '–' : t.winRate.toFixed(1)}</td><td className={toneOf(t.net)}>{signedRupees(t.net)}</td>
+                      <td className="up">{signedRupees(t.avgWin)}</td><td className="down">{signedRupees(t.avgLoss)}</td><td>{inr(2)(t.charges)}</td>
+                    </tr>
+                  ))}
+                  {g.rows.length > 1 && (
+                    <tr className="pj-subtotal">
+                      <td>{g.name === 'Option Sell' ? 'Selling book (₹3L) total' : `${g.name} total`}</td><td className="txt" /><td className="num">{g.t.trades}</td>
+                      <td>{g.t.winRate == null ? '–' : g.t.winRate.toFixed(1)}</td><td className={toneOf(g.t.net)}>{signedRupees(g.t.net)}</td>
+                      <td className="up">{signedRupees(g.t.avgWin)}</td><td className="down">{signedRupees(g.t.avgLoss)}</td><td>{inr(2)(g.t.charges)}</td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
               <tr>
                 <td><b>All ticked</b></td><td className="txt" /><td className="num"><b>{sum.trades}</b></td>
@@ -215,7 +238,7 @@ export default function PaperJournalApp() {
         <p className="card-foot">
           {fyLabel(fy)} so far. 1–23 Oct 2026 come from the Excel tracker (one buy and one sell per trade); from 26 Oct the app records every
           order itself, MegaBull&apos;s included. MegaBull charges are the 0.37% estimate; the app accounts use Dhan&apos;s charges.
-          Manual = your own buy / sell on the Buy / Sell page.
+          Manual = your own buy / sell on the Buy / Sell page. Selling-book legs are SOLD first and bought back to close; a 2-month leg stays under Positions until it is bought back.
         </p>
       </section>
     </div>
@@ -226,14 +249,15 @@ function TradeTable({ rows }: { rows: JTrade[] }) {
   return (
     <div className="pj-scroll">
       <table className="t">
-        <thead><tr><th>Date</th><th className="txt">Strategy</th><th className="txt">Index</th><th className="txt">Option</th><th>Qty</th><th>Buy time</th><th>Entry</th><th>Sell time</th><th>Exit</th><th>Time in trade</th><th className="txt">Exit reason</th><th>Charges</th><th>Net (₹)</th></tr></thead>
+        <thead><tr><th>Date</th><th className="txt">Strategy</th><th className="txt">Index</th><th className="txt">Option</th><th>Qty</th><th>In at</th><th>Entry</th><th>Out at</th><th>Exit</th><th>Time in trade</th><th className="txt">Exit reason</th><th>Charges</th><th>Net (₹)</th></tr></thead>
         <tbody>
           {rows.map((t) => (
             <tr key={t.id}>
               <td>{t.day.slice(8, 10)}-{t.day.slice(5, 7)}</td><td className="txt">{t.strategy}{t.grade ? <span className="pj-sub"> · {t.grade}</span> : null}</td>
-              <td className="txt">{idx(t.symbol)}</td><td className="txt" title={t.instrument ?? ''}>{t.instrument ?? '–'}</td><td className="num">{t.qty}</td>
-              <td>{t.entryTime ?? '–'}</td><td>{price(t.entryPrice)}</td>
-              <td>{t.status === 'open' ? '–' : t.exitTime ?? '–'}</td>
+              <td className="txt">{idx(t.symbol)}</td><td className="txt" title={t.instrument ?? ''}><span className={`pj-side ${t.short ? 'sell' : 'buy'}`}>{t.short ? 'SOLD' : 'BOUGHT'}</span> {t.instrument ?? '–'}</td><td className="num">{t.qty}</td>
+              <td>{t.entryDay && t.entryDay !== t.day ? <span className="pj-sub">{t.entryDay.slice(8, 10)}-{t.entryDay.slice(5, 7)} </span> : null}{t.entryTime ?? '–'}
+                <span className="pj-sub"> {t.short ? 'sold' : 'bought'}</span></td><td>{price(t.entryPrice)}</td>
+              <td>{t.status === 'open' ? '–' : <>{t.exitTime ?? '–'}<span className="pj-sub"> {t.short ? 'bought back' : 'sold'}</span></>}</td>
               <td>{t.status === 'open' ? <Pill tone="warn">Open</Pill> : price(t.exitPrice)}</td>
               <td>{heldFor(t) || '–'}</td>
               <td className="txt">{t.exitReason ?? '–'}</td><td>{t.charges == null ? '–' : inr(2)(t.charges)}</td>

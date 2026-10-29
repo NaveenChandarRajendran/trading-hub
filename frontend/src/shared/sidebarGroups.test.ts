@@ -10,12 +10,14 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['', 'Live market data', 'Paste tools']); // '' = top section, no header
-    // owner 27-Oct-2026: the five everyday pages on top, Today first (landing page)
-    expect(g[0].apps.map((a) => a.name)).toEqual(['Today', 'Charts & Signals', 'Buy / Sell', 'Trade History', 'Backtest']);
+    expect(g.map((x) => x.label)).toEqual(['', 'Trading Strategies', 'Trade and review', 'Live market data', 'Paste tools']); // '' = top, no header
+    // owner design brief 29-Oct-2026: Today (landing page), then the four strategy pages, then the trading tools
+    expect(g[0].apps.map((a) => a.name)).toEqual(['Today']);
     expect(apps[0].id).toBe('today');
-    expect(g[1].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'order-flow']);
-    expect(g[2].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
+    expect(g[1].apps.map((a) => a.name)).toEqual(['Option Buy', 'Option Sell', 'Momentum', 'Scalping']);
+    expect(g[2].apps.map((a) => a.name)).toEqual(['Buy / Sell', 'Trade History', 'Order Flow', 'Backtest']);
+    expect(g[3].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'dashboard']);
+    expect(g[4].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
   });
 
   it('keeps the old page addresses', () => {

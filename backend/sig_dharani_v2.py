@@ -159,7 +159,7 @@ def dharani_v2_rule(state):
     green = all(c["state"] == PASS for c in checks)
     blocked = [b for b in gates(state, "dharaniV2", MB_LAST_ENTRY) if not b.startswith("No new entries")]
     return {
-        "rule": "dharaniV2", "name": "DHARANI RULES", "setup": "Dharani Rules", "account": "Dharani (app paper)",
+        "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "Power Breakout", "account": "Power Breakout (app paper)",
         "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
         "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True,

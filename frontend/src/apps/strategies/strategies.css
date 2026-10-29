@@ -1,0 +1,103 @@
+/* Trading Strategies pages + strategy cards + trade tables (owner design brief 29-Oct-2026).
+   Colours only from tokens: green = profit / GO, red = loss, blue = in a trade, amber = close to a signal. */
+
+/* strategy cards */
+.sg-sections { display: flex; flex-direction: column; gap: var(--sp-4); }
+.sg-section { display: flex; flex-direction: column; gap: var(--sp-2); }
+.sg-section + .sg-section, .card > .sg-section { margin-top: var(--sp-2); }
+.sg-section-head { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.sg-section-name { font-size: var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); text-decoration: none; }
+a.sg-section-name:hover { color: var(--accent); }
+.sg-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--sp-3); }
+.sg-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; padding: var(--sp-3);
+  border: 1px solid var(--border); border-top: 3px solid var(--border-strong); border-radius: var(--r-lg);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.sg-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-pop); }
+.sg-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sg-card.static { cursor: default; }
+.sg-card.static:hover { box-shadow: none; }
+.sg-card.open { border-color: var(--accent); }
+.sg-card.trade { border-top-color: var(--accent); }
+.sg-card.go, .sg-card.up { border-top-color: var(--up); }
+.sg-card.down { border-top-color: var(--down); }
+.sg-card.near { border-top-color: var(--warn); }
+.sg-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.sg-card-top .num { font-size: var(--fs-lg); font-weight: 700; }
+.sg-chip { align-self: flex-start; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; background: var(--surface-2); color: var(--text-2); }
+.sg-chip.trade { background: var(--accent-soft); color: var(--accent); }
+.sg-chip.go, .sg-chip.up { background: var(--up-soft); color: var(--up); }
+.sg-chip.down { background: var(--down-soft); color: var(--down); }
+.sg-chip.near { background: var(--warn-soft); color: var(--warn); }
+.sg-chip.none { color: var(--text-3); }
+.sg-line { font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.sg-more { margin-top: auto; padding-top: 2px; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
+
+/* checklist under the cards */
+.sg-detail { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--accent); border-radius: var(--r-lg); background: var(--surface-2); }
+.sg-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); flex-wrap: wrap; }
+.sg-detail-title { margin: 0 0 4px; font-size: var(--fs-lg); }
+.sg-how { margin: 0; font-size: var(--fs-md); color: var(--text-2); line-height: 1.5; }
+
+/* market strip on a strategy page */
+.sg-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--sp-3); }
+.sg-index { display: flex; flex-direction: column; gap: 2px; min-width: 170px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); }
+.sg-index-price { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.sg-index .num.up, .sg .up { color: var(--up); }
+.sg-index .num.down, .sg .down { color: var(--down); }
+.sg-index.sg-pnl { min-width: 220px; }
+.sg-index.sg-pnl.gain { background: var(--up-soft); border-color: color-mix(in srgb, var(--up) 35%, transparent); }
+.sg-index.sg-pnl.loss { background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 35%, transparent); }
+.sg-strip-end { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: var(--sp-2); }
+.sg-strip-end a.pill { text-decoration: none; }
+.sg-pick { flex-wrap: wrap; }
+.sg-trades summary { cursor: pointer; font-size: var(--fs-sm); color: var(--accent); font-weight: 600; margin-top: var(--sp-3); }
+
+/* trade tables (Today and strategy pages) */
+.td .td-figs.four { grid-template-columns: 1.6fr 1fr 1fr 1.4fr; }
+.td .td-cap { overflow-wrap: anywhere; }
+.td .td-dir { display: inline-block; margin-right: 4px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .03em; }
+.td .td-dir.bought { color: var(--accent); }
+.td .td-dir.sold { color: var(--warn); }
+.td .td-level { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.td .td-pct { font-size: var(--fs-xs); color: var(--text-3); }
+.td .td-pct.up { color: var(--up); }
+.td .td-pct.down { color: var(--down); }
+.td .td-none { color: var(--text-3); font-size: var(--fs-sm); }
+.td tr.td-edit-row td { height: auto; padding: 0; white-space: normal; }
+.td .td-bracket { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); background: var(--accent-soft); border-left: 4px solid var(--accent); }
+.td .td-bracket-title { flex-basis: 100%; font-weight: 600; }
+.td .td-bracket .field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.td .td-bracket input { width: 120px; }
+.td .td-bracket-end { display: inline-flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+@media (max-width: 900px) { .td .td-figs.four { grid-template-columns: 1fr 1fr; } .sg-strip-end { margin-left: 0; align-items: flex-start; } }
+@media (max-width: 560px) { .td .td-figs.four { grid-template-columns: 1fr; } }
+
+/* Strategy builder (Option Sell page) */
+.sb .sb-spot { margin: 4px 0 10px; color: var(--text-2); font-size: var(--fs-sm); }
+.sb .sb-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.sb .sb-add input { width: 64px; }
+.sb .sb-num { width: 84px; text-align: right; }
+.sb .sb-flip { cursor: pointer; border: 1px solid currentColor; background: none; border-radius: 4px; padding: 1px 6px; }
+.sb .sb-x { padding: 0 8px; font-size: 16px; line-height: 1.4; }
+.sb .sb-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+.sb .sb-chart { position: relative; }
+.sb .sb-chart svg { width: 100%; height: auto; display: block; touch-action: none; }
+.sb .sb-grid { stroke: var(--border); stroke-width: 1; }
+.sb .sb-zero { stroke: var(--text-3); stroke-width: 1; }
+.sb .sb-axis { fill: var(--text-3); font-size: 11px; }
+.sb .sb-area.up { fill: var(--up); opacity: 0.14; }
+.sb .sb-area.down { fill: var(--down); opacity: 0.14; }
+.sb .sb-line { fill: none; stroke-width: 2; }
+.sb .sb-line.up { stroke: var(--up); }
+.sb .sb-line.down { stroke: var(--down); }
+.sb .sb-spotline { stroke: var(--text-3); stroke-dasharray: 3 3; }
+.sb .sb-be { fill: var(--surface, #fff); stroke: var(--text-2); stroke-width: 2; }
+.sb .sb-cross { stroke: var(--text-3); stroke-width: 1; }
+.sb .sb-dot { stroke: var(--surface, #fff); stroke-width: 2; }
+.sb .sb-dot.up { fill: var(--up); }
+.sb .sb-dot.down { fill: var(--down); }
+.sb .sb-tip { position: absolute; top: 4px; transform: translateX(-50%); background: var(--surface, #fff); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: var(--fs-xs); white-space: nowrap; pointer-events: none; box-shadow: 0 2px 6px rgb(0 0 0 / 0.12); }

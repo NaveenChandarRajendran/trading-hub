@@ -1,7 +1,7 @@
 // Hand-checked on a 4-trade fixture: two 4 Pillar trades on 1 Oct, one SuperTrend on 12 Oct, one open Dharani trade.
 import { describe, expect, it } from 'vitest';
 import fixture from './__fixtures__/trades-small.json';
-import { dailyRows, heldFor, ordersCsv, pick, totals, tradesCsv, type JTrade } from './journal';
+import { ACCOUNT_OF, STRATEGIES, chipName, dailyRows, heldFor, openPositions, ordersCsv, pick, totals, tradesCsv, type JTrade } from './journal';
 
 const trades = fixture as unknown as JTrade[];
 
@@ -39,5 +39,20 @@ describe('paper journal logic', () => {
     expect(heldFor({ entryTime: '12:35:43', exitTime: '12:37:10' })).toBe('1m 27s');
     expect(heldFor({ entryTime: '09:35', exitTime: '10:39:00' })).toBe('1h 04m');
     expect(heldFor({ entryTime: '09:35:45', exitTime: null })).toBe('');
+  });
+
+  it('lists every strategy the backend journals, selling legs included', () => {
+    expect(STRATEGIES).toContain('2-month Strangle (sell)');
+    expect(STRATEGIES).toContain('Box Pullback 5/1');
+    expect(STRATEGIES.every((s) => ACCOUNT_OF[s])).toBe(true);
+    expect(chipName('Calm-day Call Sell')).toBe('Calm-day Call Sell');
+    expect(chipName('Expiry Straddle 9:40 (sell)')).toBe('Expiry Straddle 9:40');
+  });
+
+  it('open positions: today\'s open trades plus older open selling legs, once each', () => {
+    const leg = { ...trades[3], id: 'SL1', short: true, day: '2026-10-28', status: 'open' } as JTrade;
+    const oldLong = { ...trades[3], id: 'old', day: '2026-10-28', status: 'open' } as JTrade;
+    const todayOpen = { ...trades[3], id: 'now', day: '2026-10-29', status: 'open' } as JTrade;
+    expect(openPositions([leg, { ...leg, day: '2026-10-29' }, oldLong, todayOpen], '2026-10-29').map((t) => t.id)).toEqual(['SL1', 'now']);
   });
 });

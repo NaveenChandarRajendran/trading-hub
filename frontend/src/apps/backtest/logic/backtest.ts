@@ -51,7 +51,7 @@ export const startRun = () => requestJson<BtStatus>(API_BASE, '/api/backtest/run
 export const STRATEGIES = [
   { key: '4 Pillar Rules', label: '4 Pillar Rules', account: 'MegaBull', approx: false },
   { key: 'SuperTrend Rules', label: 'SuperTrend Rules', account: 'MegaBull', approx: false },
-  { key: 'Dharani Rules', label: 'Dharani Rules', account: 'App · Dharani', approx: false },
+  { key: 'Dharani Rules', label: 'Power Breakout', account: 'App · Power Breakout', approx: false },
   { key: 'Trend Rules', label: 'Trend Rules', account: 'App · Trend', approx: true },
 ] as const;
 export type StrategyKey = (typeof STRATEGIES)[number]['key'];

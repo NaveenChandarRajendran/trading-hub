@@ -6,6 +6,8 @@
 import type { AutoTrade } from '../../dashboard/logic/signals';
 import type { Position } from '../../paper-trade/logic/api';
 import type { JTrade } from '../../paper-journal/logic/journal';
+import { BOOKS, strategyByWho } from '../../strategies/catalog';
+import { estimateMargin, strikeOf } from '../../strategies/logic/margin';
 
 export type Who = string; // journal strategy name
 
@@ -16,7 +18,7 @@ export const WHO: Record<Who, { name: string; where: string }> = {
   // opening box + pullback (YouTube), paper from 29-Oct-2026: 15-min box + 5-min close, and 5-min box + 1-min close
   'Box Pullback 15/5': { name: 'Box Pullback 15/5', where: 'App account' },
   'Box Pullback 5/1': { name: 'Box Pullback 5/1', where: 'App account' },
-  'Dharani Rules': { name: 'Dharani Rules', where: 'App account' },
+  'Power Breakout': { name: 'Power Breakout', where: 'App account' },
   'Trend Rules': { name: 'Trend Rules', where: 'App account' },
   '4 Pillar Rules': { name: '4 Pillar Rules', where: 'MegaBull' },
   'SuperTrend Rules': { name: 'SuperTrend Rules', where: 'MegaBull' },
@@ -31,7 +33,7 @@ export const WHO: Record<Who, { name: string; where: string }> = {
 };
 export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
   'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
-export const WHO_ORDER: Who[] = ['Manual', 'Dharani Rules', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', 'Box Pullback 5/1', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
+export const WHO_ORDER: Who[] = ['Manual', 'Power Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', 'Box Pullback 5/1', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {
@@ -55,7 +57,17 @@ export interface TodayRow {
   pnlPct: number | null;
   afterCharges: boolean; // closed trades: net of charges; open trades: before charges
   securityId: number | null; // for the live feed and the manual Exit button
+  stop: number | null; // option price that closes it at a loss (a sold leg: above the sell price)
+  target: number | null; // option price that books the profit (none: the rule exits another way)
+  indexStop: number | null; // Box Pullback: the index level that stops it (box middle) and its 2R target
+  indexTarget: number | null;
+  capital: number | null; // money used: premium x qty for a buy, the estimated margin for a sold leg
+  marginShared: number; // sold legs of one strategy share one margin: how many legs it covers (0 = a buy)
 }
+
+/** Move of a stop / target from the entry price, in % (+ above, − below). */
+export const movePct = (level: number | null, entry: number | null) =>
+  level != null && entry ? r2((level / entry - 1) * 100) : null;
 
 /** "manual-2026-10-27-52175-0" -> 52175 (backend journal._trip). */
 export function manualSecurityId(id: string): number | null {
@@ -65,10 +77,15 @@ export function manualSecurityId(id: string): number | null {
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Position[], ticks: Record<number, number>): TodayRow[] {
+export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Position[], ticks: Record<number, number>,
+  spots: Record<string, number | null | undefined> = {}): TodayRow[] {
   const autoById = new Map(auto.map((t) => [t.id, t]));
   const posById = new Map(positions.map((p) => [p.security_id, p]));
-  return trades.map((t) => {
+  // a hand-bought position's stop + target (dashboard button) is an auto trade of the manual account on that option
+  const bracketOf = (sid: number | null) =>
+    sid == null ? undefined : auto.find((a) => a.account === 'manual' && a.instrument.id === sid && a.status === 'open')
+      ?? auto.find((a) => a.account === 'manual' && a.instrument.id === sid);
+  const rows = trades.map((t): TodayRow => {
     const manual = t.source === 'manual';
     const a = autoById.get(t.id);
     const short = !!t.short;
@@ -85,12 +102,35 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
       pnl = price != null && t.entryPrice != null ? r2(sign * (price - t.entryPrice) * qty) : a?.pnl ?? null;
     }
     const pnlPct = price != null && t.entryPrice ? r2(sign * (price / t.entryPrice - 1) * 100) : null;
+    const br = manual ? bracketOf(sid) : undefined;
     return {
       id: t.id, who: t.strategy, manual, short, symbol: t.symbol, option: t.instrument ?? a?.instrument.name ?? '—', side: t.side, qty,
-      entryTime: t.entryTime, entryPrice: t.entryPrice, open, exitTime: t.exitTime, exitPrice: t.exitPrice, exitReason: t.exitReason,
+      entryTime: t.entryTime, entryPrice: t.entryPrice, open, exitTime: t.exitTime, exitPrice: t.exitPrice,
+      // a hand-bought option closed by its stop / target: say which (the journal only knows "Manual")
+      exitReason: (br?.status === 'closed' && br.exitReason) || t.exitReason,
       price, pnl, pnlPct, afterCharges: !open && t.netPnl != null, securityId: sid,
+      stop: t.stop ?? a?.stop ?? br?.stop ?? null, target: t.target ?? a?.target ?? br?.target ?? null,
+      indexStop: a?.indexStop ?? null, indexTarget: a?.indexTarget ?? null,
+      capital: !short && t.entryPrice != null ? r2(t.entryPrice * qty) : null, marginShared: 0,
     };
   });
+  // sold legs: one estimated margin per strategy (open legs together, each closed leg on its own), split over its legs
+  const groups = new Map<string, TodayRow[]>();
+  for (const r of rows) {
+    if (!r.short) continue;
+    const k = r.open ? `${r.who}|open` : r.id;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  for (const legs of groups.values()) {
+    const spot = spots[legs[0].symbol];
+    const ml = legs.map((r) => ({ side: r.side, strike: strikeOf(r.option) ?? spot ?? 0, qty: r.qty, premium: r.entryPrice ?? 0, short: true }));
+    const m = spot ? estimateMargin(ml, spot) : null;
+    for (const r of legs) {
+      r.capital = m != null ? r2(m / legs.length) : null;
+      r.marginShared = legs.length;
+    }
+  }
+  return rows;
 }
 
 export interface WhoTotal {
@@ -151,4 +191,13 @@ export function forIndex(rows: TodayRow[], index: 'both' | 'NIFTY' | 'BANKNIFTY'
     open: mine.filter((r) => r.open).sort((a, b) => (a.entryTime ?? '').localeCompare(b.entryTime ?? '')),
     closed: mine.filter((r) => !r.open).sort((a, b) => (b.exitTime ?? '').localeCompare(a.exitTime ?? '')),
   };
+}
+
+/** Capital in use per book (open trades): buys = premium paid, sold legs = estimated margin. */
+export function capitalByBook(rows: TodayRow[]) {
+  const open = rows.filter((r) => r.open && r.capital != null);
+  const used = (who: (r: TodayRow) => boolean) => open.filter(who).reduce((s, r) => s + (r.capital ?? 0), 0);
+  const books = BOOKS.map((b) => ({ ...b, used: used((r) => strategyByWho(r.who)?.book === b.key) })).filter((b) => b.used > 0);
+  const manual = used((r) => r.manual);
+  return { total: open.reduce((s, r) => s + (r.capital ?? 0), 0), books, manual };
 }

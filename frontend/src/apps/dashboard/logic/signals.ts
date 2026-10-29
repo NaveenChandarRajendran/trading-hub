@@ -111,6 +111,8 @@ export interface AutoTrade {
   entryPrice: number;
   stop: number;
   target: number | null; // null: no fixed target (Dharani exits on SuperTrend)
+  indexStop?: number | null; // Box Pullback: exits on index levels (box middle / 2R)
+  indexTarget?: number | null;
   status: 'open' | 'closed';
   high: number;
   low: number;

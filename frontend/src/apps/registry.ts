@@ -1,12 +1,15 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'home' | 'manual' | 'live';
+export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live';
 
 /** Sidebar sections, in display order. A section without a label has no header (always open).
- * Owner 27-Oct-2026 ("very confusing layout"): the five pages used every day on top, the market data tools folded away
- * below them (closedByDefault: folded until opened once). */
+ * Owner 27-Oct-2026 ("very confusing layout"): the pages used every day on top, the market data tools folded away
+ * below them (closedByDefault: folded until opened once). Owner design brief 29-Oct-2026: Today, then "Trading
+ * Strategies" with Option Buy / Option Sell / Momentum / Scalping, then the trading tools. */
 export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[] = [
   { id: 'home', label: '' },
+  { id: 'strategies', label: 'Trading Strategies' },
+  { id: 'tools', label: 'Trade and review' },
   { id: 'live', label: 'Live market data', closedByDefault: true },
   { id: 'manual', label: 'Paste tools', closedByDefault: true },
 ];
@@ -30,23 +33,50 @@ export const apps: AppEntry[] = [
     group: 'home',
     name: 'Today',
     path: '/today',
-    hint: "Every trade today, from every account, with live profit and loss",
+    hint: 'Your trading day at a glance: P&L, live trades and every strategy',
     icon: '◉',
     component: lazy(() => import('./today/TodayApp')),
   },
   {
-    id: 'dashboard',
-    group: 'home',
-    name: 'Charts & Signals',
-    path: '/dashboard',
-    hint: 'Where each rule stands, the charts and the market context',
-    icon: '◫',
-    component: lazy(() => import('./dashboard/DashboardApp')),
+    id: 'option-buy',
+    group: 'strategies',
+    name: 'Option Buy',
+    path: '/strategies/option-buy',
+    hint: 'Power Breakout and Rebound Call: live checklists, chart, trades and OI',
+    icon: '▲',
+    component: lazy(() => import('./strategies/OptionBuyApp')),
+  },
+  {
+    id: 'option-sell',
+    group: 'strategies',
+    name: 'Option Sell',
+    path: '/strategies/option-sell',
+    hint: 'The ₹3 lakh Nifty selling book: straddles, calm-day call, 2-month strangle',
+    icon: '▼',
+    component: lazy(() => import('./strategies/OptionSellApp')),
+  },
+  {
+    id: 'momentum',
+    group: 'strategies',
+    name: 'Momentum',
+    path: '/strategies/momentum',
+    hint: 'Momentum 20 stock books: top 20 NSE stocks, rebalanced every month',
+    icon: '↗',
+    component: lazy(() => import('./strategies/MomentumApp')),
+  },
+  {
+    id: 'scalping',
+    group: 'strategies',
+    name: 'Scalping',
+    path: '/strategies/scalping',
+    hint: 'Box Pullback 15/5 and 5/1 (paper, for learning: they lost money in tests)',
+    icon: '⚡',
+    component: lazy(() => import('./strategies/ScalpingApp')),
   },
   {
     // owner 25-Oct-2026: the chain + manual buy / sell (was "Paper Trading"), now with IV and Greeks; 27-Oct: "Buy / Sell"
     id: 'option-chain',
-    group: 'home',
+    group: 'tools',
     name: 'Buy / Sell',
     path: '/option-chain',
     hint: 'Option chain: place your own paper trades',
@@ -56,7 +86,7 @@ export const apps: AppEntry[] = [
   {
     // owner 25-Oct-2026: every strategy's paper orders and trades with history (MegaBull's too), like the Excel
     id: 'paper-trade',
-    group: 'home',
+    group: 'tools',
     name: 'Trade History',
     path: '/paper-trade',
     hint: 'Past days, order book, P&L calendar and strategies side by side',
@@ -64,8 +94,17 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./paper-journal/PaperJournalApp')),
   },
   {
+    id: 'order-flow',
+    group: 'tools',
+    name: 'Order Flow',
+    path: '/order-flow',
+    hint: 'Buyers vs sellers per candle on Nifty and Bank Nifty futures (estimate, Dext style)',
+    icon: '≋',
+    component: lazy(() => import('./order-flow/OrderFlowApp')),
+  },
+  {
     id: 'backtest',
-    group: 'home',
+    group: 'tools',
     name: 'Backtest',
     path: '/backtest',
     hint: 'How each rule did on past data',
@@ -153,12 +192,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./components/ComponentsApp')),
   },
   {
-    id: 'order-flow',
+    // owner 26-Oct-2026 board of every rule on both indices; since 29-Oct-2026 each rule lives on its strategy page
+    id: 'dashboard',
     group: 'live',
-    name: 'Order Flow (est.)',
-    path: '/order-flow',
-    icon: '≋',
-    component: lazy(() => import('./order-flow/OrderFlowApp')),
+    name: 'Charts & Signals (all rules)',
+    path: '/dashboard',
+    hint: 'Every rule on both indices on one board, the charts and the market context',
+    icon: '◫',
+    component: lazy(() => import('./dashboard/DashboardApp')),
   },
 ];
 

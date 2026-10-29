@@ -41,7 +41,7 @@ MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): 
 RB, RBK = "reboundCall", "rebound"  # Rebound Call rule (sig_rebound.py) and its own Rs 1 lakh book (owner, 27-Oct-2026)
 OB, OBK = "orbPullback", "orb"  # Box Pullback 15/5 (sig_orb.py) and its own Rs 1 lakh book (owner, 29-Oct-2026)
 OB5, OBK5 = "orbPullback5", "orb5"  # Box Pullback 5/1, its own Rs 1 lakh book (owner, 29-Oct-2026)
-ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Dharani", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Power Breakout", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
                  OBK5: "Box Pullback 5/1 book",
                  MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
@@ -882,9 +882,10 @@ class AutoTrader:
         self._stop_evt.set()
 
     # ---------- manual bracket (dashboard button "Place stop + target together") ----------
-    def bracket(self, security_id, stop_pct=None, target_pct=None):
+    def bracket(self, security_id, stop_pct=None, target_pct=None, stop_price=None, target_price=None):
         """Attach a stop and a target to an open Trading Hub paper position the owner bought by hand. Tracked like an
-        auto trade (stop pending, target watched), logged with rule "Manual"."""
+        auto trade (stop pending, target watched), logged with rule "Manual". Owner 29-Oct-2026: the page may send the
+        stop and target as option prices (shown and editable before placing); otherwise the Trend percentages."""
         acc = self.accounts.get(MANUAL) or self.accounts[TH]
         inst_raw = acc.paper.instruments.get(security_id)
         if not inst_raw:
@@ -898,6 +899,12 @@ class AutoTrader:
         fill = pos["avg_buy"]
         cfg = self.cfg[TH]  # the manual bracket keeps the Trend percentages (-15 % / +20 %)
         sp, tp = stop_pct or cfg["stopPct"], target_pct or cfg["targetPct"]
+        stop = floor_tick(stop_price) if stop_price else floor_tick(fill * (1 - sp / 100))
+        target = ceil_tick(target_price) if target_price else ceil_tick(fill * (1 + tp / 100))
+        if not 0 < stop < fill:
+            raise AccountError(f"The stop must be below the buy price {fill:.2f}")
+        if target <= fill:
+            raise AccountError(f"The target must be above the buy price {fill:.2f}")
         inst = {"id": security_id, "name": inst_raw["name"], "strike": inst_raw["strike"], "expiry": inst_raw["expiry"],
                 "optionType": inst_raw["optionType"], "lotSize": inst_raw["lotSize"]}
         lots = qty // inst["lotSize"]
@@ -905,7 +912,7 @@ class AutoTrader:
             "id": f"manual-{security_id}-{self.clock():%H%M%S}", "account": acc.key, "symbol": inst_raw["symbol"], "rule": "Manual",
             "setup": None, "grade": "n.a.", "side": inst["optionType"], "instrument": inst, "qty": qty, "lots": lots,
             "entryOrderId": None, "entryTime": self.clock().strftime("%H:%M:%S"), "entryPrice": round(fill, 2),
-            "stop": floor_tick(fill * (1 - sp / 100)), "target": ceil_tick(fill * (1 + tp / 100)), "stopOrderId": None,
+            "stop": stop, "target": target, "stopOrderId": None,
             "status": "open", "high": fill, "low": fill, "deltaStatus": "not checked", "tags": ["manual"], "checks": {},
             "spotAtEntry": None, "invested": round(fill * qty, 2),
         }

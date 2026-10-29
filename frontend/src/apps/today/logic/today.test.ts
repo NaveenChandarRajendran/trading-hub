@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AutoTrade } from '../../dashboard/logic/signals';
 import type { Position } from '../../paper-trade/logic/api';
 import type { JTrade } from '../../paper-journal/logic/journal';
-import { buildRows, forIndex, manualSecurityId, summarize } from './today';
+import { buildRows, capitalByBook, forIndex, manualSecurityId, movePct, summarize } from './today';
 
 const base: Omit<JTrade, 'id' | 'source' | 'strategy' | 'account'> = {
   day: '2026-10-27', symbol: 'NIFTY', side: 'PE', instrument: 'NIFTY 27 OCT 22700 PUT', qty: 65, grade: null,
@@ -11,7 +11,7 @@ const base: Omit<JTrade, 'id' | 'source' | 'strategy' | 'account'> = {
 };
 const manualOpen: JTrade = { ...base, id: 'manual-2026-10-27-52175-0', source: 'manual', strategy: 'Manual', account: 'App · Manual' };
 const ruleClosed: JTrade = {
-  ...base, id: 'th-1', source: 'auto', strategy: 'Dharani Rules', account: 'App · Dharani', symbol: 'BANKNIFTY',
+  ...base, id: 'th-1', source: 'auto', strategy: 'Power Breakout', account: 'App · Power Breakout', symbol: 'BANKNIFTY',
   instrument: 'BANKNIFTY 27 OCT 54500 PUT', qty: 30, entryTime: '09:31:00', entryPrice: 140, exitTime: '10:12:00', exitPrice: 172,
   exitReason: 'Target', grossPnl: 960, charges: 60, netPnl: 900, status: 'closed',
 };
@@ -42,7 +42,7 @@ describe('today', () => {
     const s = summarize(buildRows([manualOpen, ruleClosed, ruleOpen], auto, pos, { 52175: 55.1 }));
     expect([s.total, s.booked, s.running, s.open, s.closed, s.won, s.lost]).toEqual([961.75, 900, 61.75, 2, 1, 1, 0]);
     expect(s.byWho.map((w) => [w.who, w.pnl, w.trades, w.status])).toEqual([
-      ['Manual', 347.75, 1, 'in-trade'], ['Dharani Rules', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'], ['Box Pullback 15/5', 0, 0, 'none'], ['Box Pullback 5/1', 0, 0, 'none'],
+      ['Manual', 347.75, 1, 'in-trade'], ['Power Breakout', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'], ['Box Pullback 15/5', 0, 0, 'none'], ['Box Pullback 5/1', 0, 0, 'none'],
       ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'], ['Expiry Straddle (sell)', 0, 0, 'none'],
       ['Calm-day Call Sell', 0, 0, 'none'], ['2-month Strangle (sell)', 0, 0, 'none'], ['Expiry Straddle 9:40 (sell)', 0, 0, 'none'],
       ['Expiry Straddle 11:26 (sell)', 0, 0, 'none'], ['Expiry Straddle 12:24 (sell)', 0, 0, 'none'],
@@ -83,6 +83,38 @@ describe('today', () => {
   it('leaves rules on hold (watch only) off the board unless they traded today', () => {
     const s = summarize([], ['Trend Rules', '4 Pillar Rules']);
     expect(s.byWho.map((w) => w.who)).not.toContain('Trend Rules');
-    expect(s.byWho.map((w) => w.who)).toContain('Dharani Rules');
+    expect(s.byWho.map((w) => w.who)).toContain('Power Breakout');
+  });
+});
+
+describe('today: stop, target and capital (owner 29-Oct-2026)', () => {
+  it('a buy shows its stop / target and uses premium x qty', () => {
+    const t: JTrade = { ...ruleOpen, id: 'rb-1', strategy: 'Rebound Call', stop: 66.3, target: 132.6, entryPrice: 88.4 };
+    const [r] = buildRows([t], [], [], {});
+    expect([r.stop, r.target, r.capital, r.marginShared]).toEqual([66.3, 132.6, 5746, 0]);
+    expect(movePct(r.stop, r.entryPrice)).toBe(-25);
+    expect(movePct(r.target, r.entryPrice)).toBe(50);
+  });
+
+  it("a hand-bought option takes the stop / target of its bracket (an auto trade of the manual account)", () => {
+    const br = { id: 'manual-52175-100500', account: 'manual', status: 'open', instrument: { id: 52175 }, stop: 44.75, target: 59.7 } as unknown as AutoTrade;
+    const [r] = buildRows([manualOpen], [br], pos, {});
+    expect([r.stop, r.target]).toEqual([44.75, 59.7]);
+    const [plain] = buildRows([manualOpen], [], pos, {});
+    expect([plain.stop, plain.target]).toEqual([null, null]);
+  });
+
+  it('sold legs of one strategy share one estimated margin; capital per book adds them up', () => {
+    const leg = (id: string, side: 'CE' | 'PE', name: string): JTrade => ({
+      ...base, id, source: 'auto', strategy: '2-month Strangle (sell)', account: 'App · Selling', short: true, side, instrument: name,
+      entryPrice: 120, stop: null, securityId: null,
+    });
+    const rows = buildRows([leg('s1', 'CE', 'NIFTY 29 DEC 23500 CALL'), leg('s2', 'PE', 'NIFTY 29 DEC 22100 PUT')], [], [], {}, { NIFTY: 22800 });
+    expect(rows.map((r) => r.marginShared)).toEqual([2, 2]);
+    expect(rows[0].capital).toBe(rows[1].capital);
+    const cap = capitalByBook(rows);
+    expect(cap.books.map((b) => b.key)).toEqual(['selling']);
+    expect(cap.total).toBeCloseTo((rows[0].capital ?? 0) * 2, 0);
+    expect(buildRows([leg('s1', 'CE', 'NIFTY 29 DEC 23500 CALL')], [], [], {})[0].capital).toBeNull(); // no spot yet
   });
 });

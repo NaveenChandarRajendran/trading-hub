@@ -146,18 +146,20 @@ def test_hourly_updates_once_an_hour_from_10_15_to_14_15(tmp_path):
     sent = []
     svc.phone = type("P", (), {"send": lambda self, t: sent.append(t)})()
     svc.heartbeat = clock["now"]
-    rule = {"rule": "fourPillar", "go": False, "side": "PE", "blocked": [], "checks": [
+    rule = {"rule": "reboundCall", "go": False, "side": "PE", "blocked": [], "score": 1, "total": 2, "checks": [
+        {"id": "window", "label": "Time window", "state": sig_service.PASS, "exempt": True},
         {"id": "trigger", "label": "Trigger candle", "state": sig_service.PASS},
         {"id": "pcr", "label": "PCR", "state": "fail"}]}
     for hm, expect in (((10, 10), 0), ((10, 15), 1), ((10, 50), 1), ((11, 15), 2), ((14, 15), 3), ((15, 15), 3)):
         clock["now"] = clock["now"].replace(hour=hm[0], minute=hm[1])
         if hm == (10, 10):
-            svc._track_near("NIFTY", {"fourPillar": rule})
+            svc._track_near("NIFTY", {"reboundCall": rule})
         svc._hourly(clock["now"])
         assert len(sent) == expect, hm
-    assert "🟡 4 Pillar Rules: came close, 1 of 2 on Nifty put at 10:10 (missing: PCR)" in sent[0]
-    assert "⚪ 4 Pillar Rules: no setup this hour" in sent[1]  # the hour's near miss is reported once
-    assert "4 Pillar Rules" in svc._near["all"]  # the day summary still knows it
+    assert "🟡 Rebound Call: came close, 1 of 2 on Nifty put at 10:10 (missing: PCR)" in sent[0]
+    assert "⚪ Rebound Call: no setup this hour" in sent[1]  # the hour's near miss is reported once
+    assert "Rebound Call" in svc._near["all"]  # the day summary still knows it
+    assert "4 Pillar" not in sent[0] and "— Option Buy —" in sent[0]  # live rules only, grouped (owner 29-Oct-2026)
 
 
 def test_market_open_message_once_at_9_15(tmp_path):
@@ -190,3 +192,22 @@ def test_market_block_reads_like_the_dashboard():
     text = notify.with_market("⏰ 11:15 update", [d, {"name": "Bank Nifty", "spot": 53900.0, "flow": 24960}])
     assert text.split("\n\n")[0] == "⏰ 11:15 update"
     assert "📊 Bank Nifty 53,900\n• Order flow: +25.0 k (buyers ahead)" in text
+
+
+def test_phone_lists_live_rules_by_section_and_every_strangle_leg():
+    # owner 29-Oct-2026: no watch-only rules; group like the app; a strangle shows both legs
+    groups = [("Option Buy", ["Power Breakout", "Rebound Call"]), ("Option Sell", ["2-month Strangle (sell)"])]
+    rows = [
+        {"id": "s1", "strategy": "2-month Strangle (sell)", "status": "open", "instrument": "NIFTY 29 DEC 23400 CALL"},
+        {"id": "s2", "strategy": "2-month Strangle (sell)", "status": "open", "instrument": "NIFTY 29 DEC 22100 PUT"},
+        {"id": "t1", "strategy": "Trend Rules", "status": "closed", "netPnl": -100, "instrument": "NIFTY 22700 CALL"},
+    ]
+    text = notify.hourly_text("13:15", rows, groups, live={"s1": 500, "s2": -200}, hide={"Trend Rules", "4 Pillar Rules"})
+    lines = text.split("\n")
+    assert lines[1:] == [
+        "— Option Buy —", "⚪ Power Breakout: no setup this hour", "⚪ Rebound Call: no setup this hour",
+        "— Option Sell —", "🔵 2-month Strangle (sell): in trade NIFTY 29 DEC 23400 CALL + 22100 PUT, +₹300 now",
+        "👤 My trades: none",
+    ]
+    assert "Trend" not in text
+    assert notify.open_text("29 Oct", groups, {"Rebound Call"}).split("\n")[1] == "Watching: Power Breakout, 2-month Strangle (sell)"

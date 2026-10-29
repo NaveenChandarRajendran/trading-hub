@@ -48,7 +48,7 @@ export const STRATEGY_INFO: Record<StrategyKey, StrategyInfo> = {
     doc: 'docs/strategies/megabull.md',
   },
   'Dharani Rules': {
-    summary: "The teacher's tuned Quantman setups, copied as taught. App's own ₹1 lakh Dharani account.",
+    summary: "The teacher's tuned Quantman setups, copied as taught. Shown as Power Breakout (was Dharani Rules). App's own ₹1 lakh account.",
     chart: '3-minute candles · Nifty and Bank Nifty · call on the index, put on the futures',
     indicators: ['SuperTrend (10, 2)', 'RSI (14) and RSI (20)', 'Bollinger (15, 3) and (20, 2)', 'Williams %R (14)', 'EMA 200', 'CCI (20)', 'Pivots and CPR'],
     checklist: [

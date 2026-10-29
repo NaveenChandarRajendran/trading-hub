@@ -14,6 +14,11 @@ export interface FlowRow {
   dext: number | null; // owner's typed Dext delta
   match: boolean | null; // same sign as the estimate
   jump: boolean; // |delta| >= the delta-jump setting
+  // the future's own candle (bars saved before 29-Oct-2026 have the close only)
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number; // every traded qty in the candle (Dext's V)
 }
 
 export interface FlowResponse {
@@ -50,4 +55,38 @@ export function parseTyped(text: string): number | null | undefined {
   if (!m) return undefined;
   const n = Number(m[1]);
   return m[2].toLowerCase() === 'k' ? n * 1000 : m[2].toLowerCase() === 'l' ? n * 100000 : n;
+}
+
+/** Dext-style number: "-715", "3K", "354K", "1.2L" (owner 28-Oct-2026: the page should read like Dext T3). */
+export function dextNum(v: number): string {
+  const a = Math.abs(v), sign = v < 0 ? '-' : '';
+  if (a < 1000) return `${sign}${Math.round(a)}`;
+  if (a < 1e7) return `${sign}${Math.round(a / 1000)}K`;
+  return `${sign}${(a / 1e7).toFixed(1)}Cr`;
+}
+
+export interface DextBar {
+  time: number; hhmm: string; open: number; high: number; low: number; close: number;
+  sigma: number; // Σ cumulative delta at the candle's end
+  dd: number; // ΔΔ change in delta from the previous candle
+  delta: number; // Δ
+  volume: number; // V
+  buy: number; sell: number;
+  vwap: number | null; // the day's volume-weighted average price at the candle's end
+}
+
+/** Flow rows -> what Dext prints per candle: Σ, ΔΔ, Δ, V, plus the candle and the day's VWAP. */
+export function dextBars(rows: FlowRow[]): DextBar[] {
+  let pv = 0, vv = 0, prev = 0;
+  return rows.map((r, i) => {
+    const open = r.open ?? (i ? rows[i - 1].close : r.close);
+    const high = Math.max(r.high ?? r.close, open, r.close), low = Math.min(r.low ?? r.close, open, r.close);
+    const volume = r.volume ?? r.buy + r.sell;
+    pv += ((high + low + r.close) / 3) * volume;
+    vv += volume;
+    const bar = { time: r.time, hhmm: r.hhmm, open, high, low, close: r.close, sigma: r.cumulative, dd: i ? r.delta - prev : r.delta,
+      delta: r.delta, volume, buy: r.buy, sell: r.sell, vwap: vv ? pv / vv : null };
+    prev = r.delta;
+    return bar;
+  });
 }
