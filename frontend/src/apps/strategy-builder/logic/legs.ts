@@ -36,17 +36,33 @@ export interface Tab {
   source?: string | null; // "Positions of Manual" (Analyze positions)
 }
 
-/** One strike's market: last price, best bid / ask and implied volatility (%) — live ticks over the chain cache. */
-export interface Quote { ltp: number | null; bid: number | null; ask: number | null; iv: number | null; oi?: number | null }
+/** One strike's market: last price, best bid / ask and implied volatility (%) — live ticks over the chain cache.
+ *  untraded: no contract open and none traded today (shared/dhan/liquidity.ts): ltp / iv are then null, never Dhan's
+ *  base price. */
+export interface Quote {
+  ltp: number | null; bid: number | null; ask: number | null; iv: number | null; oi?: number | null;
+  volume?: number | null; untraded?: boolean;
+}
 
 const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) / 100;
 
-/** The default price of a leg: mid of bid and ask (to the 0.05 tick) when both are quoted, else the last price. */
-export function midPrice(q: Quote | null | undefined): number | null {
-  if (!q) return null;
-  if (q.bid != null && q.ask != null && q.bid > 0 && q.ask > 0 && q.ask >= q.bid) return roundTick((q.bid + q.ask) / 2);
-  return q.ltp != null && q.ltp > 0 ? q.ltp : null;
+/**
+ * The live price of a leg and, without one, why ("No market" in the table):
+ * - an untraded strike never has a price (Dhan's last price there is the exchange's base price);
+ * - mid of bid and ask (to the 0.05 tick) when both are quoted;
+ * - market open without a bid and ask: no market (a last price is not a price you can trade at);
+ * - market closed (Dhan sends no bid / ask then): the last traded price.
+ */
+export function legPrice(q: Quote | null | undefined, marketOpen: boolean | null = null): { price: number | null; noMarket: string } {
+  if (!q) return { price: null, noMarket: 'No quote yet' };
+  if (q.untraded) return { price: null, noMarket: 'No trades today on this strike' };
+  if (q.bid != null && q.ask != null && q.bid > 0 && q.ask > 0 && q.ask >= q.bid) return { price: roundTick((q.bid + q.ask) / 2), noMarket: '' };
+  if (marketOpen) return { price: null, noMarket: 'No live bid / ask' };
+  return q.ltp != null && q.ltp > 0 ? { price: q.ltp, noMarket: '' } : { price: null, noMarket: 'No price' };
 }
+
+/** legPrice's price with the market closed (the chain's B / S titles, pickers). */
+export const midPrice = (q: Quote | null | undefined): number | null => legPrice(q).price;
 
 /** The strike nearest a price (lower one on a tie), or null without strikes. */
 export function nearestStrike(strikes: number[], price: number): number | null {
@@ -106,29 +122,45 @@ export function nextTabNumber(tabs: Tab[]): number | null {
   return null;
 }
 
-export interface Priced { legs: Leg[]; missingPrice: string[]; missingIv: string[] } // ids of legs lacking data
+export interface Priced {
+  legs: Leg[];
+  missingPrice: string[]; // ids of ticked legs left out: no price (no market and none typed) or no lot size
+  missingIv: string[];
+  noMarket: Record<string, string>; // ticked legs whose strike has no market now, id -> why (a typed price may stand in)
+}
 
 /**
- * Table rows -> the maths model. Each leg takes its typed price, else the live mid; a leg with neither is left out
- * (and listed in missingPrice). IV comes from the quote; missing IV is listed (the T+0 curve values it at intrinsic).
+ * Table rows -> the maths model. Each leg takes its typed price, else the live price (legPrice); a leg with neither is
+ * left out (missingPrice). Every ticked leg without a market is in noMarket (typed or not: the numbers, and Paper
+ * trade, warn about it). IV only from a traded strike; missing IV is listed (the T+0 curve values it at intrinsic).
  */
 export function priceLegs(legs: BuilderLeg[], quoteOf: (l: BuilderLeg) => Quote | null | undefined,
-  lotSizeOf: (expiry: string) => number | null | undefined): Priced {
-  const out: Priced = { legs: [], missingPrice: [], missingIv: [] };
+  lotSizeOf: (expiry: string) => number | null | undefined, marketOpen: boolean | null = null): Priced {
+  const out: Priced = { legs: [], missingPrice: [], missingIv: [], noMarket: {} };
   for (const l of legs) {
     const q = quoteOf(l);
-    const price = l.priceOverride ?? midPrice(q);
+    const live = legPrice(q, marketOpen);
+    if (l.include && live.noMarket && !l.locked) out.noMarket[l.id] = live.noMarket;
+    const price = l.priceOverride ?? live.price;
     const lotSize = lotSizeOf(l.expiry);
     if (price == null || !lotSize) {
       if (l.include) out.missingPrice.push(l.id);
       continue;
     }
-    const iv = q?.iv != null && q.iv > 0 ? q.iv : null;
+    const iv = !q?.untraded && q?.iv != null && q.iv > 0 ? q.iv : null;
     if (l.include && iv == null) out.missingIv.push(l.id);
     out.legs.push({ id: l.id, include: l.include, side: l.side, type: l.type, expiry: l.expiry, strike: l.strike,
       lots: l.lots, lotSize, price, iv });
   }
   return out;
+}
+
+/** Why the numbers can't be trusted yet ('' = they can): ticked legs with no market and no typed price. */
+export function noMarketProblem(legs: BuilderLeg[], p: Priced): string {
+  const bad = legs.filter((l) => p.noMarket[l.id] && l.priceOverride == null);
+  if (!bad.length) return '';
+  const names = bad.map((l) => `${l.strike.toLocaleString('en-IN')} ${l.type}`).join(', ');
+  return `${names}: ${bad.length === 1 ? p.noMarket[bad[0].id] : 'no market'}. Pick a traded strike, or type a price you are sure of.`;
 }
 
 // ---------- drafts and Analyze positions ----------

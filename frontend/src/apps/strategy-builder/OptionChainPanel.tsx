@@ -1,10 +1,14 @@
 // Option chain for picking legs: CE | strike | PE with OI, IV and LTP, and B / S buttons beside each price. A click adds
 // that leg to the open tab (or one more lot to the same leg). ATM row highlighted, in-the-money cells tinted, and what
 // the design already holds on a strike shown on it. Opens scrolled to ATM; ±10 / ±20 strikes or all of them.
-import { useEffect, useRef } from 'react';
+// Untraded strikes (no OI, no trade today: Dhan's price there is the exchange's base price) are hidden, as on Dhan's own
+// chain; "Show untraded strikes" lists them greyed with "No trades" and no B / S. A side that has no trades on a
+// strike whose other side trades is greyed the same way.
+import { useEffect, useRef, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { STRIKE_RANGES, centerScrollTop, strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { price } from '../paper-trade/format';
+import { SHOW_UNTRADED_KEY } from './config/settings';
 import type { OptionType } from './logic/blackScholes';
 import { heldOn, midPrice, shortExpiry, type BuilderLeg, type ChainPick } from './logic/legs';
 import type { Side } from './logic/payoff';
@@ -32,7 +36,16 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
   onPick: (p: ChainPick) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const list = strikeWindow(strikeList(market.strikesOf(expiry).map((strike) => ({ strike })), market.spot), range);
+  const [showUntraded, setShowUntraded] = useState(() => { try { return localStorage.getItem(SHOW_UNTRADED_KEY) === '1'; } catch { return false; } });
+  const toggleUntraded = (on: boolean) => {
+    setShowUntraded(on);
+    try { localStorage.setItem(SHOW_UNTRADED_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+  };
+  const dead = (strike: number, type: OptionType) => market.quoteOf(expiry, strike, type)?.untraded ?? false;
+  const all = market.strikesOf(expiry);
+  const traded = all.filter((k) => !(dead(k, 'CE') && dead(k, 'PE')));
+  const hidden = all.length - traded.length;
+  const list = strikeWindow(strikeList((showUntraded ? all : traded).map((strike) => ({ strike })), market.spot), range);
   const atm = list.atmIndex;
 
   // open (and after an expiry / range change) scrolled to ATM
@@ -44,11 +57,13 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
     const q = market.quoteOf(expiry, strike, type);
     const held = heldOn(legs, expiry, strike, type);
     const itm = market.spot != null && (type === 'CE' ? strike < market.spot : strike > market.spot);
+    const noTrades = !!q?.untraded;
     const btns = (
       <span className="sb-oc-btns">
         {(['B', 'S'] as Side[]).map((side) => (
           <button key={side} type="button" className={`sb-oc-btn ${side === 'B' ? 'buy' : 'sell'}${held.includes(`${side} `) ? ' on' : ''}`}
-            title={`${side === 'B' ? 'Buy' : 'Sell'} ${inr(0)(strike)} ${type} at ${price(midPrice(q))}`}
+            disabled={noTrades}
+            title={noTrades ? `${inr(0)(strike)} ${type}: no trades today, no market` : `${side === 'B' ? 'Buy' : 'Sell'} ${inr(0)(strike)} ${type} at ${price(midPrice(q))}`}
             onClick={() => onPick({ expiry, strike, type, side })}>{side}</button>
         ))}
       </span>
@@ -56,10 +71,10 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
     const nums = [
       <span key="oi" className="num muted">{oiText(q?.oi)}</span>,
       <span key="iv" className="num muted">{q?.iv ? inr(1)(q.iv) : '–'}</span>,
-      <span key="ltp" className="num sb-oc-ltp">{price(q?.ltp)}</span>,
+      noTrades ? <span key="ltp" className="sb-oc-ltp sb-oc-none">No trades</span> : <span key="ltp" className="num sb-oc-ltp">{price(q?.ltp)}</span>,
     ];
     return (
-      <div className={`sb-oc-side ${type === 'CE' ? 'ce' : 'pe'}${itm ? ' itm' : ''}`}>
+      <div className={`sb-oc-side ${type === 'CE' ? 'ce' : 'pe'}${itm ? ' itm' : ''}${noTrades ? ' untraded' : ''}`}>
         {type === 'CE' ? <>{nums}{btns}</> : <>{btns}{[...nums].reverse()}</>}
         {held && <span className="sb-oc-held">{held}</span>}
       </div>
@@ -80,6 +95,10 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
           </select>
         </div>
         <span className="muted sb-small">B / S adds the leg (again: one more lot)</span>
+        <label className="sb-check sb-oc-untraded" title="Strikes with no open interest and no trade today: Dhan's price there is not a trade">
+          <input type="checkbox" checked={showUntraded} onChange={(e) => toggleUntraded(e.target.checked)} />
+          Show untraded strikes{hidden ? ` (${hidden})` : ''}
+        </label>
       </div>
       <div className="sb-oc-head">
         <span className="sb-oc-side ce"><span>OI</span><span>IV</span><span>CE LTP</span><span /></span>

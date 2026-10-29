@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, requestJson } from '../../shared/api';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
+import { untraded } from '../../shared/dhan/liquidity';
 import type { ChargeRates, Chain as PaperChain, Tick } from '../paper-trade/logic/api';
 import { PaperFeed, keyOf, type ConnState, type InstrumentKey } from '../paper-trade/logic/feed';
 import { BUILDER_API, PRICES_WS, QUOTES_REFRESH_MS, STALE_AFTER_MS } from './config/settings';
@@ -143,12 +144,18 @@ export function useMarket(symbol: string): Market {
     const id = securityOf(expiry, strike, type);
     const t = id != null ? ticks.get(keyOf(segment, id)) : undefined;
     if (!c && !t) return null;
+    const oi = t?.oi ?? c?.oi ?? null;
+    const volume = t?.volume ?? c?.volume ?? null;
+    // no contract open and none traded today: Dhan's last price there is the exchange's base price, not a trade
+    const dead = untraded({ oi, volume });
     return {
-      ltp: t?.ltp ?? c?.last_price ?? null,
+      ltp: dead ? null : t?.ltp ?? c?.last_price ?? null,
       bid: t ? t.bid ?? null : c?.top_bid_price ?? null,
       ask: t ? t.ask ?? null : c?.top_ask_price ?? null,
-      iv: c?.implied_volatility ?? null,
-      oi: t?.oi ?? c?.oi ?? null,
+      iv: dead ? null : c?.implied_volatility ?? null,
+      oi,
+      volume,
+      untraded: dead,
     };
   };
 
@@ -162,9 +169,11 @@ export function useMarket(symbol: string): Market {
   const atmIvOf = (expiry: string) => {
     const rows = caches.get(expiry)?.rows;
     if (!rows?.length || spot == null) return null;
-    const k = nearestStrike(rows.map((r) => r.strike), spot);
-    const row = rows.find((r) => r.strike === k);
-    const ivs = [row?.ce?.implied_volatility, row?.pe?.implied_volatility].filter((v): v is number => v != null && v > 0);
+    const live = rows.filter((r) => !untraded(r.ce) || !untraded(r.pe)); // an untraded strike's IV is from its base price
+    const k = nearestStrike(live.map((r) => r.strike), spot);
+    const row = live.find((r) => r.strike === k);
+    const ivs = [row?.ce, row?.pe].filter((l) => l && !untraded(l)).map((l) => l!.implied_volatility)
+      .filter((v): v is number => v != null && v > 0);
     return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : null;
   };
 

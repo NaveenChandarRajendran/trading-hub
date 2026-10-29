@@ -31,10 +31,11 @@ function RowMenu({ onDuplicate, onDelete, canDuplicate }: { onDuplicate: () => v
   );
 }
 
-export function LegsTable({ legs, onChange, market }: {
+export function LegsTable({ legs, onChange, market, noMarket = {} }: {
   legs: BuilderLeg[];
   onChange: (legs: BuilderLeg[]) => void;
   market: Market;
+  noMarket?: Record<string, string>; // leg id -> why its strike has no market now (priceLegs)
 }) {
   const set = (id: string, patch: Partial<BuilderLeg>) => onChange(legs.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   if (!legs.length) return null;
@@ -49,7 +50,7 @@ export function LegsTable({ legs, onChange, market }: {
           {legs.map((l) => {
             const strikes = market.strikesOf(l.expiry);
             const q = market.quoteOf(l.expiry, l.strike, l.type);
-            const live = midPrice(q);
+            const live = noMarket[l.id] ? null : midPrice(q);
             const picker = pickerItems(strikes, market.spot, l.type, (k) => market.quoteOf(l.expiry, k, l.type)?.ltp);
             return (
               <tr key={l.id} className={l.include ? '' : 'sb-off'}>
@@ -86,8 +87,10 @@ export function LegsTable({ legs, onChange, market }: {
                       value={l.priceOverride ?? (live ?? '')} placeholder="–"
                       onChange={(e) => set(l.id, { priceOverride: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })} />
                     {l.priceOverride != null && !l.locked
-                      ? <button type="button" className="btn ghost icon" title={`Back to live ${fmtPrice(live)}`} aria-label="Back to the live price" onClick={() => set(l.id, { priceOverride: null })}>↺</button>
-                      : <span className="sb-iv muted num" title="Implied volatility from the option chain">{q?.iv ? `${inr(1)(q.iv)}%` : '–'}</span>}
+                      ? <button type="button" className="btn ghost icon" title={noMarket[l.id] ? `${noMarket[l.id]}: your typed price stands in` : `Back to live ${fmtPrice(live)}`}
+                        aria-label="Back to the live price" onClick={() => set(l.id, { priceOverride: null })}>↺</button>
+                      : noMarket[l.id] ? <span className="sb-iv sb-nomarket" title={noMarket[l.id]}>No market</span>
+                        : <span className="sb-iv muted num" title="Implied volatility from the option chain">{q?.iv ? `${inr(1)(q.iv)}%` : '–'}</span>}
                   </span>
                 </td>
                 <td>

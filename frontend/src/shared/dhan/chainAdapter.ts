@@ -1,6 +1,7 @@
 // Dhan option chain (GET /api/option-chain) -> the models the paste parsers produce, so the existing formula
 // modules run unchanged on live data. Field mapping and known differences: docs/02-current-state.md ("Live OI apps").
 import type { LegData, OptionChain, StrikeRow } from '../../apps/option-strategy/logic/optionChain';
+import { untraded } from './liquidity';
 import type { SbSnapshot } from '../../apps/sensibull-oi/logic/sensibull';
 import type { ChainResponse, DhanLeg } from './api';
 
@@ -29,14 +30,15 @@ export function toLeg(x: DhanLeg | null | undefined, lotSize: number): LegData |
   const lot = lotSize > 0 ? lotSize : 1;
   const oi = num(x.oi);
   const prevOi = num(x.previous_oi);
-  const ltp = num(x.last_price);
-  const prevClose = num(x.previous_close_price);
+  const dead = untraded(x); // no OI, no trade today: Dhan's last_price is the exchange's base price, not a trade
+  const ltp = dead ? 0 : num(x.last_price);
+  const prevClose = dead ? 0 : num(x.previous_close_price);
   return {
     openInterest: oi / lot,
     changeInOpenInterest: (oi - prevOi) / lot, // vs Dhan's settled previous-day OI
     pChangeInOpenInterest: pct(oi, prevOi),
     volume: num(x.volume) / lot,
-    iv: num(x.implied_volatility),
+    iv: dead ? 0 : num(x.implied_volatility),
     ltp,
     change: prevClose ? ltp - prevClose : 0,
     pChange: pct(ltp, prevClose),

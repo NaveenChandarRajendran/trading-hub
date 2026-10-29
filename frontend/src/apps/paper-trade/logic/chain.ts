@@ -2,6 +2,7 @@
 // Option chain helpers of the Trade view. The strike list itself (every strike, ATM, ±N window) is shared:
 // src/shared/chain/strikes.ts.
 import type { ChainResponse } from '../../../shared/dhan/api';
+import { untraded } from '../../../shared/dhan/liquidity';
 import type { Chain, Order, Position, Tick } from './api';
 import { keyOf, type InstrumentKey } from './feed';
 
@@ -46,14 +47,17 @@ export interface Quote {
   ltp?: number;
   oi?: number;
   close?: number;
+  untraded?: boolean; // no OI and no trade today: no price is shown (shared/dhan/liquidity.ts)
 }
 
-/** Shared option-chain cache (GET /api/option-chain) by strike: LTP, OI and previous close of each leg. */
+/** Shared option-chain cache (GET /api/option-chain) by strike: LTP, OI and previous close of each leg. An untraded
+ *  leg gets no LTP: Dhan's last_price there is the exchange's base price, not a trade. */
 export function cacheQuotes(resp: ChainResponse | null): Map<number, { ce?: Quote; pe?: Quote }> {
   const out = new Map<number, { ce?: Quote; pe?: Quote }>();
   if (!resp) return out;
   const q = (l: ChainResponse['rows'][number]['ce']): Quote | undefined =>
-    l ? { ltp: l.last_price || undefined, oi: l.oi, close: l.previous_close_price || undefined } : undefined;
+    l ? (untraded(l) ? { oi: l.oi, untraded: true }
+      : { ltp: l.last_price || undefined, oi: l.oi, close: l.previous_close_price || undefined }) : undefined;
   for (const r of resp.rows) out.set(r.strike, { ce: q(r.ce), pe: q(r.pe) });
   return out;
 }
@@ -62,5 +66,8 @@ export function cacheQuotes(resp: ChainResponse | null): Map<number, { ce?: Quot
 export function legQuote(key: InstrumentKey, subscribed: ReadonlySet<InstrumentKey>, ticks: ReadonlyMap<InstrumentKey, Tick>,
   cached: Quote | undefined): Quote {
   const t = subscribed.has(key) ? ticks.get(key) : undefined;
-  return t ? { ltp: t.ltp, oi: t.oi ?? cached?.oi, close: t.close ?? cached?.close } : cached ?? {};
+  if (!t) return cached ?? {};
+  const oi = t.oi ?? cached?.oi;
+  if (untraded({ oi, volume: t.volume })) return { oi, untraded: true };
+  return { ltp: t.ltp, oi, close: t.close ?? cached?.close };
 }

@@ -11,9 +11,10 @@ import { Alert, EmptyState, Segmented, Status } from '../../shared/ui';
 import { strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { longDate, pct, rupees, toneOf } from '../paper-trade/format';
-import { SYMBOLS, TABS_KEY, VIEW_KEY } from './config/settings';
+import { SYMBOLS, TABS_KEY, TEMPLATE_LIQUIDITY, VIEW_KEY } from './config/settings';
+import { illiquidReason } from '../../shared/dhan/liquidity';
 import {
-  MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, priceLegs, tabFromDraft, tabFromOptionPositions, tabFromPositions, tabSnapshot,
+  MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, noMarketProblem, priceLegs, tabFromDraft, tabFromOptionPositions, tabFromPositions, tabSnapshot,
   toDraftLegs, unsaved, type BuilderLeg, type ChainPick, type Tab,
 } from './logic/legs';
 import { builderApi, type Draft, type Margin, type OptionBook, type PositionLeg } from './logic/api';
@@ -103,7 +104,10 @@ export default function StrategyBuilderApp() {
   ].filter((x): x is number => x != null).map((id) => keyOf(market.segment, id) as InstrumentKey);
   useEffect(() => market.watch(keys), [keys.join(','), market.watch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const priced = priceLegs(tab.legs, (l) => market.quoteOf(l.expiry, l.strike, l.type), market.lotSizeOf);
+  const priced = priceLegs(tab.legs, (l) => market.quoteOf(l.expiry, l.strike, l.type), market.lotSizeOf, market.marketOpen);
+  const noMarket = noMarketProblem(tab.legs, priced); // '' = every ticked leg has a market (or a typed price)
+  const typedNoMarket = tab.legs.filter((l) => priced.noMarket[l.id] && l.priceOverride != null);
+  const waiting = priced.missingPrice.filter((id) => !priced.noMarket[id]); // no lot size / quote yet (not "no market")
   const legsKey = JSON.stringify(priced.legs);
   const on = priced.legs.filter((l) => l.include && l.lots > 0);
   const nearest = on.map((l) => l.expiry).sort()[0] ?? expiry;
@@ -200,10 +204,26 @@ export default function StrategyBuilderApp() {
     return r.full ? t : { ...t, legs: r.legs };
   }));
   const applyTemplate = (id: TemplateId) => {
-    const legs = buildTemplate(id, market.strikesOf(expiry), market.spot, expiry);
+    // strikes without a market (untraded, or below TEMPLATE_LIQUIDITY) move outward to the nearest liquid one
+    const liquidity = { notes: [] as string[], why: (k: number, type: 'CE' | 'PE') => {
+      const q = market.quoteOf(expiry, k, type);
+      return illiquidReason(q && { oi: q.oi, volume: q.volume, bid: q.bid, ask: q.ask }, market.marketOpen, TEMPLATE_LIQUIDITY);
+    } };
+    const legs = buildTemplate(id, market.strikesOf(expiry), market.spot, expiry, liquidity);
     if (!legs.length) return;
     if (tab.legs.length && !window.confirm(`Replace the ${tab.legs.length} leg${tab.legs.length === 1 ? '' : 's'} in tab ${tab.name}?`)) return;
     setLegs(legs);
+    if (liquidity.notes.length) {
+      console.info('[Strategy Builder] template strikes moved:', liquidity.notes.join('; '));
+      say('info', `Strikes moved to traded ones: ${liquidity.notes.join('; ')}.`);
+    }
+  };
+  const openPaperTrade = () => {
+    if (noMarket) { say('error', `Paper trade is off: ${noMarket}`); return; }
+    if (typedNoMarket.length && !window.confirm(`${typedNoMarket.map((l) => `${l.strike.toLocaleString('en-IN')} ${l.type}`).join(', ')}: `
+      + 'no market right now; your typed price is only an estimate. The paper engine fills only against a real bid / ask, '
+      + 'so the basket is refused if there is none. Continue?')) return;
+    setTrading(true);
   };
   const addTab = () => {
     const n = tabCount(nextTabNumber(tabs));
@@ -285,8 +305,8 @@ export default function StrategyBuilderApp() {
               onRenamed={(d) => setTabs((ts) => ts.map((t) => (t.draftId === d.id ? { ...t, name: d.name } : t)))}
               onDeleted={(id) => setTabs((ts) => ts.map((t) => (t.draftId === id ? { ...t, draftId: null, saved: null } : t)))} />
             <AnalyzeMenu onLoad={loadPositions} onError={(m) => say('error', m)} disabled={tabs.length >= MAX_TABS} />
-            <button type="button" className="btn primary" disabled={!on.length || !!tab.source} onClick={() => setTrading(true)}
-              title={tab.source ? 'These are held positions: exit them below' : 'Place this design into an options strategy (paper)'}>Paper trade</button>
+            <button type="button" className="btn primary" disabled={!on.length || !!tab.source} onClick={openPaperTrade}
+              title={tab.source ? 'These are held positions: exit them below' : noMarket ? `Off: ${noMarket}` : 'Place this design into an options strategy (paper)'}>Paper trade</button>
           </div>
         </div>
         {tab.source && <p className="muted sb-small">{tab.source}: prices are the positions' average price (locked), so the payoff is the live P&amp;L of what is held.</p>}
@@ -304,8 +324,9 @@ export default function StrategyBuilderApp() {
         <section className="card sb-left">
           <div className="card-head"><span className="card-title">Legs</span><span className="muted sb-small">Price = live mid unless you type one</span></div>
           {tab.legs.length === 0 && <EmptyState>Pick legs on the option chain above (B / S), or a template.</EmptyState>}
-          <LegsTable legs={tab.legs} onChange={setLegs} market={market} />
-          {priced.missingPrice.length > 0 && <p className="muted sb-small">{priced.missingPrice.length} leg(s) have no price yet: they are left out until one arrives (or type one).</p>}
+          <LegsTable legs={tab.legs} onChange={setLegs} market={market} noMarket={priced.noMarket} />
+          {noMarket && <Alert kind="warn">No market: {noMarket}</Alert>}
+          {waiting.length > 0 && <p className="muted sb-small">{waiting.length} leg(s) have no price yet: they are left out until one arrives (or type one).</p>}
           {priced.missingIv.length > 0 && <p className="muted sb-small">IV missing for {priced.missingIv.length} leg(s): the target-date curve values them at intrinsic.</p>}
         </section>
         </div>
@@ -314,7 +335,8 @@ export default function StrategyBuilderApp() {
             <span className="card-title">Payoff</span>
             <label className="sb-check"><input type="checkbox" checked={bands} onChange={(e) => setBands(e.target.checked)} /> Weekly 95 % / 90 % bands</label>
           </div>
-          {!summary || market.spot == null ? <EmptyState>Add legs to see the payoff.</EmptyState> : (
+          {noMarket ? <Alert kind="warn">Payoff and numbers are off until every ticked leg has a market: {noMarket}</Alert>
+            : !summary || market.spot == null ? <EmptyState>Add legs to see the payoff.</EmptyState> : (
             <>
               <PayoffChart legs={chartLegs} multiplier={tab.multiplier} spot={market.spot} whatIf={hasIv ? whatIf : null}
                 targetLabel={hours === 0 ? 'now (T+0)' : whenLabel(targetMs)} bands={bands} resetKey={`${tab.id}|${tab.symbol}`} />

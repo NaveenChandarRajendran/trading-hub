@@ -87,4 +87,12 @@ describe('tick or cache', () => {
     expect(legQuote(k, new Set([k]), new Map([[k, tick(141)]]), atm.ce)).toEqual({ ltp: 141, oi: 7844655, close: 225.3 });
     expect(legQuote(k, new Set(), new Map(), undefined)).toEqual({});
   });
+
+  it('an untraded strike shows "No trades", from the cache or a tick, never its base price', () => {
+    const resp = { ...nifty, rows: [{ strike: 77200, ce: { oi: 0, previous_oi: 0, last_price: 548.5, previous_close_price: 548.5, volume: 0, implied_volatility: 37.6, top_bid_price: 0, top_bid_quantity: 0, top_ask_price: 0, top_ask_quantity: 0 }, pe: null }] };
+    expect(cacheQuotes(resp).get(77200)!.ce).toEqual({ oi: 0, untraded: true });
+    const k = ce(77200);
+    expect(legQuote(k, new Set([k]), new Map([[k, tick(548.5, { oi: 0, volume: 0 })]]), undefined)).toEqual({ oi: 0, untraded: true });
+    expect(legQuote(k, new Set([k]), new Map([[k, tick(3.1, { oi: 0, volume: 40 })]]), undefined).ltp).toBe(3.1); // first trade
+  });
 });

@@ -76,6 +76,25 @@ Naveen: SENSEX in the Strategy Builder only (not Paper Trading / Power Scalper /
 - The manual paper engine (Paper Trading, Power Scalper, Trade Window) refuses SENSEX IDs.
 - Checked live on 29-Oct after hours: expiries, the chain via index 51, instruments `BSE_FNO` lot 20, margin answered.
 
+## Untraded strikes and "No market" (29-Oct-2026, branch `feature/sensex-support`)
+Bug: SENSEX 5 Nov 77,200 CE showed LTP 548.50 (IV 37.6), so an iron condor came out as a ₹9,322 debit. Dhan sends a
+strike with no OI and no trade today with `last_price` = `previous_close_price` = the exchange's base price (checked
+live 29-Oct: 77,100 / 77,200 CE `oi 0, volume 0, average_price 0`), and IV worked out from it.
+- `shared/dhan/liquidity.ts`: `untraded` (OI 0 and volume 0), `illiquidReason` (thresholds; a live bid / ask only
+  while the market is open, because after the close Dhan sends bid / ask 0 for every strike), `outwardStrike`.
+- Every chain screen: no base price. Builder chain hides untraded strikes ("Show untraded strikes (n)" lists them
+  greyed, "No trades", no B / S). Paper Trading chain and the Scalper strike lists show "No trades" / "–". The OI pages
+  (chainAdapter) get LTP / IV 0 for them. ATM IV skips untraded strikes.
+- Builder legs (`legPrice`): untraded = no market; market open without bid and ask = no market; market closed = last
+  traded price. A ticked leg with no market shows "No market"; payoff and numbers are withheld and Paper trade is off,
+  with the reason, unless a price is typed (then Paper trade asks first; the engine still fills only real bid / ask).
+- Templates move an untraded / illiquid strike outward (calls up, puts down, sold and bought legs), wings beyond the
+  strikes used, and say so ("77,200 CE untraded → using 77,300 CE"). Thresholds: `TEMPLATE_LIQUIDITY` in
+  `strategy-builder/config/settings.ts` (OI ≥ 1, volume today ≥ 1, live bid / ask when open). Strategy Lab (not built
+  yet) is to use the same `outwardStrike`.
+- Tests: `liquidity.test.ts`, `noMarket.test.ts` (the SENSEX case, NIFTY unchanged), Paper Trading chain + adapter
+  cases, `test_options_service.py::test_an_untraded_strike_never_fills`.
+
 ## Open questions
 - Iron Condor A (95 %) / B (90 %): short-strike rule (% from spot for CE / PE), rounding direction, wing width, expiry.
   The 3 Nov IC (21950 / 23800) does not match +4.31 % / −3.73 % of 28-Oct spot: need the spot used or the written rule.

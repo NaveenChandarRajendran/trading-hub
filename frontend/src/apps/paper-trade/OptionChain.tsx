@@ -150,11 +150,11 @@ export function OptionChain({ paper, chain, onTicket }: {
                       <td className={`${toneOf(cpc)} ${ceItm}`}>{pct(cpc)}</td>
                       <td className={`pt-leg pt-leg-ce ${ceItm}`}>
                         {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
-                        {price(ce.ltp)}
+                        {ce.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span> : price(ce.ltp)}
                       </td>
                       <td className="pt-strike">{inr(0)(r.strike)}</td>
                       <td className={`pt-leg pt-leg-pe ${peItm}`}>
-                        {price(pe.ltp)}
+                        {pe.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span> : price(pe.ltp)}
                         {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
                       </td>
                       <td className={`${toneOf(ppc)} ${peItm}`}>{pct(ppc)}</td>

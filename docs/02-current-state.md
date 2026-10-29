@@ -111,6 +111,11 @@ carry SL / target points (OCO on fill) and market protection %; Cancel all; a da
 SENSEX (BSE) options in the Builder and its options paper trading (chain, margin, Paper trade, settlement, Portfolios);
 not in the other trading screens. Details in `docs/features/strategy-builder.md` → SENSEX.
 
+## Untraded strikes — 29-Oct-2026 (`feature/sensex-support`)
+Strikes with no OI and no trade today never show or use Dhan's base price: hidden / "No trades" on the chains, "No
+market" on Builder legs (numbers and Paper trade blocked), templates move outward. Details in
+`docs/features/strategy-builder.md` → Untraded strikes.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills

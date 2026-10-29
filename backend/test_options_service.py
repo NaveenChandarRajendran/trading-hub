@@ -300,3 +300,20 @@ def test_sensex_is_refused_by_the_manual_paper_engine(env):
     r = a.post(f"/api/paper/orders?strategy={manual['id']}", json={"securityId": 9201, "side": "BUY", "lots": 1,
                                                                     "orderType": "MARKET"})
     assert r.status_code == 404 and "NIFTY / BANKNIFTY" in r.json()["detail"]
+
+
+def test_an_untraded_strike_never_fills(env):
+    """SENSEX 5 Nov 77,200 CE case: the feed's LTP is the exchange base price (548.50) with no bid / ask. The basket
+    is refused whole: the engine fills only against real depth, never at a last price."""
+    a, _, paper, clock, *_ = env
+    sx_ticks(paper, clock)
+    empty = {**full(9202, 548.5, 0, 0, qty=0), "segment": "BSE_FNO"}  # no buyers or sellers on the strike
+    paper.on_packet(empty)
+    r = a.post(f"/api/options/basket?strategy={st_id(a)}", json={"legs": [
+        {"securityId": 9201, "side": "S", "lots": 1}, {"securityId": 9202, "side": "S", "lots": 1}]})
+    assert r.status_code == 409 and "No buyers" in r.json()["detail"]
+    assert a.get(f"/api/options/positions?strategy={st_id(a)}").json()["positions"] == []  # all or nothing
+
+
+def st_id(a):
+    return next(s["id"] for s in a.get("/api/strategies").json()["strategies"] if s["kind"] == "options")

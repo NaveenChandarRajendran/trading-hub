@@ -62,6 +62,11 @@ describe('toOptionChain (NSE model, OI in contracts)', () => {
     expect(chain.totals.ce.oi).toBe(ceUnits / 65);
   });
 
+  it('an untraded leg (SENSEX 77,200 CE, 29-Oct: OI 0, volume 0, base price 548.50) shows no price or IV', () => {
+    const leg = toLeg({ oi: 0, previous_oi: 0, last_price: 548.5, previous_close_price: 548.5, volume: 0, implied_volatility: 37.6, top_bid_price: 0, top_bid_quantity: 0, top_ask_price: 0, top_ask_quantity: 0 }, 20)!;
+    expect([leg.ltp, leg.iv, leg.change, leg.openInterest]).toEqual([0, 0, 0, 0]);
+  });
+
   it('a missing leg stays null and fields Dhan lacks are 0', () => {
     expect(toLeg(null, 65)).toBeNull();
     expect(chain.strikes[0].ce!.totalBuyQty).toBe(0);

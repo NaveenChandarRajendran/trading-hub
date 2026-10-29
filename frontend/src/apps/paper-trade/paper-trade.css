@@ -73,3 +73,4 @@
 .pt .pt-money dd { margin: 0; text-align: right; font-weight: 500; }
 .pt .pt-ticket-actions { display: flex; align-items: center; gap: var(--sp-2); }
 .pt .pt-ticket-actions .muted { margin-right: auto; font-size: var(--fs-sm); }
+.pt .pt-chain .pt-none { color: var(--text-3); font-size: var(--fs-xs); }

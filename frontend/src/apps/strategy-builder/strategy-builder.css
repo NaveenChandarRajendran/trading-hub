@@ -154,3 +154,10 @@
 .ds .sb-pf-row:hover td { background: var(--surface-2); }
 .ds .sb-pf-fills > td { background: var(--surface-2); padding: var(--sp-2) var(--sp-3); }
 .ds .sb-pf-scroll .t .txt { text-align: left; }
+
+/* untraded strikes on the option chain (OptionChainPanel.tsx) */
+.ds .sb-oc-side.untraded { opacity: .55; }
+.ds .sb-oc-none { color: var(--text-3); font-size: var(--fs-xs); }
+.ds .sb-oc-btn:disabled { cursor: not-allowed; opacity: .4; }
+.ds .sb-oc-untraded { margin-left: auto; }
+.ds .sb-nomarket { color: var(--warn); font-size: var(--fs-xs); white-space: nowrap; }
