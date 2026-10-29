@@ -9,13 +9,16 @@ Each trading day D (skip weekends and NSE holidays, `holidays.py`):
 1. **Trade sheets**: one row per trade on D, or one row with `N/A` when there was no trade (Holiday rows say `Holiday`).
    - `Option Buy - 4 Pillar Rules` (date in B, invested W, net AJ)
    - `Option Buy - SuperTrend Rules` (date in B, invested V, net AI)
-   - `Option Buy - Dharani Rules` (date in B, invested V, net AI)
-   - `Option Buying - Trading Hub` (the app's paper trades, Trend + others; date in B)
-   - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; Dharani's columns; date in B)
+   - `Option Buy - Power Breakout` (was `Option Buy - Dharani Rules`, renamed 29-Oct-2026; date in B, invested V, net AI)
+   - `Option Buying - Trading Hub` (the app's paper trades: Trend while it traded, and the owner's manual Buy / Sell trades; date in B)
+   - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; Power Breakout's columns; date in B)
+   - `Option Buy - Box Pullback 15-5` and `Option Buy - Box Pullback 5-1` (from 2-Nov-2026; same columns; both indices)
    - `Option Selling - Megabull` (selling, owner's own entries, expiry days only; date in B)
    - `Option Sell - Selling Book` (the app's Rs 3 L paper selling book from its first live day; one row per leg
      closed on D, open strangle legs listed with status Open; columns: Date, Rule, Index, Option, Expiry, Qty, Sell
-     time, Sell price, Stop, Buy-back time, Buy-back price, Exit reason, Gross, Charges, Net, Cycle / Notes)
+     time, Sell price, Stop, Buy-back time, Buy-back price, Exit reason, Gross, Charges, Net, Cycle / Notes). From
+     3-Nov-2026 the expiry straddles 9:20, 9:40, 11:26 and 12:24 are rows here too (Rule column).
+   - `Momentum 20` (from the first holdings, 2-Nov-2026): daily value, cash and holdings of both Rs 5 L books; trades monthly.
 2. **`Megabull Option Buy - P&L` calendar (hand-filled, NOT automatic)**: month in D6, columns D..J = Sun..Sat,
    first week in row 8. The cell for D gets the formula
    `=(sum of AJ / AI net of D's 4 Pillar + SuperTrend rows)/(sum of their W / V invested)`, number format `0.00%`,
