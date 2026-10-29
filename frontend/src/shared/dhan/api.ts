@@ -17,6 +17,12 @@ export interface DhanLeg {
   top_ask_quantity: number;
   security_id?: number;
   greeks?: { delta: number; theta: number; gamma: number; vega: number };
+  // added by the backend (backend/last_trades.py): a leg with no trade today has last_price = its real last trade (Dhan's
+  // chain sends the previous close there), 0 when it never traded or the quote failed (last_price_unknown)
+  traded_today?: boolean;
+  last_trade_time?: string | null; // Dhan's "dd/mm/yyyy hh:mm:ss"; 00:00:00 = an earlier session
+  chain_last_price?: number; // what Dhan's chain said (never shown)
+  last_price_unknown?: boolean;
 }
 
 export interface ChainRow {

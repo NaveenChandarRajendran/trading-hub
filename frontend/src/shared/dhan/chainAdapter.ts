@@ -1,7 +1,7 @@
 // Dhan option chain (GET /api/option-chain) -> the models the paste parsers produce, so the existing formula
 // modules run unchanged on live data. Field mapping and known differences: docs/02-current-state.md ("Live OI apps").
 import type { LegData, OptionChain, StrikeRow } from '../../apps/option-strategy/logic/optionChain';
-import { untraded } from './liquidity';
+import { noTradesToday, untraded } from './liquidity';
 import type { SbSnapshot } from '../../apps/sensibull-oi/logic/sensibull';
 import type { ChainResponse, DhanLeg } from './api';
 
@@ -31,6 +31,7 @@ export function toLeg(x: DhanLeg | null | undefined, lotSize: number): LegData |
   const oi = num(x.oi);
   const prevOi = num(x.previous_oi);
   const dead = untraded(x); // no OI, no trade today: Dhan's last_price is the exchange's base price, not a trade
+  const stale = noTradesToday(x); // last_price = an earlier session's last trade (backend/last_trades.py)
   const ltp = dead ? 0 : num(x.last_price);
   const prevClose = dead ? 0 : num(x.previous_close_price);
   return {
@@ -40,8 +41,8 @@ export function toLeg(x: DhanLeg | null | undefined, lotSize: number): LegData |
     volume: num(x.volume) / lot,
     iv: dead ? 0 : num(x.implied_volatility),
     ltp,
-    change: prevClose ? ltp - prevClose : 0,
-    pChange: pct(ltp, prevClose),
+    change: prevClose && !stale ? ltp - prevClose : 0, // no trade today: no change (Dhan shows 0.00 %)
+    pChange: stale ? 0 : pct(ltp, prevClose),
     bidPrice: num(x.top_bid_price),
     bidQty: num(x.top_bid_quantity),
     askPrice: num(x.top_ask_price),

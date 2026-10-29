@@ -161,3 +161,4 @@
 .ds .sb-oc-btn:disabled { cursor: not-allowed; opacity: .4; }
 .ds .sb-oc-untraded { margin-left: auto; }
 .ds .sb-nomarket { color: var(--warn); font-size: var(--fs-xs); white-space: nowrap; }
+.ds .sb-oc-ltp.sb-oc-stale { color: var(--text-3); font-weight: 400; }

@@ -3,11 +3,13 @@
 // the design already holds on a strike shown on it. Opens scrolled to ATM; ±10 / ±20 strikes or all of them.
 // Untraded strikes (no OI, no trade today: Dhan's price there is the exchange's base price) are hidden, as on Dhan's own
 // chain; "Show untraded strikes" lists them greyed with "No trades" and no B / S. A side that has no trades on a
-// strike whose other side trades is greyed the same way.
+// strike whose other side trades is greyed the same way. A side with no trade today (traded on an earlier day) shows
+// its last traded price greyed, with when, never as a live price.
 import { useEffect, useRef, useState } from 'react';
 import { inr } from '../../shared/grid';
 import { STRIKE_RANGES, centerScrollTop, strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { price } from '../paper-trade/format';
+import { lastTradeText } from '../../shared/dhan/liquidity';
 import { SHOW_UNTRADED_KEY } from './config/settings';
 import type { OptionType } from './logic/blackScholes';
 import { heldOn, midPrice, shortExpiry, type BuilderLeg, type ChainPick } from './logic/legs';
@@ -71,7 +73,9 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
     const nums = [
       <span key="oi" className="num muted">{oiText(q?.oi)}</span>,
       <span key="iv" className="num muted">{q?.iv ? inr(1)(q.iv) : '–'}</span>,
-      noTrades ? <span key="ltp" className="sb-oc-ltp sb-oc-none">No trades</span> : <span key="ltp" className="num sb-oc-ltp">{price(q?.ltp)}</span>,
+      noTrades ? <span key="ltp" className="sb-oc-ltp sb-oc-none">No trades</span>
+        : q?.noTradesToday ? <span key="ltp" className="num sb-oc-ltp sb-oc-stale" title={`No trades today · last traded ${price(q.ltp)} (${lastTradeText(q.lastTradeTime)})`}>{price(q.ltp)}</span>
+          : <span key="ltp" className="num sb-oc-ltp">{price(q?.ltp)}</span>,
     ];
     return (
       <div className={`sb-oc-side ${type === 'CE' ? 'ce' : 'pe'}${itm ? ' itm' : ''}${noTrades ? ' untraded' : ''}`}>

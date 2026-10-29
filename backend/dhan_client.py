@@ -119,6 +119,13 @@ class DhanClient:
         payload = self._post("/marketfeed/ohlc", {"NSE_EQ": [int(i) for i in security_ids]}, gap=QUOTE_GAP_SECONDS)
         return parse_ohlc(payload)
 
+    def last_trades(self, segment, security_ids):
+        """Last traded price of each instrument from Dhan's market quote (the same data as the live feed), with its
+        last trade time: {security_id: {"ltp": 4.75, "time": "29/10/2026 00:00:00"}}. Up to 1000 IDs, 1 call / second.
+        Used for option legs with no trade today, whose option-chain last_price is the previous close (last_trades.py)."""
+        payload = self._post("/marketfeed/quote", {segment: [int(i) for i in security_ids]}, gap=QUOTE_GAP_SECONDS)
+        return parse_last_trades(payload, segment)
+
     def historical(self, security_id, from_date, to_date):
         """Daily candles for one NSE stock: {"timestamp": [epoch seconds at 00:00 IST, ...], "close": [...]}.
         One request per stock (there is no batch version). Dates are 'YYYY-MM-DD'."""
@@ -193,6 +200,17 @@ def parse_ohlc(payload):
             continue
         if ltp > 0:
             out[str(sid)] = {"ltp": ltp}
+    return out
+
+
+def parse_last_trades(payload, segment):
+    data = ((payload or {}).get("data") or {}).get(segment) or {}
+    out = {}
+    for sid, v in data.items():
+        try:
+            out[int(sid)] = {"ltp": float((v or {}).get("last_price") or 0), "time": (v or {}).get("last_trade_time")}
+        except (TypeError, ValueError):
+            continue
     return out
 
 

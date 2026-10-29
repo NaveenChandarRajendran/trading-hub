@@ -1,5 +1,6 @@
 // Strategy Builder legs and tabs (pure): what the legs table edits, the live price of a leg (mid of bid / ask), strike
 // stepping, and turning table rows into the maths model (payoff.ts) with prices, lot size and IV filled in.
+import { lastTradeText } from '../../../shared/dhan/liquidity';
 import type { Draft, DraftLeg, OptionPosition, PositionLeg } from './api';
 import type { OptionType } from './blackScholes';
 import type { Leg, Side } from './payoff';
@@ -42,6 +43,8 @@ export interface Tab {
 export interface Quote {
   ltp: number | null; bid: number | null; ask: number | null; iv: number | null; oi?: number | null;
   volume?: number | null; untraded?: boolean;
+  noTradesToday?: boolean; // volume 0 today: ltp is the last trade of an earlier session (shown greyed, never a live price)
+  lastTradeTime?: string | null;
 }
 
 const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) / 100;
@@ -50,13 +53,17 @@ const roundTick = (p: number) => Math.round(Math.round(p / TICK) * TICK * 100) /
  * The live price of a leg and, without one, why ("No market" in the table):
  * - an untraded strike never has a price (Dhan's last price there is the exchange's base price);
  * - mid of bid and ask (to the 0.05 tick) when both are quoted;
+ * - no trade today (an earlier session's last trade) and no bid / ask: no market;
  * - market open without a bid and ask: no market (a last price is not a price you can trade at);
- * - market closed (Dhan sends no bid / ask then): the last traded price.
+ * - market closed (Dhan sends no bid / ask then) after trades today: today's last traded price.
  */
 export function legPrice(q: Quote | null | undefined, marketOpen: boolean | null = null): { price: number | null; noMarket: string } {
   if (!q) return { price: null, noMarket: 'No quote yet' };
   if (q.untraded) return { price: null, noMarket: 'No trades today on this strike' };
   if (q.bid != null && q.ask != null && q.bid > 0 && q.ask > 0 && q.ask >= q.bid) return { price: roundTick((q.bid + q.ask) / 2), noMarket: '' };
+  if (q.noTradesToday) {
+    return { price: null, noMarket: `No trades today${q.ltp ? ` (last traded ${q.ltp.toFixed(2)}, ${lastTradeText(q.lastTradeTime)})` : ''}` };
+  }
   if (marketOpen) return { price: null, noMarket: 'No live bid / ask' };
   return q.ltp != null && q.ltp > 0 ? { price: q.ltp, noMarket: '' } : { price: null, noMarket: 'No price' };
 }
@@ -147,7 +154,7 @@ export function priceLegs(legs: BuilderLeg[], quoteOf: (l: BuilderLeg) => Quote 
       if (l.include) out.missingPrice.push(l.id);
       continue;
     }
-    const iv = !q?.untraded && q?.iv != null && q.iv > 0 ? q.iv : null;
+    const iv = !q?.untraded && !q?.noTradesToday && q?.iv != null && q.iv > 0 ? q.iv : null; // IV of a real trade only
     if (l.include && iv == null) out.missingIv.push(l.id);
     out.legs.push({ id: l.id, include: l.include, side: l.side, type: l.type, expiry: l.expiry, strike: l.strike,
       lots: l.lots, lotSize, price, iv });

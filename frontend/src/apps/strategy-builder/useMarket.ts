@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, requestJson } from '../../shared/api';
 import { fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
-import { untraded } from '../../shared/dhan/liquidity';
+import { noTradesToday, untraded } from '../../shared/dhan/liquidity';
 import type { ChargeRates, Chain as PaperChain, Tick } from '../paper-trade/logic/api';
 import { PaperFeed, keyOf, type ConnState, type InstrumentKey } from '../paper-trade/logic/feed';
 import { BUILDER_API, PRICES_WS, QUOTES_REFRESH_MS, STALE_AFTER_MS } from './config/settings';
@@ -148,14 +148,19 @@ export function useMarket(symbol: string): Market {
     const volume = t?.volume ?? c?.volume ?? null;
     // no contract open and none traded today: Dhan's last price there is the exchange's base price, not a trade
     const dead = untraded({ oi, volume });
+    // no trade today: the backend's last_price is the last trade of an earlier session (Dhan's chain had the close)
+    const stale = noTradesToday({ oi, volume });
+    const ltp = t?.ltp ?? c?.last_price ?? null;
     return {
-      ltp: dead ? null : t?.ltp ?? c?.last_price ?? null,
+      ltp: dead || !ltp ? null : ltp,
       bid: t ? t.bid ?? null : c?.top_bid_price ?? null,
       ask: t ? t.ask ?? null : c?.top_ask_price ?? null,
-      iv: dead ? null : c?.implied_volatility ?? null,
+      iv: dead || stale ? null : c?.implied_volatility ?? null, // Dhan's IV there comes from the close, not a trade
       oi,
       volume,
       untraded: dead,
+      noTradesToday: stale,
+      lastTradeTime: c?.last_trade_time ?? null,
     };
   };
 
@@ -169,10 +174,10 @@ export function useMarket(symbol: string): Market {
   const atmIvOf = (expiry: string) => {
     const rows = caches.get(expiry)?.rows;
     if (!rows?.length || spot == null) return null;
-    const live = rows.filter((r) => !untraded(r.ce) || !untraded(r.pe)); // an untraded strike's IV is from its base price
+    const live = rows.filter((r) => !noTradesToday(r.ce) || !noTradesToday(r.pe)); // IV only from strikes that traded today
     const k = nearestStrike(live.map((r) => r.strike), spot);
     const row = live.find((r) => r.strike === k);
-    const ivs = [row?.ce, row?.pe].filter((l) => l && !untraded(l)).map((l) => l!.implied_volatility)
+    const ivs = [row?.ce, row?.pe].filter((l) => l && !noTradesToday(l)).map((l) => l!.implied_volatility)
       .filter((v): v is number => v != null && v > 0);
     return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : null;
   };

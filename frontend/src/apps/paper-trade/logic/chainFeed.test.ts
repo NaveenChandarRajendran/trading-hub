@@ -95,4 +95,13 @@ describe('tick or cache', () => {
     expect(legQuote(k, new Set([k]), new Map([[k, tick(548.5, { oi: 0, volume: 0 })]]), undefined)).toEqual({ oi: 0, untraded: true });
     expect(legQuote(k, new Set([k]), new Map([[k, tick(3.1, { oi: 0, volume: 40 })]]), undefined).ltp).toBe(3.1); // first trade
   });
+
+  it('76,900 CE (no trade today, OI 80): the last trade from the backend (4.75) shown as such, no change % against the close', () => {
+    const leg = { oi: 80, previous_oi: 80, last_price: 4.75, previous_close_price: 120, volume: 0, implied_volatility: 20.3,
+      top_bid_price: 0, top_bid_quantity: 0, top_ask_price: 0, top_ask_quantity: 0, traded_today: false,
+      last_trade_time: '29/10/2026 00:00:00', chain_last_price: 120 };
+    const got = cacheQuotes({ ...nifty, rows: [{ strike: 76900, ce: leg, pe: null }] }).get(76900)!.ce!;
+    expect(got).toEqual({ ltp: 4.75, oi: 80, noTradesToday: true, lastTradeTime: '29/10/2026 00:00:00' });
+    expect(got.close).toBeUndefined(); // so no -96 % "change"
+  });
 });

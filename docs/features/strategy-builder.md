@@ -95,6 +95,25 @@ live 29-Oct: 77,100 / 77,200 CE `oi 0, volume 0, average_price 0`), and IV worke
 - Tests: `liquidity.test.ts`, `noMarket.test.ts` (the SENSEX case, NIFTY unchanged), Paper Trading chain + adapter
   cases, `test_options_service.py::test_an_untraded_strike_never_fills`.
 
+## LTP = the last trade only (30-Oct-2026, branch `feature/sensex-support`)
+Bug: SENSEX 5 Nov 76,900 CE showed 120.00; Dhan's app and Sensibull 4.75. Raw data (29-Oct, after the close):
+| field | 76,900 CE | 77,200 CE | 77,000 CE (traded) |
+|---|---|---|---|
+| option chain `last_price` | **120** | 548.5 | 18.3 |
+| option chain `previous_close_price` | 120 | 548.5 | 14.15 |
+| quote API `last_price` (`/marketfeed/quote`, the feed's data) | **4.75** | 0 | 18.3 |
+| quote `last_trade_time` | 29/10/2026 00:00:00 | – | 29/10/2026 15:39:59 |
+| volume / OI | 0 / 80 | 0 / 0 | 757,700 / 237,540 |
+The wrong field: the **option chain's `last_price`**, which for a leg with no trade today is the previous close. The
+feed sent nothing after hours (no packet to log); the quote API carries the same exchange data.
+- `backend/last_trades.py`: GET /api/option-chain gives every leg `traded_today`; a leg with no trade today takes
+  `last_price` from Dhan's quote API (one call per fresh chain, ≤ 1000 legs; 164 for SENSEX 5 Nov), keeps Dhan's value
+  in `chain_last_price`, adds `last_trade_time`; a failed quote call gives 0 + `last_price_unknown`. The cached chain is
+  unchanged, so the Trending OI tracker (calc.py's LTP sums, checked against OI Pulse) records what Dhan sent.
+- Screens: "no trades today" (volume 0, OI > 0) shows the last traded price greyed with "No trades today · last traded
+  4.75 (an earlier session)"; no change %, no IV. Builder: no market unless a live bid / ask; templates move outward
+  ("76,900 CE no trades today → using 77,000 CE"). Set `TEMPLATE_LIQUIDITY.minVolume` to 0 to allow such strikes.
+
 ## Open questions
 - Iron Condor A (95 %) / B (90 %): short-strike rule (% from spot for CE / PE), rounding direction, wing width, expiry.
   The 3 Nov IC (21950 / 23800) does not match +4.31 % / −3.73 % of 28-Oct spot: need the spot used or the written rule.

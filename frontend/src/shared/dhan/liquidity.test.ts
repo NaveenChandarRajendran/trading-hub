@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { illiquidReason, outwardStrike, untraded } from './liquidity';
+import { illiquidReason, lastTradeText, noTradesToday, outwardStrike, untraded } from './liquidity';
 
 // SENSEX 5 Nov 2026 CE, as Dhan sent them on 29-Oct after the close (bid / ask 0 on every strike then)
 const SX: Record<number, { oi: number; volume: number; last_price: number; bid: number; ask: number }> = {
@@ -24,7 +24,7 @@ describe('untraded strikes', () => {
     expect(illiquidReason(SX[77300], true)).toBe('illiquid'); // open with no bid / ask
     expect(illiquidReason({ ...SX[77300], bid: 13.7, ask: 13.8 }, true)).toBe('');
     expect(illiquidReason(SX[77300], false, { minOi: 5000, minVolume: 1, needQuote: true })).toBe('illiquid');
-    expect(illiquidReason({ oi: 500, volume: 0, bid: 5, ask: 5.1 }, true)).toBe('illiquid'); // no trade today yet
+    expect(illiquidReason({ oi: 500, volume: 0, bid: 5, ask: 5.1 }, true)).toBe('no trades today'); // none yet today
     expect(illiquidReason({ oi: 500, volume: 0, bid: 5, ask: 5.1 }, true, { minOi: 1, minVolume: 0, needQuote: true })).toBe('');
   });
 
@@ -36,5 +36,16 @@ describe('untraded strikes', () => {
     expect(outwardStrike(strikes, 77000, 'CE', why)).toBe(77000); // already liquid
     expect(outwardStrike(strikes, 77200, 'PE', why)).toBe(77000); // a put moves down
     expect(outwardStrike([77100, 77200], 77100, 'CE', why)).toBeNull();
+  });
+});
+
+describe('no trades today (76,900 CE: OI 80, volume 0)', () => {
+  it('is its own state, not untraded; the last trade time reads as a session or a time', () => {
+    expect([untraded({ oi: 80, volume: 0 }), noTradesToday({ oi: 80, volume: 0 })]).toEqual([false, true]);
+    expect(noTradesToday({ oi: 237540, volume: 757700 })).toBe(false);
+    expect(illiquidReason({ oi: 80, volume: 0, bid: 0, ask: 0 }, false)).toBe('no trades today');
+    expect(lastTradeText('29/10/2026 00:00:00')).toBe('an earlier session');
+    expect(lastTradeText('29/10/2026 15:39:59')).toBe('29 Oct 15:39');
+    expect(lastTradeText(null)).toBe('an earlier session');
   });
 });

@@ -70,3 +70,33 @@ describe('templates move off untraded strikes', () => {
     expect(liquidity.notes[0]).toBe('77,100 CE untraded, and no liquid strike beyond it: kept');
   });
 });
+
+// SENSEX 5 Nov 76,900 CE, 29-Oct: traded on an earlier day only. Dhan's chain: last_price 120 = previous_close_price,
+// OI 80, volume 0; quote API: last_price 4.75. The backend (last_trades.py) sends last_price 4.75, traded_today false.
+describe('a strike with no trades today (76,900 CE)', () => {
+  const stale: Quote = { ltp: 4.75, bid: 0, ask: 0, iv: null, oi: 80, volume: 0, untraded: false, noTradesToday: true,
+    lastTradeTime: '29/10/2026 00:00:00' };
+
+  it('is no market without a live bid / ask, with its last trade in the reason; a live quote makes it tradable', () => {
+    expect(legPrice(stale, false)).toEqual({ price: null, noMarket: 'No trades today (last traded 4.75, an earlier session)' });
+    expect(legPrice(stale, true).price).toBeNull();
+    expect(legPrice({ ...stale, bid: 4.5, ask: 5 }, true)).toEqual({ price: 4.75, noMarket: '' });
+  });
+
+  it('never priced at 120 or 4.75 in the numbers, and blocks them', () => {
+    const legs = [newLeg(EXP, 76900, { side: 'S', type: 'CE' }), newLeg(EXP, 77300, { side: 'B', type: 'CE' })];
+    const p = priceLegs(legs, (l) => (l.strike === 76900 ? stale : quote(l.strike, l.type)), () => 20, false);
+    expect(p.legs.map((l) => l.strike)).toEqual([77300]);
+    expect(noMarketProblem(legs, p)).toMatch(/^76,900 CE: No trades today \(last traded 4.75/);
+  });
+
+  it('templates move outward from it like an untraded strike', () => {
+    const act: Record<number, { oi: number; volume: number }> = { 76900: { oi: 80, volume: 0 }, 77000: { oi: 237540, volume: 757700 } };
+    const why = (k: number, type: 'CE' | 'PE') => illiquidReason(type === 'CE' && act[k] ? { ...act[k], bid: 0, ask: 0 }
+      : { oi: 1000, volume: 1000, bid: 0, ask: 0 }, false);
+    const liquidity = { why, notes: [] as string[] };
+    const legs = buildTemplate('short-strangle', SX_STRIKES, 76140, EXP, liquidity); // the 1 % call lands on 76,900
+    expect(legs.find((l) => l.type === 'CE')!.strike).toBe(77000);
+    expect(liquidity.notes).toEqual(['76,900 CE no trades today → using 77,000 CE']);
+  });
+});

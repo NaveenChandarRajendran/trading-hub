@@ -115,6 +115,8 @@ not in the other trading screens. Details in `docs/features/strategy-builder.md`
 Strikes with no OI and no trade today never show or use Dhan's base price: hidden / "No trades" on the chains, "No
 market" on Builder legs (numbers and Paper trade blocked), templates move outward. Details in
 `docs/features/strategy-builder.md` → Untraded strikes.
+30-Oct: option-chain LTP is now the last trade only (`backend/last_trades.py`: Dhan's chain sends the previous close
+for legs with no trade today); "no trades today" strikes are greyed and no market. → LTP = the last trade only.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

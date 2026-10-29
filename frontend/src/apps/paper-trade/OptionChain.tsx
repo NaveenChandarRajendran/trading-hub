@@ -6,6 +6,7 @@ import { EmptyState, Segmented } from '../../shared/ui';
 import { CHAIN_CACHE_REFRESH_MS, CHAIN_OVERSCAN, CHAIN_ROW_PX, CHAIN_SUBSCRIBE_DEBOUNCE_MS, SPOT_ROW_PX } from './config/settings';
 import { lakh, longDate, pct, price, toneOf } from './format';
 import type { Chain } from './logic/api';
+import { lastTradeText } from '../../shared/dhan/liquidity';
 import { cacheQuotes, chainKeys, changePct, heldKeys, itm, legQuote, spotGapAfter } from './logic/chain';
 import { keyOf } from './logic/feed';
 import type { TicketTarget } from './OrderTicket';
@@ -150,11 +151,15 @@ export function OptionChain({ paper, chain, onTicket }: {
                       <td className={`${toneOf(cpc)} ${ceItm}`}>{pct(cpc)}</td>
                       <td className={`pt-leg pt-leg-ce ${ceItm}`}>
                         {r.ce && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.ce)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.ce)}>S</button></span>}
-                        {ce.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span> : price(ce.ltp)}
+                        {ce.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span>
+                          : ce.noTradesToday ? <span className="pt-none num" title={`No trades today · last traded ${price(ce.ltp)} (${lastTradeText(ce.lastTradeTime)})`}>{price(ce.ltp)}</span>
+                            : price(ce.ltp)}
                       </td>
                       <td className="pt-strike">{inr(0)(r.strike)}</td>
                       <td className={`pt-leg pt-leg-pe ${peItm}`}>
-                        {pe.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span> : price(pe.ltp)}
+                        {pe.untraded ? <span className="pt-none" title="No open interest and no trade today">No trades</span>
+                          : pe.noTradesToday ? <span className="pt-none num" title={`No trades today · last traded ${price(pe.ltp)} (${lastTradeText(pe.lastTradeTime)})`}>{price(pe.ltp)}</span>
+                            : price(pe.ltp)}
                         {r.pe && <span className="pt-bs"><button className="btn pt-b" onClick={() => ticket('BUY', r.pe)}>B</button><button className="btn pt-s" onClick={() => ticket('SELL', r.pe)}>S</button></span>}
                       </td>
                       <td className={`${toneOf(ppc)} ${peItm}`}>{pct(ppc)}</td>

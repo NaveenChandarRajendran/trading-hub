@@ -48,7 +48,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from calc import build_rows, select_for_interval
-from chain_cache import FALLBACK_LOT_SIZE, chain_response
+from chain_cache import FALLBACK_LOT_SIZE, chain_response, strike_rows
+from last_trades import LastTrades
 import algo_api
 import auth_api
 import scalper_api
@@ -277,6 +278,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         except DhanError as e:
             raise HTTPException(502, str(e))
 
+    last_trades = LastTrades(tracker.client)  # legs with no trade today: their real last traded price
+
     @app.get("/api/option-chain")
     def option_chain(symbol: str = "NIFTY", expiry: str = ""):
         """Whole option chain for the live pages, from the shared cache (one Dhan call per key per 10 s at most)."""
@@ -293,8 +296,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             raise HTTPException(401, f"{e} Send a new one with POST /api/token.")
         except DhanError as e:
             raise HTTPException(502, f"Dhan option chain failed: {e}")
+        rows = last_trades.rows(symbol, expiry, entry, strike_rows(entry.chain))  # LTP = the last trade, never a close
         return chain_response(symbol, expiry, entry, cached, lot_size(symbol, expiry), tracker.clock(),
-                              tracker.market_open(), tracker.client.token_expired)
+                              tracker.market_open(), tracker.client.token_expired, rows=rows)
 
     def trending_oi_body(symbol, expiry, interval):
         """Body of GET /api/trending-oi (also used by the dashboard). Raises DhanError (expiries / first fetch),

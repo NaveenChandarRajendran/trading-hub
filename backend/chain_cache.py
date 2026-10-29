@@ -85,8 +85,9 @@ def strike_rows(chain):
     return [{"strike": k, "ce": v["ce"], "pe": v["pe"]} for k, v in sorted(chain["oc"].items())]
 
 
-def chain_response(symbol, expiry, entry, cached, lot_size, now, market_open, token_expired):
-    """Body of GET /api/option-chain. Leg fields are Dhan's own (oi, previous_oi, last_price, ...), in units."""
+def chain_response(symbol, expiry, entry, cached, lot_size, now, market_open, token_expired, rows=None):
+    """Body of GET /api/option-chain. Leg fields are Dhan's own (oi, previous_oi, last_price, ...), in units. rows:
+    strike_rows already corrected (last_trades.py: real last traded price of legs with no trade today)."""
     if token_expired:
         message = "Dhan token expired. Send a new one to the backend (POST /api/token)."
     elif entry.last_error:
@@ -105,5 +106,5 @@ def chain_response(symbol, expiry, entry, cached, lot_size, now, market_open, to
             "marketOpen": market_open, "tokenExpired": token_expired,
             "lastError": entry.last_error, "message": message,
         },
-        "rows": strike_rows(entry.chain),
+        "rows": strike_rows(entry.chain) if rows is None else rows,
     }
