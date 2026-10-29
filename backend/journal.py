@@ -27,13 +27,13 @@ import holidays
 log = logging.getLogger("journal")
 
 STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "Dharani Rules",
-            "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "orbPullback": "Box Pullback", "sellStraddle": "Expiry Straddle (sell)",
+            "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "orbPullback": "Box Pullback 15/5", "orbPullback5": "Box Pullback 5/1", "sellStraddle": "Expiry Straddle (sell)",
             "sellCalmCall": "Calm-day Call Sell", "sellStrangle": "2-month Strangle (sell)",
             "sellStraddle940": "Expiry Straddle 9:40 (sell)", "sellStraddle1126": "Expiry Straddle 11:26 (sell)",
             "sellStraddle1224": "Expiry Straddle 12:24 (sell)"}
-ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Dharani", "rebound": "App · Rebound Call", "orb": "App · Box Pullback",
+ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Dharani", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1",
            "selling": "App · Selling", "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Box Pullback", "Expiry Straddle (sell)",
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Dharani Rules", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Box Pullback 5/1", "Expiry Straddle (sell)",
               "Calm-day Call Sell", "2-month Strangle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
               "Expiry Straddle 12:24 (sell)", "Manual"]
 

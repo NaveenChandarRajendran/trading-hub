@@ -22,10 +22,10 @@ autopaper.json `selling.enabled` and each rule's `enabled`. Tests: `backend/test
 Timed expiry straddles 09:40 / 11:26 / 12:24 (owner 28-Oct-2026): slots `sellStraddle940/1126/1224` reuse
 `SellDesk._straddle(now, rule)`; per-rule `trailToCost` (false for these). Journal strategy names "Expiry Straddle 9:40 (sell)" etc.
 
-## Box Pullback, Rs 1 L PAPER (owner 29-Oct-2026)
+## Box Pullback 15/5 and 5/1, Rs 1 L PAPER each (owner 29-Oct-2026)
 Rules: `docs/strategies/box-pullback.md` (15-min box, 5-min close outside, buy the pullback; index stop = box middle,
 target 2R). `sig_orb.py` + `SignalService.run_orb` (the watcher now also wakes every minute while it is enabled) +
-`AutoTrader.on_minute_orb` (index exits). Own book "orb". Backtest lost money; paper for learning only.
+`AutoTrader.on_minute_orb` (index exits). Books "orb" (15/5) and "orb5" (5/1); `sig_orb.VARIANTS`. Backtest lost money; paper for learning only.
 
 ## Trend, 4 Pillar and SuperTrend are watch-only (owner 28-Oct-2026)
 autopaper.json `watchOnly: ["tradingHub", "fourPillar", "superTrend"]`: `AutoTrader.on_signal` returns

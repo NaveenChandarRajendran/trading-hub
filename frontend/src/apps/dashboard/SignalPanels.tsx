@@ -59,7 +59,7 @@ export function RuleCard({ r, fallbackName, emptyNote }: { r: RuleResult | null 
   const side = r.side === 'PE' ? 'put' : 'call';
   const title = r.rule === 'tradingHub' ? `${r.name} · ${NAMES[r.symbol]} (Trend, ${side})`
     : r.rule === 'dharaniV2' ? `${r.name} · ${NAMES[r.symbol]} (3-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0})`
-    : r.rule === 'orbPullback' ? `${r.name} · ${NAMES[r.symbol]} (15-min box + pullback, ${side}: ${r.score ?? 0} of ${r.total ?? 0}, one a day)`
+    : r.rule === 'orbPullback' || r.rule === 'orbPullback5' ? `${r.name} · ${NAMES[r.symbol]} (box + pullback, ${side}: ${r.score ?? 0} of ${r.total ?? 0}, one a day)`
     : r.rule === 'reboundCall' ? `${r.name} · ${NAMES[r.symbol]} (5-min, ${side}: ${r.score ?? 0} of ${r.total ?? 0}, first signal of the day)` : `${r.name} · ${NAMES[r.symbol]} (Grade A only, ${side})`;
   return (
     <section className={`card db-rule ${r.go ? 'go' : ''}`} aria-label={r.name}>

@@ -37,7 +37,7 @@ from sig_market import build_state
 from sig_oi import trending_view, votes
 from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
 from sig_rebound import RULE as RB, SYMBOLS as RB_SYMBOLS, build_state_rebound, rebound_rule
-from sig_orb import RULE as OB, SYMBOLS as OB_SYMBOLS, build_state_orb, orb_rule
+from sig_orb import SYMBOLS as OB_SYMBOLS, VARIANTS as OB_VARIANTS, build_state_orb, orb_rule
 from sig_rules import EXPIRY_GATES, PASS, four_pillar_rule, supertrend_rule, trading_hub_rule
 
 log = logging.getLogger("signals")
@@ -146,7 +146,7 @@ class SignalService:
         self._fails = Counter()  # data problem -> consecutive failures
         self._summary_day = None
         self._key_alert_day = None
-        self._orb_day = {}  # symbol -> date of the day's Box Pullback signal (one a day, as the backtest)
+        self._orb_day = {}  # (rule, symbol) -> date of the day's Box Pullback signal (one a day, as the backtest)
         self._rebound_day = {}  # symbol -> date of the day's first Rebound Call signal (one a day, as the backtest)
         self._stop = threading.Event()
         self._thread = None
@@ -187,8 +187,8 @@ class SignalService:
             results["dharaniV2"] = dharani_v2_rule(v2) if v2 else None
             if symbol in self.rebound_symbols():  # evaluated by the watcher only (run_rebound): keep its last result
                 results[RB] = ((self.last.get(symbol) or {}).get("results") or {}).get(RB)
-            if symbol in self.orb_symbols():  # evaluated every minute by run_orb: keep its last result
-                results[OB] = ((self.last.get(symbol) or {}).get("results") or {}).get(OB)
+            for ob in self.orb_rules():  # evaluated every minute by run_orb: keep its last result
+                results[ob] = ((self.last.get(symbol) or {}).get("results") or {}).get(ob)
         rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
                "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
@@ -214,35 +214,39 @@ class SignalService:
             log.exception("dharani v2 state")
             return None, [f"{symbol} Dharani v2: {e}"]
 
+    def orb_rules(self):
+        return [k for k in OB_VARIANTS if self.cfg.get(k, {}).get("enabled", False)]
+
     def orb_symbols(self):
-        return OB_SYMBOLS if self.cfg.get(OB, {}).get("enabled", False) else ()
+        return OB_SYMBOLS if self.orb_rules() else ()
 
     def run_orb(self):
         """Box Pullback, every minute: index stop / target exits on the last closed 1-minute candle, then the entry
         (GO when price pulls back to the 15-minute box after a 5-minute close outside it)."""
         for symbol in self.orb_symbols():
-            try:
-                st, problems = build_state_orb(symbol, self.clock(), self.src, max_age=10)
-            except Exception as e:
-                log.exception("orb state")
-                st, problems = None, [f"{symbol} Box Pullback: {e}"]
-            if not st:
-                continue
-            if self.trader:
-                self.trader.on_minute_orb(symbol, st["bar"])
-            today = self.clock().date()
-            st["tradedToday"] = self._orb_day.get(symbol) == today
-            r = orb_rule(st)
-            with self.lock:
-                rec = self.last.get(symbol)
-                if rec and rec.get("results") is not None:
-                    rec["results"][OB] = r
-            if r["grade"] and not st["tradedToday"]:
-                self._orb_day[symbol] = today  # the day's signal, taken or not
-                if self.trader and r["go"]:
-                    why = self.trader.on_signal(r, st)
-                    if why != "Entry sent" and not st["positions"].get(OB):
-                        self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+            for i, ob in enumerate(self.orb_rules()):
+                try:
+                    st, problems = build_state_orb(symbol, self.clock(), self.src, max_age=10, rule=ob)
+                except Exception as e:
+                    log.exception("orb state")
+                    st, problems = None, [f"{symbol} Box Pullback: {e}"]
+                if not st:
+                    break
+                if self.trader and i == 0:  # one exit check per candle covers both versions
+                    self.trader.on_minute_orb(symbol, st["bar"])
+                today = self.clock().date()
+                st["tradedToday"] = self._orb_day.get((ob, symbol)) == today
+                r = orb_rule(st)
+                with self.lock:
+                    rec = self.last.get(symbol)
+                    if rec and rec.get("results") is not None:
+                        rec["results"][ob] = r
+                if r["grade"] and not st["tradedToday"]:
+                    self._orb_day[(ob, symbol)] = today  # the day's signal, taken or not
+                    if self.trader and r["go"]:
+                        why = self.trader.on_signal(r, st)
+                        if why != "Entry sent" and not st["positions"].get(ob):
+                            self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
 
     def rebound_symbols(self):
         return RB_SYMBOLS if self.cfg.get(RB, {}).get("enabled", False) else ()
@@ -681,7 +685,8 @@ class SignalService:
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
                           ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Dharani Rules (app paper, Rs 1 lakh)"),
-                          (RB, "Rebound Call (app paper, Rs 1 lakh)"), (OB, "Box Pullback (app paper, Rs 1 lakh)")):
+                          (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)"),
+                          ("orbPullback5", "Box Pullback 5/1 (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)
             lines.append(f"{name}: {len(ts)} trades, net Rs {net:,.2f}")

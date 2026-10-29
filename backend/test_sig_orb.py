@@ -6,7 +6,7 @@ from datetime import datetime
 
 from autopaper import OB, OBK, AutoTrader
 from sig_indicators import IST
-from sig_orb import build_state_orb, evaluate, orb_exit, orb_rule
+from sig_orb import RULE5, build_state_orb, evaluate, orb_exit, orb_rule
 from test_autopaper import CFG, Clock, FakeAccount
 
 DAY = datetime(2026, 10, 29, tzinfo=IST)
@@ -38,6 +38,21 @@ def test_walk_box_break_pullback():
     ev = evaluate(rows)
     assert ev["phase"] == "signal" and ev["touchAt"] == (9, 40)
     assert evaluate(day_up(pullback=False))["phase"] == "pullback"
+
+
+def test_five_minute_box_one_minute_close():
+    """5/1 version: box 09:15-09:19, first 1-minute close outside it, then the pullback."""
+    rows = [bar(m, 22750, 22770 if m == 2 else 22760, 22730 if m == 4 else 22740, 22750) for m in range(5)]  # box 22,730-22,770
+    rows += [bar(5, 22760, 22768, 22755, 22765), bar(6, 22765, 22790, 22764, 22785)]  # 09:21 closes above 22,770
+    rows += [bar(7, 22785, 22800, 22780, 22795), bar(8, 22795, 22796, 22769, 22775)]  # 09:23 touches 22,770
+    ev = evaluate(rows[:7], 5, 1)
+    assert ev["phase"] == "pullback" and ev["breakAt"] == (9, 22) and (ev["stop"], ev["target"]) == (22750, 22810)
+    assert evaluate(rows, 5, 1)["touchAt"] == (9, 23)
+    assert evaluate(rows)["phase"] == "box"  # the 15/5 version is still building its box
+    st, _ = build_state_orb("NIFTY", DAY.replace(hour=9, minute=24, second=5), Src(rows), rule=RULE5)
+    r = orb_rule(st)
+    assert r["go"] and r["rule"] == "orbPullback5" and r["setup"] == "Box Pullback 5/1"
+    assert [c["label"] for c in r["checks"]][:2] == ["5-min box", "1-min close outside"]
 
 
 def test_put_side_and_no_pullback_by_1330():
@@ -118,7 +133,7 @@ def test_trade_on_its_own_book_exits_on_the_index(tmp_path):
     assert (tr["account"], tr["slot"], tr["side"]) == ("orb", "orbPullback", "CE")
     assert tr["stop"] == 50.0 and tr["target"] is None  # fill 100: 50 % safety stop on the premium only
     assert (tr["indexStop"], tr["indexTarget"]) == (22750, 22900)
-    assert t.status()["accounts"]["orb"]["name"] == "Box Pullback book"
+    assert t.status()["accounts"]["orb"]["name"] == "Box Pullback 15/5 book"
     t.on_minute_orb("NIFTY", {"high": 22840, "low": 22790})
     assert tr["status"] == "open"
     t.on_minute_orb("NIFTY", {"high": 22905, "low": 22850})

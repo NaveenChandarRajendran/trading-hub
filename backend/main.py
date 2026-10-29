@@ -366,12 +366,13 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
                         return leg["lotSize"]
             return None
         from strategy_books import StrategyBook
-        books = {k: StrategyBook(k, paper, data_dir="data") for k in ("trend", "dharani", "rebound", "orb")}
+        books = {k: StrategyBook(k, paper, data_dir="data") for k in ("trend", "dharani", "rebound", "orb", "orb5")}
         paper.books = list(books.values())
         accounts = [autopaper.TradingHubAccount(books["trend"], autopaper.TH),
                     autopaper.TradingHubAccount(books["dharani"], autopaper.DH),
                     autopaper.TradingHubAccount(books["rebound"], autopaper.RBK),
                     autopaper.TradingHubAccount(books["orb"], autopaper.OBK),
+                    autopaper.TradingHubAccount(books["orb5"], autopaper.OBK5),
                     autopaper.TradingHubAccount(paper, autopaper.MANUAL),
                     autopaper.MegaBullAccount(lambda: MegaBullClient(cfg["keysFile"], request_log=megabull_logger(cfg["logDir"])),
                                               mb_cfg.get("enabled", False), mb_cfg.get("slLimitBufferPct", 2), lot_size=dhan_lot)]
