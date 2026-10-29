@@ -115,7 +115,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
         </div>
         <div className="sg-strip-end">
           {auto && <Link to="/today" className={`pill ${auto.auto ? 'up' : 'neutral'}`} title="Turn it on or off on Today">Auto paper trading {auto.auto ? 'ON' : 'OFF'}</Link>}
-          {data.marketOpen && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
+          {data.marketOpen && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
           {isSell && selling.data?.capital != null && (
             <span className="td-label">Selling book {lakhs(selling.data.capital)} · since start <Money v={(selling.data.realized ?? 0) + (selling.data.unrealized ?? 0)} /></span>
           )}

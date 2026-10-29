@@ -108,7 +108,7 @@ export const apps: AppEntry[] = [
     name: 'Backtest',
     path: '/backtest',
     hint: 'How each rule did on past data',
-    icon: '◔',
+    icon: '↺',
     component: lazy(() => import('./backtest/BacktestApp')),
   },
   {

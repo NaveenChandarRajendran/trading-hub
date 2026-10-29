@@ -165,7 +165,7 @@ export default function PaperJournalApp() {
         <Stat label={`Net P&L · ${fyLabel(fy)}`} value={<span className={toneOf(sum.net)}>{signedRupees(sum.net)}</span>} delta={`${sum.trades} closed trades`} />
         <Stat label={`Net · ${longDate(day)}`} value={<span className={toneOf(daySum.net)}>{signedRupees(daySum.net)}</span>} delta={`${daySum.trades} closed${daySum.open ? ` · ${daySum.open} open` : ''}`} />
         <Stat label="Win rate" value={sum.winRate == null ? '–' : `${sum.winRate.toFixed(1)}%`} delta={`${sum.wins} won`} />
-        <Stat label="Avg win / loss" value={<span className="num"><span className="up">{signedRupees(sum.avgWin)}</span> / <span className="down">{signedRupees(sum.avgLoss)}</span></span>} />
+        <Stat label="Avg win" value={<span className="num up">{signedRupees(sum.avgWin)}</span>} delta={<>Avg loss <span className="down">{signedRupees(sum.avgLoss)}</span></>} />
         <Stat label="Open now" value={openNow.length} delta={running(openNow) != null
           ? <>Running <span className={toneOf(running(openNow))}>{signedRupees(running(openNow))}</span> · <Link to="/today">Today →</Link></>
           : <Link to="/today">Live P&amp;L on Today →</Link>} />

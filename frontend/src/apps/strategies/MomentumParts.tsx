@@ -20,7 +20,7 @@ export function MomentumCards({ s, failed, compact = false }: { s: MomState | un
           <>
             <span className="sg-card-top"><span className="td-tag s4" title={b.name}>{short(b)}</span>{b.trades.length > 0 && <Money v={b.pnl} />}</span>
             <span className={`sg-chip ${kind(b)}`}>{b.holdings.length ? `Holding ${b.holdings.length} stocks` : 'In cash'}</span>
-            <span className="sg-line">Value {rs(b.value)} of {rs(b.capital)} ({pctText(b.pnlPct)})</span>
+            <span className="sg-line">{b.holdings.length || b.trades.length ? <>Value {rs(b.value)} of {rs(b.capital)} ({pctText(b.pnlPct)})</> : <>{rs(b.capital)} ready, nothing bought yet</>}</span>
             <span className="sg-line">{bookStatus(b, s)}</span>
           </>
         );
