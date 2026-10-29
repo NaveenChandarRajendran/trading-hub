@@ -102,6 +102,8 @@ def test_draft_validation(env):
                 {"legs": [{**LEG, "priceOverride": -2}]}, {"legs": [{"side": "S"}]}):
         assert a.post("/api/builder/drafts", json={**DRAFT, **bad}).status_code == 400, bad
     assert a.post("/api/builder/drafts", json={**DRAFT, "legs": []}).status_code == 200  # an empty design is fine
+    sx = a.post("/api/builder/drafts", json={**DRAFT, "name": "5 Nov Sensex Expiry - Iron Condor", "symbol": "SENSEX"})
+    assert sx.status_code == 200 and sx.json()["draft"]["symbol"] == "SENSEX"  # Postgres: the widened symbol check
 
 
 # ---------- margin ----------

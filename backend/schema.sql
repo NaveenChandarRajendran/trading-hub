@@ -464,3 +464,6 @@ CREATE TABLE IF NOT EXISTS th_builder_drafts (
     updated_at  timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS th_builder_drafts_user ON th_builder_drafts (user_id);
+-- SENSEX (BSE) designs from 29-Oct-2026: the inline check above only allowed NIFTY / BANKNIFTY.
+ALTER TABLE th_builder_drafts DROP CONSTRAINT IF EXISTS th_builder_drafts_symbol_check;
+ALTER TABLE th_builder_drafts ADD CONSTRAINT th_builder_drafts_symbol_check CHECK (symbol IN ('NIFTY', 'BANKNIFTY', 'SENSEX'));
