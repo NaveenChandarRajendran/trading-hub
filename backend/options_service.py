@@ -22,6 +22,7 @@ from dhan_client import SCRIP as SPOT_IDS, DhanError, TokenExpired
 from dhan_feed import to_book
 from holidays import NSE_HOLIDAYS
 from options_engine import BUY, SELL, LegOrder, OptionsEngine, OrderError
+from options_report import report as build_report
 from store import IST
 
 log = logging.getLogger("options")
@@ -271,6 +272,22 @@ class OptionsService:
                     "positions": [{**r, "settlementPending": r["security_id"] in pend} for r in rows],
                     "funds": e.funds(), "unrealized": e.unrealized(),
                     "meta": {"acceptingOrders": e.accepting_orders(now), "asOf": now.isoformat(), "lastError": self.last_error}}
+
+    def report(self, st):
+        """How the strategy did (options_report.py): every capital period's fills, open legs at the live price."""
+        accounts = [a for a in self.store.accounts() if a.get("strategy_id") == st["id"]]
+        fills = [f for a in accounts for f in self.store.options_fills(a["id"])]
+        open_legs, capital = [], 0.0
+        if st["account_id"] and not st["archived_at"]:
+            e = self.book(st).engine
+            with self.lock:
+                open_legs = [p.to_dict(e._ltp(p.security_id)) for p in e.open_positions()]
+                capital = e.capital
+        else:
+            capital = next((a["capital"] for a in accounts if a["id"] == st["account_id"]),
+                           accounts[-1]["capital"] if accounts else 0.0)
+        return {"strategy": {"id": st["id"], "name": st["name"], "kind": st["kind"], "archived": bool(st["archived_at"])},
+                **build_report(fills, open_legs, float(capital))}
 
     @staticmethod
     def fill_view(f):

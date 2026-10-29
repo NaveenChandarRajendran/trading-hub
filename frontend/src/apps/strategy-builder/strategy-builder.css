@@ -135,3 +135,22 @@
 .ds .sb-leg-greeks table { margin-top: var(--sp-2); }
 
 @media (max-width: 1200px) { .ds .sb-body { grid-template-columns: minmax(0, 1fr); } }
+
+/* Portfolios (PortfoliosView.tsx) */
+.ds .sb-view { display: flex; }
+.ds .sb-pf-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
+.ds .sb-pf-card { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; cursor: pointer;
+  font: inherit; color: var(--text); padding: var(--sp-3) var(--sp-4) 0; overflow: hidden; }
+.ds .sb-pf-card:hover { border-color: var(--border-strong); }
+.ds .sb-pf-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ds .sb-pf-name { font-weight: 600; margin-bottom: var(--sp-2); }
+.ds .sb-pf-total { font-size: var(--fs-xl); font-weight: 600; }
+.ds .sb-pf-foot { display: grid; grid-template-columns: 1fr 1fr; margin: var(--sp-3) calc(-1 * var(--sp-4)) 0;
+  background: var(--surface-2); border-top: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-2); }
+.ds .sb-pf-foot > span { padding: var(--sp-2) var(--sp-4); }
+.ds .sb-pf-foot > span + span { border-left: 1px solid var(--border); }
+.ds .sb-pf-scroll { overflow-x: auto; }
+.ds .sb-pf-row { cursor: pointer; }
+.ds .sb-pf-row:hover td { background: var(--surface-2); }
+.ds .sb-pf-fills > td { background: var(--surface-2); padding: var(--sp-2) var(--sp-3); }
+.ds .sb-pf-scroll .t .txt { text-align: left; }

@@ -28,12 +28,37 @@ export interface OptionBook {
 }
 export interface OptionFill { id: string; basketId: string; securityId: number; side: 'BUY' | 'SELL'; qty: number; price: number; value: number; charges: number; kind: string; realized: number }
 
+/** How an options strategy did (backend options_report.py): one trade = one index + expiry, months by expiry month. */
+export interface ReportSummary {
+  capital: number; booked: number; unbooked: number; total: number; charges: number; returnPct: number;
+  trades: number; open: number; wins: number; winPct: number | null;
+}
+export interface ReportMonth {
+  month: string; trades: number; open: number; wins: number; losses: number; winPct: number | null; net: number;
+  returnPct: number; charges: number; best: number | null; worst: number | null;
+}
+export interface ReportFill { time: string; side: 'BUY' | 'SELL'; strike: number; optionType: OptionType; qty: number; price: number; kind: string; realized: number; charges: number }
+export type TradeStatus = 'open' | 'closed' | 'settled';
+export interface ReportTrade {
+  symbol: string; expiry: string; entered: string; closedAt: string | null; legs: number; openLegs: number; credit: number;
+  charges: number; booked: number; unbooked: number; net: number; status: TradeStatus; fills: ReportFill[];
+}
+export interface StrategyReport {
+  strategy: { id: number; name: string; kind: string; archived: boolean };
+  summary: ReportSummary; months: ReportMonth[]; trades: ReportTrade[];
+}
+export interface Portfolio { id: number; name: string; kind: string; archived: boolean; summary: ReportSummary; updatedAt: string | null }
+
 /** Options strategies (backend options_api.py). PAPER ONLY. */
 export const optionsApi = {
   positions: (strategyId: number, signal?: AbortSignal) =>
     requestJson<OptionBook>(BUILDER_API, `/api/options/positions?strategy=${strategyId}`, { signal }),
   basket: (strategyId: number, legs: { securityId: number; side: Side; lots: number }[]) =>
     requestJson<OptionBook & { fills: OptionFill[] }>(BUILDER_API, `/api/options/basket?strategy=${strategyId}`, { method: 'POST', body: { legs } }),
+  report: (strategyId: number, signal?: AbortSignal) =>
+    requestJson<StrategyReport>(BUILDER_API, `/api/options/report?strategy=${strategyId}`, { signal }),
+  portfolios: (signal?: AbortSignal) =>
+    requestJson<{ rows: Portfolio[] }>(BUILDER_API, '/api/options/portfolios', { signal }).then((r) => r.rows),
   exit: (strategyId: number, securityId?: number) =>
     requestJson<OptionBook & { fills: OptionFill[] }>(BUILDER_API, `/api/options/exit?strategy=${strategyId}`,
       { method: 'POST', body: securityId != null ? { securityId } : {} }),

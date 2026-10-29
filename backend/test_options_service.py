@@ -223,3 +223,31 @@ def test_pnl_calendar_and_growth_plan_read_an_options_strategy(env):
     t = a.get(f"/api/strategies/{st['id']}/plan").json()
     assert t["days"] == [{"date": "2026-10-21", "net": round(-entry_charges, 2)}, {"date": EXP, "net": 773.5}]
     assert t["strategy"]["kind"] == "options"
+
+
+def test_report_and_portfolios(env):
+    """Strategy Builder → Portfolios: one trade per expiry, unbooked while open, booked after the settlement; only the
+    user's own options strategies."""
+    a, b, paper, clock, _, svc, st, _ = env
+    ticks(paper, clock)
+    condor(a, st)
+    charges = a.get(f"/api/options/positions?strategy={st['id']}").json()["funds"]["charges"]
+    ticks(paper, clock, "11:00", prices={9101: 15.0})  # the short put fell 4.20: 273 unbooked
+    r = a.get(f"/api/options/report?strategy={st['id']}").json()
+    (t,) = r["trades"]
+    assert (t["expiry"], t["status"], t["legs"], t["credit"]) == (EXP, "open", 4, pytest.approx(773.5))
+    assert t["unbooked"] == pytest.approx(273.0) and t["booked"] == pytest.approx(-charges, abs=0.02)
+    ticks(paper, clock, "15:29", day=EXP, spot=25100.0)
+    clock.now = at("15:31", EXP)
+    svc.settle_due()
+    r = a.get(f"/api/options/report?strategy={st['id']}").json()
+    (t,) = r["trades"]
+    assert (t["status"], t["unbooked"]) == ("settled", 0.0) and t["net"] == pytest.approx(773.5 - charges, abs=0.02)
+    assert r["months"][0]["month"] == "2026-10" and r["months"][0]["wins"] == 1
+    assert r["summary"]["total"] == pytest.approx(773.5 - charges, abs=0.02)
+    manual = a.post("/api/strategies", json={"name": "Scalps", "capital": 100000}).json()["strategy"]
+    assert a.get(f"/api/options/report?strategy={manual['id']}").status_code == 400
+    assert b.get(f"/api/options/report?strategy={st['id']}").status_code == 404
+    rows = a.get("/api/options/portfolios").json()["rows"]
+    assert [x["id"] for x in rows] == [st["id"]] and rows[0]["summary"]["trades"] == 1
+    assert b.get("/api/options/portfolios").json()["rows"] == []

@@ -34,3 +34,15 @@ let them settle at expiry. Options strategies only; Manual / Scalper / the algo 
    (amber) with a "Builder" link; the P&L calendar and the Growth Plan tracker read options strategies unchanged
    (`test_options_service.py::test_pnl_calendar_and_growth_plan_read_an_options_strategy`: entry day = charges,
    expiry day = the credit kept). Live from 28-Oct-2026 22:30 (merged into naveen-dev, backend restarted).
+5. Portfolios report — built 29-Oct-2026 (branch `feature/options-report`). Strategy Builder → **Portfolios** (switch
+   at the top): a card per options strategy (Total P&L = booked + unbooked, trades, capital, Unbooked | Booked) and,
+   for the one picked, Total / Booked / Unbooked / Win rate tiles, a month-by-month table and a trades table (click a
+   trade for its fills). Re-read every 15 s. `backend/options_report.py` (pure, `test_options_report.py`):
+   - one trade = every leg of one index + expiry, whatever baskets opened, adjusted or closed it;
+   - booked = realized − all its charges; unbooked = its open legs at the live price; net = booked + unbooked;
+     credit = premium of its opening fills; status open / closed (exited before expiry) / settled;
+   - a trade counts in the month of its **expiry** (Naveen, 29-Oct); wins / losses / win % / best / worst from finished
+     trades; an open trade's net is in its month so the months add up to the total; return % = net ÷ capital;
+   - every capital period of the strategy (after a reset too); unbooked only from the open period.
+   Routes: `GET /api/options/report?strategy=` (own options strategy only), `GET /api/options/portfolios`.
+   The P&L calendar keeps booking by day (exit / settlement day), so its months can differ from the report's.

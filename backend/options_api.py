@@ -6,6 +6,8 @@ own options strategy (someone else's: 404; another kind: 400; archived: 409 for 
          -> {fills, ...positions}; 409 with the reason when refused (no market on a leg, margin, funds, hours)
     POST /api/options/exit?strategy= {securityId?}     one leg, or every open leg without securityId
     GET  /api/options/positions?strategy=              open legs (ltp, P&L), funds, margin blocked, pending settlement
+    GET  /api/options/report?strategy=                 summary, months, trades (options_report.py)
+    GET  /api/options/portfolios                       every options strategy of the user with its report summary
 """
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -66,3 +68,17 @@ def register(app, svc, strategies):
     @app.get("/api/options/positions")
     def positions(request: Request, strategy: str = ""):
         return svc.positions(options_strategy(request, strategy))
+
+    @app.get("/api/options/report")
+    def report(request: Request, strategy: str = ""):
+        return svc.report(options_strategy(request, strategy))
+
+    @app.get("/api/options/portfolios")
+    def portfolios(request: Request):
+        rows = [s for s in strategies.store.strategies(request.state.user.id) if s["kind"] == "options"]
+        out = []
+        for st in rows:
+            r = svc.report(st)
+            out.append({**r["strategy"], "summary": r["summary"], "updatedAt": max(
+                (t["closedAt"] or t["entered"] for t in r["trades"]), default=None)})
+        return {"rows": sorted(out, key=lambda r: (r["archived"], -(r["id"])))}

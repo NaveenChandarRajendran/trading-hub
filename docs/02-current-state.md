@@ -98,6 +98,9 @@ Part B of the Strategy Builder: an `options` strategy kind with short legs, over
 `backend/options_engine.py` + 10 tests. Step 2 done: service, routes, settlement timer, options kind, records in the
 report tables (585 backend tests incl. Postgres). Step 3 done: Builder "Paper trade" dialog + "Paper positions" panel. Step 4 done: Options kind on the Strategies page,
 reports checked end to end. Merged into naveen-dev with the Strategy Builder; backend restarted 28-Oct 22:30.
+Portfolios report (29-Oct, `feature/options-report`): Strategy Builder → Portfolios shows each options strategy's
+Total / Booked / Unbooked, month by month (by expiry month) and trade by trade (`options_report.py`,
+`GET /api/options/report|portfolios`). Needs a backend restart after market hours to go live.
 
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,

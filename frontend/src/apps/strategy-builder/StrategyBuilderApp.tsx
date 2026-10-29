@@ -3,15 +3,15 @@
 // menu: open, rename, delete). Analyze positions loads a strategy's open positions. Paper trade places the design
 // into an options strategy (all-or-nothing, PAPER ONLY; ADR 0010) and Paper positions below shows / exits what is held. Legs are picked on the option chain
 // (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary with Dhan basket
-// margin, and Greeks on the right.
+// margin, and Greeks on the right. Portfolios (the switch at the top) reports how each options strategy did.
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
-import { Alert, EmptyState, Status } from '../../shared/ui';
+import { Alert, EmptyState, Segmented, Status } from '../../shared/ui';
 import { strikeList, strikeWindow, type StrikeRange } from '../../shared/chain/strikes';
 import { keyOf, type InstrumentKey } from '../paper-trade/logic/feed';
 import { longDate, pct, rupees, toneOf } from '../paper-trade/format';
-import { SYMBOLS, TABS_KEY } from './config/settings';
+import { SYMBOLS, TABS_KEY, VIEW_KEY } from './config/settings';
 import {
   MAX_LEGS, MAX_TABS, addFromChain, marginRequest, newTab, nextTabNumber, priceLegs, tabFromDraft, tabFromOptionPositions, tabFromPositions, tabSnapshot,
   toDraftLegs, unsaved, type BuilderLeg, type ChainPick, type Tab,
@@ -19,6 +19,7 @@ import {
 import { builderApi, type Draft, type Margin, type OptionBook, type PositionLeg } from './logic/api';
 import { OptionsPositions } from './OptionsPositions';
 import { PaperTradeDialog } from './PaperTradeDialog';
+import { PortfoliosView } from './PortfoliosView';
 import { AnalyzeMenu, DraftsMenu } from './BuilderMenus';
 import { yearsToExpiry } from './logic/blackScholes';
 import { summarize } from './logic/summary';
@@ -38,6 +39,12 @@ function loadTabs(): Tab[] {
   return [newTab(1, 'NIFTY', '')];
 }
 
+type View = 'builder' | 'portfolios';
+const VIEWS = [{ value: 'builder', label: 'Builder' }, { value: 'portfolios', label: 'Portfolios' }] as const;
+function loadView(): View {
+  try { return localStorage.getItem(VIEW_KEY) === 'portfolios' ? 'portfolios' : 'builder'; } catch { return 'builder'; }
+}
+
 const HOUR = 3_600_000;
 const IST = 'Asia/Kolkata';
 /** "Fri 31 Oct 12:00" (IST) for the target-date slider. */
@@ -46,6 +53,11 @@ const whenLabel = (ms: number) => new Date(ms).toLocaleString('en-IN', {
 });
 
 export default function StrategyBuilderApp() {
+  const [view, setViewState] = useState<View>(loadView);
+  const setView = (v: View) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* not remembered */ }
+  };
   const [tabs, setTabs] = useState<Tab[]>(loadTabs);
   const [activeId, setActiveId] = useState(() => tabs[0].id);
   const tab = tabs.find((t) => t.id === activeId) ?? tabs[0];
@@ -213,8 +225,12 @@ export default function StrategyBuilderApp() {
     : market.conn !== 'open' ? { kind: 'stale' as const, text: 'Connecting…' }
     : { kind: 'live' as const, text: 'Live' };
 
+  const viewSwitch = <div className="sb-view"><Segmented options={VIEWS} value={view} onChange={setView} label="Strategy Builder view" /></div>;
+  if (view === 'portfolios') return <div className="ds sb">{viewSwitch}<PortfoliosView /></div>;
+
   return (
     <div className="ds sb">
+      {viewSwitch}
       <section className="card sb-top">
         <div className="toolbar">
           <div className="field">Index
