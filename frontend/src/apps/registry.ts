@@ -150,6 +150,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./scalper/ScalperApp')),
   },
   {
+    id: 'trade-window',
+    group: 'live',
+    name: 'Trade Window',
+    path: '/trade-window',
+    icon: '⊞',
+    component: lazy(() => import('./trade-window/TradeWindowApp')),
+  },
+  {
     id: 'strategy-builder',
     group: 'live',
     name: 'Strategy Builder',

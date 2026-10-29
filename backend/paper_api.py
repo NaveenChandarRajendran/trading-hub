@@ -26,6 +26,7 @@ WebSocket /ws/paper?strategy=<id>   (strategy optional: the Dashboard only wants
 The backend always keeps open positions and pending orders subscribed, whatever the clients ask for.
 """
 import asyncio
+import json
 import logging
 import threading
 from datetime import date as Date
@@ -38,6 +39,7 @@ from candles import CandleBuilder, VolumeBuilder
 from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
+from mtm_limit import breach, hit_text, loads, parse_limit
 from paper_charges import RATES as CHARGE_RATES
 from paper_engine import KEEP, OPEN_STATES, OrderError, PaperEngine
 from paper_levels import opening_order, order_snapshot, shifts_near
@@ -92,6 +94,8 @@ class Book:
         self.unsaved = []  # (kind, day, data) whose store write failed; retried on the next write
         self.last_error = ""
         self.summary_day = None
+        self.mtm_limit = None  # {profit, loss} in ₹ (mtm_limit.py), None = off
+        self.mtm_hit = None  # {day, at, pnl, kind} when the limit fired (that day: no new buys)
 
     def busy(self):
         e = self.engine
@@ -132,6 +136,8 @@ class PaperService:
     def _load(self, st):
         acc = next(a for a in self.store.accounts() if a["id"] == st["account_id"])
         book = self.books[st["id"]] = Book(st, acc)
+        book.mtm_limit = loads(self.store.user_pref(st["user_id"], f"mtm_limit:{st['id']}"), None)
+        book.mtm_hit = loads(self.store.user_pref(st["user_id"], f"mtm_hit:{st['id']}"), None)
         self._ensure_day(book, self.clock())
         return book
 
@@ -207,6 +213,7 @@ class PaperService:
             for b in list(self.books.values()):
                 self._ensure_day(b, now)
                 self._publish(b, b.engine.on_time(now))
+                self._check_mtm(b, now)
                 if shifts:
                     self._push_new_shifts(b)
                 if (self.calendar.is_trading_day(now) and now.time() >= SUMMARY_AT and b.summary_day != now.date()):
@@ -254,7 +261,52 @@ class PaperService:
         f["openingBalance"] = f.pop("capital")
         f["unrealized"] = book.engine.unrealized()
         f["dayPnl"] = round(f["realized"] - f["charges"] + f["unrealized"], 2)
+        hit = self._mtm_hit_today(book)
+        f["mtm"] = {"profit": (book.mtm_limit or {}).get("profit"), "loss": (book.mtm_limit or {}).get("loss"),
+                    "hit": hit, "message": hit_text(hit) if hit else ""}
         return f
+
+    # ---------- day MTM limit (mtm_limit.py) ----------
+    def _mtm_hit_today(self, book, now=None):
+        h = book.mtm_hit
+        return h if h and h.get("day") == (now or self.clock()).date().isoformat() else None
+
+    def set_mtm_limit(self, book, profit, loss):
+        limit = parse_limit(profit, loss)
+        with self.lock:
+            book.mtm_limit = limit if (limit["profit"] or limit["loss"]) else None
+            self.store.set_user_pref(book.user_id, f"mtm_limit:{book.strategy_id}", json.dumps(book.mtm_limit))
+            self._check_mtm(book, self.clock())
+            self._send(book, "funds", self.funds(book))
+            return self.funds(book)["mtm"]
+
+    def _check_mtm(self, book, now):
+        """Every second: day MTM beyond the limit -> cancel pending orders, sell everything, no new buys today."""
+        if not self.calendar.accepting_orders(now):
+            return
+        hit = self._mtm_hit_today(book, now)
+        if hit is None:
+            kind = breach(self.funds(book)["dayPnl"], book.mtm_limit)
+            if kind is None:
+                return
+            hit = book.mtm_hit = {"day": now.date().isoformat(), "at": now.strftime("%H:%M:%S"),
+                                  "pnl": self.funds(book)["dayPnl"], "kind": kind}
+            self.store.set_user_pref(book.user_id, f"mtm_hit:{book.strategy_id}", json.dumps(hit))
+            log.info("strategy %s: %s", book.strategy_id, hit_text(hit))
+            self._publish(book, book.engine.cancel_all(now, "Cancelled: day MTM limit reached."), "mtm")
+        if any(p.open_qty > 0 for p in book.engine.positions.values()):  # until flat (a missing bid retries next second)
+            for sid, p in list(book.engine.positions.items()):
+                if p.open_qty > 0:
+                    try:
+                        self._publish(book, book.engine.exit_position(sid, now), "mtm")
+                    except OrderError as e:
+                        book.last_error = f"MTM limit exit: {e}"
+            self._send(book, "funds", self.funds(book))
+
+    def cancel_all(self, book, source="manual"):
+        """Cancels every pending order of the strategy (targets and stops too); positions stay open."""
+        with self.lock:
+            self._publish(book, book.engine.cancel_all(self.clock()), source)
 
     def _instrument(self, security_id):
         try:
@@ -545,6 +597,9 @@ class PaperService:
         now = self.clock()
         with self.lock:
             self._ensure_day(book, now)
+            hit = self._mtm_hit_today(book, now)
+            if hit and side == "BUY":
+                raise OrderError(hit_text(hit))
             if (FNO, security_id) not in book.traded:  # keep it subscribed for the day, so the next try has a price
                 book.traded.add((FNO, security_id))
                 self._sync_feed()

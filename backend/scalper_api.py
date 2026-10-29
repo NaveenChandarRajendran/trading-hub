@@ -8,7 +8,10 @@ capital routes below are kept for the page and do the same.
   PUT  /api/scalper/account/capital?strategy= {capital}     change capital (flat book only)
   POST /api/scalper/account/reset?strategy= {capital?}      new capital period, history kept
   GET  /api/scalper/positions?strategy= | /api/scalper/orders?strategy=&date=
-  POST /api/scalper/orders?strategy= {securityId, side, lots}   MARKET order in one click
+  POST /api/scalper/orders?strategy= {securityId, side, lots, sl?, target?, protection?}   MARKET order in one click;
+       sl / target in points from the fill (OCO, BUY only), protection % refuses a fill beyond LTP ± % -> {order, attached}
+  POST /api/scalper/cancel-all?strategy=          cancels every pending order (targets / stops too)
+  PUT  /api/scalper/mtm-limit?strategy= {profit?, loss?}   day MTM limit in ₹ (mtm_limit.py); funds.mtm shows it
   POST /api/scalper/exit/{securityId}?strategy= {pct?}   at market: all, or 25 / 50 / 75 % of the open lots
                                                         (rounded down, at least 1 lot) | /api/scalper/exit-all?strategy=
   PUT  /api/scalper/trail/{securityId}?strategy= {distance, step?, after?}   trailing stop in points; distance null = off
@@ -37,6 +40,14 @@ class OrderBody(BaseModel):
     securityId: int
     side: str
     lots: int = 1
+    sl: float | None = None  # points below the fill: OCO stop (BUY only)
+    target: float | None = None  # points above the fill: OCO target (BUY only)
+    protection: float | None = None  # market protection %: refuse a fill beyond LTP ± that %
+
+
+class MtmBody(BaseModel):
+    profit: float | None = None  # ₹, None = off
+    loss: float | None = None
 
 
 class CapitalBody(BaseModel):
@@ -121,8 +132,20 @@ def register(app, svc, strategies):
     @app.post("/api/scalper/orders")
     def place(body: OrderBody, request: Request, strategy: str = ""):
         b = book(request, strategy, trade=True)
-        order = run(svc.place_order, b, body.securityId, body.side.upper(), body.lots)
-        return {"order": order, "funds": paper.funds(b)}
+        order, attached = run(svc.place_order, b, body.securityId, body.side.upper(), body.lots, sl=body.sl,
+                              target=body.target, protection=body.protection)
+        return {"order": order, "funds": paper.funds(b), "attached": attached}
+
+    @app.post("/api/scalper/cancel-all")
+    def cancel_all(request: Request, strategy: str = ""):
+        b = book(request, strategy, trade=True)
+        run(svc.cancel_all, b)
+        return {"meta": paper.meta(b), "orders": paper.orders(b), "funds": paper.funds(b)}
+
+    @app.put("/api/scalper/mtm-limit")
+    def mtm_limit(body: MtmBody, request: Request, strategy: str = ""):
+        b = book(request, strategy)
+        return {"mtm": run(paper.set_mtm_limit, b, body.profit, body.loss), "funds": paper.funds(b)}
 
     @app.post("/api/scalper/exit/{security_id}")
     def exit_one(security_id: int, request: Request, body: ExitBody | None = None, strategy: str = ""):

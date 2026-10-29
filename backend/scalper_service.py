@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 from candles import CandleBuilder, VolumeBuilder, parse_intraday, recent_sessions
 from dhan_feed import to_book
 from holidays import NSE_HOLIDAYS
-from paper_engine import BUY, KEEP, MARKET, SELL
+from paper_engine import BUY, KEEP, MARKET, SELL, TICK_SIZE, OrderError, walk_depth
 from store import IST
 
 log = logging.getLogger("scalper")
@@ -199,11 +199,48 @@ class ScalperService:
                     "orders": self.paper.orders(book)}
 
     # ---------- commands ----------
-    def place_order(self, book, security_id, side, lots):
-        """MARKET BUY / SELL in one click. A SELL only closes an open long (engine rule). Returns the order."""
+    def place_order(self, book, security_id, side, lots, sl=None, target=None, protection=None):
+        """MARKET BUY / SELL in one click. A SELL only closes an open long (engine rule). Returns (order, attached):
+        - protection (%): refused (OrderError, nothing placed) when the depth would fill a BUY above LTP × (1 + % / 100)
+          (a SELL below LTP × (1 − % / 100));
+        - sl / target (points, BUY only): once filled, the position's OCO stop / target at average ∓ sl / + target
+          (this fill's average; they cover the whole open quantity, on the tick grid). attached = {position, error}: the order stands if they fail."""
         if side not in (BUY, SELL):
             raise ValueError("side must be BUY or SELL")
-        return self.paper.place_order(book, security_id, side, lots, MARKET, source=SOURCE)
+        for name, v in (("SL", sl), ("Target", target), ("Market protection", protection)):
+            if v is not None and not v > 0:
+                raise ValueError(f"{name} must be above 0")
+        with self.paper.lock:
+            if protection is not None:
+                self._check_protection(book, security_id, side, lots, protection)
+            order = self.paper.place_order(book, security_id, side, lots, MARKET, source=SOURCE)
+            attached = None
+            if side == BUY and order["status"] == "FILLED" and (sl or target):
+                attached = {"position": None, "error": ""}
+                avg = order["avg_price"]  # from this fill (on an add, the stop / target move for the whole quantity)
+                try:
+                    attached["position"] = self.set_protection(
+                        book, security_id, target=on_grid(avg + target) if target else KEEP,
+                        stop=on_grid(avg - sl) if sl else KEEP)
+                except OrderError as e:
+                    attached["error"] = f"Bought, but the SL / target was not set: {e}"
+        return order, attached
+
+    def _check_protection(self, book, security_id, side, lots, pct):
+        inst = self.paper._instrument(security_id)
+        mk = book.engine.books.get(security_id)
+        if inst is None or mk is None or not mk.ltp:
+            return  # the engine refuses it with its own reason
+        w = walk_depth(mk.asks if side == BUY else mk.bids, lots * inst["lotSize"])
+        if w is None:
+            return
+        cap = mk.ltp * (1 + pct / 100) if side == BUY else mk.ltp * (1 - pct / 100)
+        if (side == BUY and w[0] > cap) or (side == SELL and w[0] < cap):
+            raise OrderError(f"Market protection {pct:g}%: it would fill at {w[0]:.2f}, beyond {cap:.2f} "
+                             f"(LTP {mk.ltp:g}). Nothing was placed.")
+
+    def cancel_all(self, book):
+        self.paper.cancel_all(book, source=SOURCE)
 
     def exit_position(self, book, security_id):
         self.paper.exit_position(book, security_id, source=SOURCE)
@@ -219,6 +256,11 @@ class ScalperService:
 
     def set_trail(self, book, security_id, distance, step=1.0, after=None):
         return self.paper.set_trail(book, security_id, distance, step, after, source=SOURCE)
+
+
+def on_grid(price):
+    """Nearest multiple of the tick size (0.05), never below one tick."""
+    return max(TICK_SIZE, round(round(price / TICK_SIZE) * TICK_SIZE, 2))
 
 
 def default_range(today, days=30):

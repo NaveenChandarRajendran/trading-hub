@@ -2,11 +2,14 @@
 import { requestJson } from '../../../shared/api';
 import { withStrategy } from '../../../shared/strategy/api';
 import type { Candle } from '../../../shared/chart/candles';
-import type { Chain, Funds, Meta, Order, Position as PaperPosition, Tick, Trade } from '../../paper-trade/logic/api';
+import type { Chain, Funds, Meta, MtmLimit, Order, Position as PaperPosition, Tick, Trade } from '../../paper-trade/logic/api';
 import { SCALPER_API } from '../config/settings';
 import type { Trail } from './exitPlan';
 
-export type { Chain, Funds, Meta, Order, Tick, Trade };
+export type { Chain, Funds, Meta, MtmLimit, Order, Tick, Trade };
+
+/** Extras of a one-click order (Trade Window): SL / target in points from the fill, market protection %. */
+export interface OrderExtras { sl?: number | null; target?: number | null; protection?: number | null }
 
 export interface Position extends PaperPosition {
   target: number | null; // OCO target (LIMIT SELL) price
@@ -100,8 +103,16 @@ export const api = {
   setCapital: (capital: number) => requestJson<Account>(SCALPER_API, st('/api/scalper/account/capital'), { method: 'PUT', body: { capital } }),
   reset: (capital?: number) =>
     requestJson<Account>(SCALPER_API, st('/api/scalper/account/reset'), { method: 'POST', body: capital ? { capital } : {} }),
-  place: (securityId: number, side: 'BUY' | 'SELL', lots: number) =>
-    requestJson<{ order: Order; funds: Funds }>(SCALPER_API, st('/api/scalper/orders'), { method: 'POST', body: { securityId, side, lots } }),
+  place: (securityId: number, side: 'BUY' | 'SELL', lots: number, extras: OrderExtras = {}) =>
+    requestJson<{ order: Order; funds: Funds; attached: { position: Position | null; error: string } | null }>(
+      SCALPER_API, st('/api/scalper/orders'), { method: 'POST', body: { securityId, side, lots, ...extras } }),
+  /** Cancels every pending order of the strategy (targets and stops too); positions stay open. */
+  cancelAll: () => requestJson<{ orders: Order[]; funds: Funds }>(SCALPER_API, st('/api/scalper/cancel-all'), { method: 'POST' }),
+  cancelOrder: (id: string) => requestJson<Order>(SCALPER_API, st(`/api/paper/orders/${encodeURIComponent(id)}`), { method: 'DELETE' }),
+  mtmLimit: (profit: number | null, loss: number | null) =>
+    requestJson<{ mtm: MtmLimit; funds: Funds }>(SCALPER_API, st('/api/scalper/mtm-limit'), { method: 'PUT', body: { profit, loss } }),
+  trades: (date: string, signal?: AbortSignal) =>
+    requestJson<{ rows: Trade[] }>(SCALPER_API, st(`/api/paper/trades?${q({ date })}`), { signal }),
   /** pct 25 / 50 / 75 sells that share of the open lots (rounded down, at least 1); none or 100 = everything. */
   exit: (securityId: number, pct?: number) =>
     requestJson<{ rows: Position[] }>(SCALPER_API, st(`/api/scalper/exit/${securityId}`), { method: 'POST', ...(pct && pct !== 100 ? { body: { pct } } : {}) }),

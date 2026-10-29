@@ -30,6 +30,15 @@ export interface Funds {
   available: number;
   unrealized: number;
   dayPnl: number;
+  mtm?: MtmLimit; // the day MTM limit of the strategy (backend mtm_limit.py)
+}
+
+/** Day MTM limit: at +profit / −loss (₹, after charges) everything is sold and buys are off for the day. */
+export interface MtmLimit {
+  profit: number | null;
+  loss: number | null;
+  hit: { day: string; at: string; pnl: number; kind: 'profit' | 'loss' } | null;
+  message: string;
 }
 
 export interface Named {

@@ -643,6 +643,10 @@ class PaperEngine:
             raise OrderError("No buyers in the market depth; try again in a moment.")
         return self._exit(pos, now, "Exit position", book)
 
+    def cancel_all(self, now, reason="Cancelled by you (cancel all)."):
+        """Cancels every pending / triggered order (targets and stops too). Positions stay open."""
+        return [self._cancel(o, now, reason) for o in self.orders.values() if o.status in OPEN_STATES]
+
     def exit_all(self, now):
         events = []
         for sid, pos in list(self.positions.items()):

@@ -102,6 +102,11 @@ Portfolios report (29-Oct, `feature/options-report`): Strategy Builder → Portf
 Total / Booked / Unbooked, month by month (by expiry month) and trade by trade (`options_report.py`,
 `GET /api/options/report|portfolios`). Needs a backend restart after market hours to go live.
 
+## Trade Window (spec `docs/features/trade-window.md`) — built 29-Oct-2026 (`feature/trade-window`)
+Chart-free 1Cliq-style order window, PAPER ONLY, buy only, same "Trading into" strategy as Power Scalper. Orders can
+carry SL / target points (OCO on fill) and market protection %; Cancel all; a day MTM limit per strategy
+(`backend/mtm_limit.py`: cancel + sell everything, no new buys that day). Needs a backend restart to go live.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills
