@@ -14,7 +14,7 @@ placed the order.
 ## Screen (`frontend/src/apps/trade-window/`)
 - Row 1: Trading into, Index, Expiry, Call strike (− select +), Put strike, Lots (− n + and a Qty preset list).
 - Row 2: Order type (Market only), Market protection (off / 2 / 5 / 10 / 20 %), Predefined SL and target (tick + points),
-  MTM limit (profit, loss, Set), One click (off on every load: each order, Close all and Cancel all ask first), status.
+  MTM limit (profit, loss, Set), One click (on by default and remembered, his choice 30-Oct: no confirm box; off = each order, Close all and Cancel all ask first), status.
 - Three day ranges: CE (left), the index (centre), PE (right): low ─●──▼─ high (● LTP, ▼ previous close), LTP and change.
   Options from their Full packets; the index's low / high / previous close from its 1-minute candles (re-read every
   minute) plus the live LTP.

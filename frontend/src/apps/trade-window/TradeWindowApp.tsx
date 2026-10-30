@@ -58,7 +58,7 @@ function TradeWindowPage({ into }: { into: TradingInto }) {
   const [sl, setSl] = useState(() => load('sl') ?? '');
   const [tgOn, setTgOn] = useState(() => load('tgOn') === '1');
   const [tg, setTg] = useState(() => load('tg') ?? '');
-  const [oneClick, setOneClick] = useState(false); // off on every load: a confirm before each order
+  const [oneClick, setOneClick] = useState(() => load('oneClick') !== '0'); // on by default (no confirm on Buy); remembered
   const [indexCandles, setIndexCandles] = useState<Candle[]>([]);
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +67,7 @@ function TradeWindowPage({ into }: { into: TradingInto }) {
 
   useEffect(() => save('symbol', symbol), [symbol]);
   useEffect(() => save('lots', String(lots)), [lots]);
+  useEffect(() => save('oneClick', oneClick ? '1' : '0'), [oneClick]);
   useEffect(() => save('protection', protection == null ? 'off' : String(protection)), [protection]);
   useEffect(() => { save('slOn', slOn ? '1' : '0'); save('sl', sl); save('tgOn', tgOn ? '1' : '0'); save('tg', tg); }, [slOn, sl, tgOn, tg]);
 
@@ -220,7 +221,7 @@ function TradeWindowPage({ into }: { into: TradingInto }) {
       <div className={`tw-buy ${side === 'PE' ? 'right' : ''}`}>
         <button type="button" className="btn tw-buy-btn" disabled={busy || !!check.buy}
           title={check.buy || `Buy ${lots} lot${lots === 1 ? '' : 's'} at market`} onClick={() => void buy(side)}>
-          ↑ Buy {side === 'CE' ? 'Call' : 'Put'}
+          {side === 'CE' ? '↑ Buy Call' : '↓ Buy Put'}
         </button>
         <span className="muted tw-small">{check.cost != null ? `Need ${rupees(check.cost, 0)} · ${check.qty} qty` : `${check.qty || '–'} qty`}</span>
       </div>
