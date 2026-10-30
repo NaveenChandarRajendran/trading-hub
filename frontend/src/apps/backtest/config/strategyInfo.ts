@@ -50,9 +50,9 @@ export const STRATEGY_INFO: Record<StrategyKey, StrategyInfo> = {
   'Dharani Rules': {
     summary: "The teacher's tuned Quantman setups, copied as taught. Shown as Power Breakout (was Dharani Rules). App's own ₹1 lakh account.",
     chart: '3-minute candles · Nifty and Bank Nifty · call on the index, put on the futures',
-    indicators: ['SuperTrend (10, 2)', 'RSI (14) and RSI (20)', 'Bollinger (15, 3) and (20, 2)', 'Williams %R (14)', 'EMA 200', 'CCI (20)', 'Pivots and CPR'],
+    indicators: ['SuperTrend (10, 2)', 'RSI (14) and RSI (20)', 'Bollinger (20, 2.5) and (20, 2)', 'Williams %R (14)', 'EMA 200', 'CCI (20)', 'Pivots and CPR'],
     checklist: [
-      'Call, all 5: close above SuperTrend · RSI (14) above 70 · close above R1 · close above upper Bollinger (15, 3) · Williams %R above −30',
+      'Call, all 5: close above SuperTrend · RSI (14) above 70 · close above R1 · close above upper Bollinger (20, 2.5) · Williams %R above −30',
       'Put, all 8: close below SuperTrend · below EMA 200 · RSI (20) below 30 · CCI (20) below −200 · Williams %R below −85 · close below CPR S1 · CPR narrow (under 0.2 %) · close below lower Bollinger (20, 2)',
       'Signal candles from 09:18 to 15:00',
     ],

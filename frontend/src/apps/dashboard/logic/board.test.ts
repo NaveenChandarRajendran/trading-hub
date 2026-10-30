@@ -42,7 +42,7 @@ describe('strategy board', () => {
   });
 
   it('each strategy shows only its indicators', () => {
-    expect(CHART_PRESETS.dharaniV2).toMatchObject({ interval: 3, emaPeriod: 200, bb: { period: 15, mult: 3 } });
+    expect(CHART_PRESETS.dharaniV2).toMatchObject({ interval: 3, emaPeriod: 200, bb: { period: 20, mult: 2.5 } });
     expect(CHART_PRESETS.superTrend.indicators).toMatchObject({ supertrend: true, bollinger: true, rsi: true, vwap: false, ema: false });
     expect(CHART_PRESETS.all.interval).toBeNull();
   });

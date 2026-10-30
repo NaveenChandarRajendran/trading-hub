@@ -107,9 +107,9 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
     note: 'EMA 20, VWAP, RSI 14, pivot and OI levels, cumulative delta. India VIX and PCR are on the strategy box.' },
   superTrend: { interval: 5, indicators: { ...OFF, supertrend: true, bollinger: true, rsi: true }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'SuperTrend (10, 2), Bollinger (20, 2), RSI 14, pivot and OI levels.' },
-  dharaniV2: { interval: 3, indicators: { ...OFF, supertrend: true, bollinger: true, ema: true, rsi: true }, emaPeriod: 200, bb: { period: 15, mult: 3 },
+  dharaniV2: { interval: 3, indicators: { ...OFF, supertrend: true, bollinger: true, ema: true, rsi: true }, emaPeriod: 200, bb: { period: 20, mult: 2.5 }, // the call's Bollinger (owner 30-Oct-2026: was 15, 3)
     rsiGuides: [{ price: 70, side: 'call', title: 'Call: above 70' }], // the put checks RSI 20 < 30 on the FUTURES, not this index RSI 14
-    note: 'Index chart for the CALL: SuperTrend (10, 2), Bollinger (15, 3), RSI 14 above 70, Pivot R1 (solid). EMA 200 is for the put, which is checked on the futures candles (see the checklist). Williams %R and CCI are on the strategy box.' },
+    note: 'Index chart for the CALL: SuperTrend (10, 2), Bollinger (20, 2.5), RSI 14 above 70, Pivot R1 (solid). EMA 200 is for the put, which is checked on the futures candles (see the checklist). Williams %R and CCI are on the strategy box.' },
   tradingHub: { interval: 5, indicators: { ...OFF, supertrend: true, ema: true, vwap: true, bollinger: true, rsi: true, delta: true }, emaPeriod: 20,
     bb: { period: 20, mult: 2 }, note: 'SuperTrend, VWAP, EMA 20, Bollinger (20, 2), RSI 14, pivot. Trending OI is on the strategy box.' },
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 }, warm: 10, // the rule's 12 sessions

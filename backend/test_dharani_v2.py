@@ -38,7 +38,7 @@ def test_call_needs_all_five():
     r = dharani_v2_rule(s)
     assert not r["go"] and states(r)["williams"] == FAIL and r["score"] == 4
     s = state()
-    s["idx"]["bar"]["close"] = 25130  # inside the upper band 25,140 (15, 3)
+    s["idx"]["bar"]["close"] = 25130  # inside the upper band 25,140
     assert states(dharani_v2_rule(s))["bollinger"] == FAIL
 
 

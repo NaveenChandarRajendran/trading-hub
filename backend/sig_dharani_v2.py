@@ -7,7 +7,8 @@ NIFTY and BANKNIFTY (owner 25-Oct-2026; the teacher tested NIFTY), 3-minute cand
 after every 3-minute close.
 CALL ("L1 08 FINAL CE"), index candles:
     close > SuperTrend (10, 2)   RSI (14) > 70   close > R1 (Traditional, previous day)
-    close > upper Bollinger (15, 3)   Williams %R (14) > -30
+    close > upper Bollinger (20, 2.5)   Williams %R (14) > -30   (owner 30-Oct-2026: was (15, 3); about twice the trades,
+    made money in both test periods on both indices)
 PUT ("L1 10 PE ALT"), the index's near-month FUTURES candles (the teacher's "Fields: Future"):
     close < SuperTrend (10, 2)   close < EMA 200   RSI (20) < 30   CCI (20) < -200   Williams %R (14) < -85
     close < CPR S1 (futures' previous day)   CPR is narrow (width < 0.2 %)   close < lower Bollinger (20, 2)
@@ -23,7 +24,7 @@ from sig_rules import FAIL, MB_LAST_ENTRY, NOT_CHECKED, PASS, check, gates
 
 INTERVAL = 3
 FIRST_CLOSE = (9, 18)  # the first 3-minute candle (09:15-09:18); the teacher trades from 09:15
-CALL = {"rsi": (14, 70.0), "bb": (15, 3.0), "wr": (14, -30.0)}
+CALL = {"rsi": (14, 70.0), "bb": (20, 2.5), "wr": (14, -30.0)}  # bb was (15, 3.0) until 30-Oct-2026
 PUT = {"ema": 200, "rsi": (20, 30.0), "cci": (20, -200.0), "wr": (14, -85.0), "cprNarrowPct": 0.2, "bb": (20, 2.0)}
 ST = (10, 2.0)
 SESSIONS = 4  # history for EMA 200 on 3-minute candles
@@ -109,7 +110,7 @@ def call_checks(state):
              f"Close {c:,.2f} {'above' if ind['st_line'] is not None and c > ind['st_line'] else 'below'} {_f(ind['st_line'])}"),
         _cmp("rsi", "RSI 14 above 70", ind["rsi"], ind["rsi"] is not None and ind["rsi"] > CALL["rsi"][1], f"{_f(ind['rsi'], 1)}"),
         _cmp("pivot", "Close above pivot R1", r1, r1 is not None and c > r1, f"Pivot R1 {_f(r1)} (previous day; not the OI R1)"),
-        _cmp("bollinger", "Close above upper Bollinger (15, 3)", ind["bb_upper"], ind["bb_upper"] is not None and c > ind["bb_upper"],
+        _cmp("bollinger", f"Close above upper Bollinger ({CALL['bb'][0]}, {CALL['bb'][1]:g})", ind["bb_upper"], ind["bb_upper"] is not None and c > ind["bb_upper"],
              f"Upper {_f(ind['bb_upper'])}"),
         _cmp("williams", "Williams %R 14 above -30", ind["wr"], ind["wr"] is not None and ind["wr"] > CALL["wr"][1], f"{_f(ind['wr'], 1)}"),
     ]

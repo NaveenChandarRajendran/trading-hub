@@ -20,7 +20,7 @@ Pivots / CPR from the previous trading day of the same data (index for the call,
 | close above SuperTrend (10, 2) | close below SuperTrend (10, 2) |
 | RSI (14) above 70 | close below EMA 200 |
 | close above R1 (Traditional pivots) | RSI (20) below 30 |
-| close above upper Bollinger (15, 3) | CCI (20) below −200 |
+| close above upper Bollinger (20, 2.5) (was 15, 3 until 30-Oct-2026, owner approved) | CCI (20) below −200 |
 | Williams %R (14) above −30 | Williams %R (14) below −85 |
 | | close below CPR S1 (= Traditional S1) |
 | | CPR is narrow: width (TC − BC) ÷ P below 0.2 % (⚠ our reading of Quantman's "Narrow range 0.2") |
