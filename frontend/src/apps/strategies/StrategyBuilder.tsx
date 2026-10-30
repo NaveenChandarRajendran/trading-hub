@@ -1,24 +1,32 @@
-// Strategy builder on the Option Sell page (owner 28-Oct-2026: "like Sensibull's"). Pick ready-made or own legs on
-// the live Dhan chain (GET /api/option-chain) and see the payoff at expiry, max profit / loss, breakevens, chance of
-// profit and a rough margin. PAPER ONLY: it only works things out, it never places an order.
-// Owner 30-Oct-2026: pick legs straight from an option chain, and save a strategy under a name and a sub name to track its P&L.
+// Strategy builder on the Option Sell page (owner 28-Oct-2026: "like Sensibull's"). Pick legs on the live Dhan chain
+// (GET /api/option-chain) and see the payoff at expiry, max profit / loss, breakevens, chance of profit and a rough
+// margin. PAPER ONLY: it only works things out, it never places an order.
+// Owner 31-Oct-2026: a full option chain with B / S and the quantity right on the strike, the legs beside it
+// (B/S, strike −/+, CE/PE, qty, price, delete) and ready-made ones grouped Bullish / Bearish / Neutral.
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { fetchDhanExpiries, fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
-import { Alert, EmptyState, Pill, Segmented, Stat } from '../../shared/ui';
+import { Alert, Pill, Segmented } from '../../shared/ui';
 import { longDate, price, toneOf } from '../paper-trade/format';
 import { daysToExpiry, atmIv } from '../paper-trade/logic/greeks';
 import { builderMargin, chanceOfProfit, greeksTotal, payoffCurve, summarize, type BLeg, type Saved } from './logic/builder';
-import { ChainPicker, SavedStrategies, useSaved } from './BuilderParts';
+import { SavedStrategies, useSaved } from './BuilderParts';
+import { FullChain, type ChainView } from './FullChain';
 
 type Idx = 'NIFTY' | 'BANKNIFTY';
 const INDEXES = [{ value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
-const SIDES = [{ value: 'S', label: 'Sell' }, { value: 'B', label: 'Buy' }] as const;
-const TYPES = [{ value: 'CE', label: 'Call' }, { value: 'PE', label: 'Put' }] as const;
-const PRESETS = ['Short straddle', 'Short strangle', 'Iron condor', 'Bull put spread', 'Bear call spread'] as const;
-type Preset = (typeof PRESETS)[number];
+const VIEWS = [{ value: 'ltp', label: 'Prices' }, { value: 'oi', label: 'OI' }, { value: 'greeks', label: 'Greeks' }] as const;
+// Ready-made, with a tiny payoff drawing (40 x 24, zero line at y 12)
+const READY = {
+  Bullish: { 'Buy call': '2,16 20,16 38,3', 'Sell put': '2,22 20,7 38,7', 'Bull call spread': '2,17 14,17 26,6 38,6', 'Bull put spread': '2,18 14,18 26,7 38,7' },
+  Bearish: { 'Buy put': '2,3 20,16 38,16', 'Sell call': '2,7 20,7 38,22', 'Bear put spread': '2,6 14,6 26,17 38,17', 'Bear call spread': '2,7 14,7 26,18 38,18' },
+  Neutral: { 'Short straddle': '2,22 20,3 38,22', 'Short strangle': '2,22 13,6 27,6 38,22', 'Iron condor': '2,18 10,18 16,6 24,6 30,18 38,18', 'Iron butterfly': '2,18 12,18 20,3 28,18 38,18' },
+} as const;
+type Mood = keyof typeof READY;
+const MOOD_TONE: Record<Mood, string> = { Bullish: 'up', Bearish: 'down', Neutral: 'accent' };
 const rs = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const srs = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${rs(Math.abs(v))}`; // whole rupees with a sign
 const todayIst = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+const shortDate = (d: string) => longDate(d).replace(/\s\d{4}$/, '');
 let seq = 0;
 
 function useChain(symbol: Idx, expiry: string) {
@@ -40,12 +48,22 @@ function useChain(symbol: Idx, expiry: string) {
   return { chain, error };
 }
 
+function Mini({ pts, tone }: { pts: string; tone: string }) {
+  return (
+    <svg className={`sb-mini ${tone}`} viewBox="0 0 40 24" aria-hidden="true">
+      <line x1={0} x2={40} y1={12} y2={12} />
+      <polyline points={pts} />
+    </svg>
+  );
+}
+
 export default function StrategyBuilder() {
   const [symbol, setSymbol] = useState<Idx>('NIFTY');
   const [expiries, setExpiries] = useState<string[]>([]);
   const [expiry, setExpiry] = useState('');
+  const [view, setView] = useState<ChainView>('ltp');
   const [legs, setLegs] = useState<BLeg[]>([]);
-  const [add, setAdd] = useState<{ side: 'S' | 'B'; type: 'CE' | 'PE'; strike: number | ''; lots: number }>({ side: 'S', type: 'CE', strike: '', lots: 1 });
+  const [tab, setTab] = useState<'legs' | 'ready'>('ready');
   const saved = useSaved();
   const [saveAs, setSaveAs] = useState({ name: '', group: 'My learning' });
   const [savedMsg, setSavedMsg] = useState('');
@@ -61,7 +79,7 @@ export default function StrategyBuilder() {
       pending.current = null;
       setExpiries(p && !e.includes(p.expiry) ? [p.expiry, ...e] : e);
       setExpiry(p?.expiry ?? e[0] ?? '');
-      if (p) setLegs(p.legs);
+      if (p) { setLegs(p.legs); setTab('legs'); }
     }, () => live && setExpiries([]));
     return () => { live = false; };
   }, [symbol]);
@@ -72,48 +90,66 @@ export default function StrategyBuilder() {
   const rows = useMemo(() => chain?.rows.filter((r) => r.ce || r.pe) ?? [], [chain]);
   const step = chain?.meta.strikeStep ?? (rows.length > 1 ? rows[1].strike - rows[0].strike : 50);
   const atm = rows.length ? rows.reduce((b, r) => (Math.abs(r.strike - spot) < Math.abs(b.strike - spot) ? r : b)).strike : 0;
-  const near = useMemo(() => rows.filter((r) => Math.abs(r.strike - atm) <= step * 20), [rows, atm, step]);
   const legOf = (side: 'CE' | 'PE', strike: number) => {
     const r = rows.find((x) => x.strike === strike);
     return side === 'CE' ? r?.ce : r?.pe;
   };
-  const make = (side: 'CE' | 'PE', strike: number, short: boolean, lots = 1): BLeg => {
+  const quote = (side: 'CE' | 'PE', strike: number) => {
     const d = legOf(side, strike);
-    return { id: `l${++seq}`, side, strike, short, lots, price: d?.last_price ?? 0, iv: d?.implied_volatility ?? null, delta: d?.greeks?.delta ?? null, theta: d?.greeks?.theta ?? null };
+    return { price: d?.last_price ?? 0, iv: d?.implied_volatility ?? null, delta: d?.greeks?.delta ?? null, theta: d?.greeks?.theta ?? null };
   };
+  const make = (side: 'CE' | 'PE', strike: number, short: boolean, lots = 1): BLeg => ({ id: `l${++seq}`, side, strike, short, lots, ...quote(side, strike) });
   const nearest = (k: number) => rows.reduce((b, r) => (Math.abs(r.strike - k) < Math.abs(b.strike - k) ? r : b)).strike;
+  const put = (ls: BLeg[]) => { setLegs(ls); setTab(ls.length ? 'legs' : 'ready'); };
 
-  const preset = (p: Preset) => {
+  const ready = (name: string) => {
     if (!rows.length) return;
     const away = spot * 0.015;
     const up = nearest(atm + away), dn = nearest(atm - away), wing = step * 4;
-    const set: Record<Preset, BLeg[]> = {
+    const set: Record<string, BLeg[]> = {
+      'Buy call': [make('CE', atm, false)],
+      'Sell put': [make('PE', atm, true)],
+      'Bull call spread': [make('CE', atm, false), make('CE', nearest(atm + wing), true)],
+      'Bull put spread': [make('PE', nearest(atm - step), true), make('PE', nearest(atm - step - wing), false)],
+      'Buy put': [make('PE', atm, false)],
+      'Sell call': [make('CE', atm, true)],
+      'Bear put spread': [make('PE', atm, false), make('PE', nearest(atm - wing), true)],
+      'Bear call spread': [make('CE', nearest(atm + step), true), make('CE', nearest(atm + step + wing), false)],
       'Short straddle': [make('CE', atm, true), make('PE', atm, true)],
       'Short strangle': [make('CE', up, true), make('PE', dn, true)],
       'Iron condor': [make('PE', nearest(dn - wing), false), make('PE', dn, true), make('CE', up, true), make('CE', nearest(up + wing), false)],
-      'Bull put spread': [make('PE', nearest(atm - step), true), make('PE', nearest(atm - step - wing), false)],
-      'Bear call spread': [make('CE', nearest(atm + step), true), make('CE', nearest(atm + step + wing), false)],
+      'Iron butterfly': [make('PE', nearest(atm - wing), false), make('PE', atm, true), make('CE', atm, true), make('CE', nearest(atm + wing), false)],
     };
-    setLegs(set[p]);
-  };
-  const addLeg = () => {
-    const k = add.strike === '' ? atm : add.strike;
-    if (!k) return;
-    setLegs((ls) => [...ls, make(add.type, k, add.side === 'S', Math.max(1, add.lots))]);
+    put(set[name] ?? []);
   };
   const patch = (id: string, p: Partial<BLeg>) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, ...p } : l)));
-  const restrike = (l: BLeg, strike: number) => {
-    const d = legOf(l.side, strike);
-    patch(l.id, { strike, price: d?.last_price ?? l.price, iv: d?.implied_volatility ?? null, delta: d?.greeks?.delta ?? null, theta: d?.greeks?.theta ?? null });
+  const restrike = (l: BLeg, strike: number) => patch(l.id, { strike, ...quote(l.side, strike) });
+  const move = (l: BLeg, by: number) => {
+    const i = rows.findIndex((r) => r.strike === l.strike);
+    const r = rows[i + by];
+    if (r) restrike(l, r.strike);
   };
+  const retype = (l: BLeg) => { const side = l.side === 'CE' ? 'PE' : 'CE'; patch(l.id, { side, ...quote(side, l.strike) }); };
 
-  const pick = (side: 'CE' | 'PE', strike: number, short: boolean) => setLegs((ls) => [...ls, make(side, strike, short, Math.max(1, add.lots))]);
+  // B / S on the chain: a new strike adds a leg; the same button again removes it; the other button flips it
+  const onPick = (side: 'CE' | 'PE', strike: number, short: boolean) => {
+    const had = legs.find((l) => l.side === side && l.strike === strike);
+    if (!had) put([...legs, make(side, strike, short)]);
+    else if (had.short === short) put(legs.filter((l) => l.id !== had.id));
+    else patch(had.id, { short });
+  };
+  const onLots = (side: 'CE' | 'PE', strike: number, lots: number) => {
+    const had = legs.find((l) => l.side === side && l.strike === strike);
+    if (had) patch(had.id, { lots });
+  };
+  const picked = legs.map((l) => ({ side: l.side, strike: l.strike, short: l.short, lots: l.lots }));
+
   const load = (x: Saved) => {
     const ls = x.legs.map((l): BLeg => ({ id: `l${++seq}`, side: l.side, strike: l.strike, short: l.short, lots: l.lots, price: l.price, iv: null, delta: null, theta: null }));
     if (x.symbol === symbol) {
       if (!expiries.includes(x.expiry)) setExpiries((e) => [x.expiry, ...e]);
       setExpiry(x.expiry);
-      setLegs(ls);
+      put(ls);
     } else {
       pending.current = { expiry: x.expiry, legs: ls };
       setSymbol(x.symbol);
@@ -124,7 +160,7 @@ export default function StrategyBuilder() {
     const name = saveAs.name.trim() || `Test ${(saved.rows?.length ?? 0) + 1}`;
     const ok = await saved.add({ name, group: saveAs.group.trim() || 'My learning', symbol, expiry, lot, spot,
       legs: legs.map((l) => ({ side: l.side, strike: l.strike, short: l.short, lots: l.lots, price: l.price })) });
-    setSavedMsg(ok ? `Saved "${name}". Its P&L is in "My test strategies" below.` : '');
+    setSavedMsg(ok ? `Saved "${name}" below.` : '');
     if (ok) setSaveAs({ ...saveAs, name: '' });
   };
 
@@ -135,86 +171,112 @@ export default function StrategyBuilder() {
   const margin = useMemo(() => (spot ? builderMargin(legs, lot, spot) : 0), [legs, lot, spot]);
   const g = greeksTotal(legs, lot);
   const ok = legs.length > 0 && legs.every((l) => l.price > 0);
+  const pcr = useMemo(() => {
+    const c = rows.reduce((a, r) => a + (r.ce?.oi ?? 0), 0), p = rows.reduce((a, r) => a + (r.pe?.oi ?? 0), 0);
+    return c ? p / c : null;
+  }, [rows]);
 
   return (
     <section className="card sb">
       <div className="card-head">
         <h3 className="td-title">Strategy builder</h3>
-        <span className="td-label"><Pill tone="accent">PAPER</Pill> Try ideas only: this never places an order.</span>
+        <Pill tone="accent">PAPER · never places an order</Pill>
       </div>
 
-      <div className="toolbar">
-        <div className="field">Index<Segmented label="Index" options={INDEXES} value={symbol} onChange={setSymbol} /></div>
-        <label className="field">Expiry
-          <select value={expiry} onChange={(e) => { setExpiry(e.target.value); setLegs([]); }}>
-            {expiries.slice(0, 8).map((e) => <option key={e} value={e}>{longDate(e)}</option>)}
-          </select>
-        </label>
-        <div className="field">Ready-made
-          <span className="chips">
-            {PRESETS.map((p) => <button key={p} type="button" className="chip" disabled={!rows.length} onClick={() => preset(p)}>{p}</button>)}
-          </span>
-        </div>
+      <div className="sb-bar">
+        <Segmented label="Index" options={INDEXES} value={symbol} onChange={setSymbol} />
+        <span className="sb-exp" role="radiogroup" aria-label="Expiry">
+          {expiries.slice(0, 6).map((e) => (
+            <button key={e} type="button" role="radio" aria-checked={e === expiry} className={e === expiry ? 'on' : ''}
+              onClick={() => { setExpiry(e); put([]); }}>{shortDate(e)}</button>
+          ))}
+        </span>
+        <Segmented label="Chain view" options={VIEWS} value={view} onChange={setView} />
       </div>
-      <p className="sb-spot">{chain ? <>{symbol === 'NIFTY' ? 'Nifty' : 'Bank Nifty'} <b>{price(spot)}</b> · ATM IV {iv == null ? '–' : `${iv.toFixed(1)}%`} · {days} day{days === 1 ? '' : 's'} to expiry · lot {lot} · chain as of {chain.meta.asOf.slice(11, 16)}</> : error ? '' : 'Loading the option chain…'}</p>
+      {chain && (
+        <div className="sb-facts">
+          <span><small>{symbol === 'NIFTY' ? 'Nifty' : 'Bank Nifty'}</small><b>{price(spot)}</b></span>
+          <span><small>ATM IV</small><b>{iv == null ? '–' : `${iv.toFixed(1)}%`}</b></span>
+          <span><small>Days left</small><b>{days}</b></span>
+          <span><small>Lot</small><b>{lot}</b></span>
+          <span><small>PCR</small><b>{pcr == null ? '–' : pcr.toFixed(2)}</b></span>
+          <span><small>As of</small><b>{chain.meta.asOf.slice(11, 16)}</b></span>
+        </div>
+      )}
+      {!chain && !error && <p className="sb-spot">Loading the option chain…</p>}
       {error && <Alert kind="error">{error}</Alert>}
 
-      <div className="sb-add">
-        <Segmented label="Buy or sell" options={SIDES} value={add.side} onChange={(v) => setAdd({ ...add, side: v })} />
-        <Segmented label="Call or put" options={TYPES} value={add.type} onChange={(v) => setAdd({ ...add, type: v })} />
-        <label className="field">Strike
-          <select value={add.strike === '' ? atm : add.strike} onChange={(e) => setAdd({ ...add, strike: Number(e.target.value) })}>
-            {near.map((r) => <option key={r.strike} value={r.strike}>{r.strike}{r.strike === atm ? ' (ATM)' : ''}</option>)}
-          </select>
-        </label>
-        <label className="field">Lots<input type="number" min={1} value={add.lots} onChange={(e) => setAdd({ ...add, lots: Number(e.target.value) || 1 })} /></label>
-        <button type="button" className="btn" disabled={!rows.length} onClick={addLeg}>Add leg</button>
-        {legs.length > 0 && <button type="button" className="btn ghost" onClick={() => setLegs([])}>Clear all</button>}
+      <div className="sb-main">
+        <FullChain rows={rows} spot={spot} atm={atm} lot={lot} view={view} picked={picked} onPick={onPick} onLots={onLots} />
+
+        <aside className="sb-side">
+          <div className="sb-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'legs'} className={tab === 'legs' ? 'on' : ''} onClick={() => setTab('legs')}>My legs{legs.length ? ` (${legs.length})` : ''}</button>
+            <button type="button" role="tab" aria-selected={tab === 'ready'} className={tab === 'ready' ? 'on' : ''} onClick={() => setTab('ready')}>Ready-made</button>
+          </div>
+
+          {tab === 'ready' ? (
+            <div className="sb-ready">
+              {(Object.keys(READY) as Mood[]).map((m) => (
+                <div key={m}>
+                  <h4 className={MOOD_TONE[m]}>{m}</h4>
+                  <div className="sb-ready-grid">
+                    {Object.entries(READY[m]).map(([n, pts]) => (
+                      <button key={n} type="button" className="sb-ready-btn" disabled={!rows.length} onClick={() => ready(n)}>
+                        <Mini pts={pts} tone={MOOD_TONE[m]} /><span>{n}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : !legs.length ? (
+            <p className="sb-empty">Tap <b className="fc-b on">B</b> or <b className="fc-s on">S</b> on any strike in the chain, or pick a ready-made one.</p>
+          ) : (
+            <div className="sb-legs2">
+              {legs.map((l) => (
+                <div key={l.id} className="sb-leg">
+                  <button type="button" className={`sb-bs1 ${l.short ? 's' : 'b'}`} title="Switch buy / sell" onClick={() => patch(l.id, { short: !l.short })}>{l.short ? 'S' : 'B'}</button>
+                  <span className="sb-step">
+                    <button type="button" aria-label="Lower strike" onClick={() => move(l, -1)}>−</button>
+                    <b>{l.strike}</b>
+                    <button type="button" aria-label="Higher strike" onClick={() => move(l, 1)}>+</button>
+                  </span>
+                  <button type="button" className="sb-type" title="Switch call / put" onClick={() => retype(l)}>{l.side}</button>
+                  <select aria-label="Quantity" value={l.lots} onChange={(e) => patch(l.id, { lots: Number(e.target.value) })}>
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n * lot}</option>)}
+                  </select>
+                  <input aria-label="Price" type="number" min={0} step={0.05} value={l.price} onChange={(e) => patch(l.id, { price: Number(e.target.value) || 0 })} />
+                  <button type="button" className="sb-del" aria-label="Remove leg" onClick={() => put(legs.filter((x) => x.id !== l.id))}>×</button>
+                </div>
+              ))}
+              <div className="sb-legfoot">
+                <span className="sb-legexp">Expiry {shortDate(expiry)}</span>
+                <span>{sum.net >= 0 ? 'You get' : 'You pay'} <b className={sum.net >= 0 ? 'up' : 'down'}>{rs(Math.abs(sum.net))}</b></span>
+                <button type="button" className="btn ghost" onClick={() => put([])}>Clear all</button>
+              </div>
+            </div>
+          )}
+        </aside>
       </div>
 
-      <details className="sb-chainwrap" open>
-        <summary><b>Option chain</b> <span className="td-label">premium, OI and change in OI · click B (buy) or S (sell) to add a leg · lots from the box above</span></summary>
-        <ChainPicker rows={rows} atm={atm} spot={spot} onPick={pick} />
-      </details>
-
-      {!legs.length ? <EmptyState>Pick a ready-made strategy or add a leg to see its payoff.</EmptyState> : (
+      {legs.length > 0 && (
         <>
-          <div className="td-scroll">
-            <table className="t td-table sb-legs">
-              <thead><tr><th className="txt">Side</th><th className="txt">Option</th><th>Strike</th><th>Lots</th><th>Price</th><th>IV</th><th>Delta</th><th /></tr></thead>
-              <tbody>
-                {legs.map((l) => (
-                  <tr key={l.id}>
-                    <td className="txt"><button type="button" className={`td-dir ${l.short ? 'sold' : 'bought'} sb-flip`} title="Switch buy / sell" onClick={() => patch(l.id, { short: !l.short })}>{l.short ? 'SELL' : 'BUY'}</button></td>
-                    <td className="txt">{l.side === 'CE' ? 'CALL' : 'PUT'}</td>
-                    <td><select value={l.strike} onChange={(e) => restrike(l, Number(e.target.value))}>{near.map((r) => <option key={r.strike} value={r.strike}>{r.strike}</option>)}</select></td>
-                    <td><input type="number" min={1} className="sb-num" value={l.lots} onChange={(e) => patch(l.id, { lots: Math.max(1, Number(e.target.value) || 1) })} /></td>
-                    <td><input type="number" min={0} step={0.05} className="sb-num" value={l.price} onChange={(e) => patch(l.id, { price: Number(e.target.value) || 0 })} /></td>
-                    <td className="num">{l.iv ? l.iv.toFixed(1) : '–'}</td>
-                    <td className="num">{l.delta == null ? '–' : l.delta.toFixed(2)}</td>
-                    <td><button type="button" className="btn ghost sb-x" aria-label="Remove leg" onClick={() => setLegs((ls) => ls.filter((x) => x.id !== l.id))}>×</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
           {!ok && <Alert kind="warn">A leg has no price yet: type the price in its box.</Alert>}
-          <div className="sb-figs">
-            <Stat label={sum.net >= 0 ? 'You receive' : 'You pay'} value={rs(Math.abs(sum.net))} />
-            <Stat label="Max profit" value={<span className="up">{sum.maxProfit == null ? 'No limit' : srs(sum.maxProfit)}</span>} />
-            <Stat label="Max loss" value={<span className="down">{sum.maxLoss == null ? 'No limit' : srs(sum.maxLoss)}</span>} />
-            <Stat label="Breakeven" value={sum.breakevens.length ? sum.breakevens.map((b) => Math.round(b)).join(' / ') : '–'} />
-            <Stat label="Chance of profit" value={pop == null ? '–' : `${pop.toFixed(0)}%`} />
-            <Stat label="Margin (est.)" value={rs(margin)} delta={`Time decay ${srs(g.theta)}/day`} />
+          <div className="sb-figs2">
+            <span><small>Max profit</small><b className="up">{sum.maxProfit == null ? 'No limit' : srs(sum.maxProfit)}</b></span>
+            <span><small>Max loss</small><b className="down">{sum.maxLoss == null ? 'No limit' : srs(sum.maxLoss)}</b></span>
+            <span><small>Breakeven</small><b>{sum.breakevens.length ? sum.breakevens.map((b) => Math.round(b)).join(' / ') : '–'}</b></span>
+            <span className="sb-pop"><small>Chance of profit</small><b>{pop == null ? '–' : `${pop.toFixed(0)}%`}</b>
+              {pop != null && <i style={{ width: `${pop}%` }} />}</span>
+            <span><small>Margin (rough)</small><b>{rs(margin)}</b></span>
+            <span><small>Time decay / day</small><b className={toneOf(g.theta)}>{srs(g.theta)}</b></span>
           </div>
           <Payoff legs={legs} lot={lot} spot={spot} breakevens={sum.breakevens} />
-          <p className="td-foot">Payoff on expiry day. Chance of profit assumes the index moves like the ATM IV says. Margin is a rough
-            estimate: check Dhan&apos;s margin calculator before trading real money.</p>
           <div className="sb-add sb-save">
             <label className="field">Name<input className="sb-name" placeholder={`Test ${(saved.rows?.length ?? 0) + 1}`} value={saveAs.name} onChange={(e) => setSaveAs({ ...saveAs, name: e.target.value })} /></label>
-            <label className="field">Sub name (portfolio)<input className="sb-name" list="sb-groups" value={saveAs.group} onChange={(e) => setSaveAs({ ...saveAs, group: e.target.value })} /></label>
-            <button type="button" className="btn primary" disabled={!ok} onClick={() => void save()}>Save as test strategy</button>
+            <label className="field">Group<input className="sb-name" list="sb-groups" value={saveAs.group} onChange={(e) => setSaveAs({ ...saveAs, group: e.target.value })} /></label>
+            <button type="button" className="btn primary" disabled={!ok} onClick={() => void save()}>Save to track</button>
             {savedMsg && <span className="td-label up">{savedMsg}</span>}
           </div>
         </>
@@ -222,7 +284,6 @@ export default function StrategyBuilder() {
 
       <div className="card-head sb-saved-head">
         <h3 className="td-title">My test strategies</h3>
-        <span className="td-label">Saved from the builder at the prices shown · P&amp;L now from the live chain · rename any time</span>
       </div>
       <SavedStrategies api={saved} onLoad={load} />
     </section>

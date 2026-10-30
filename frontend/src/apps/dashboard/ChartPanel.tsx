@@ -104,7 +104,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
           indicators={shown} params={params} marks={marks}
           volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />
       )}
-      <p className="card-foot">{note ?? `${strategyName(strategy)}: ${preset.note}`}{plain ? '' : ' ▲ buy · ▼ sell (today\'s paper trades).'}
+      <p className="card-foot">{note ?? `${strategyName(strategy)}: ${preset.note}`}{plain ? '' : ' ▲ buy · ▼ sell.'}
         {!d.live && ' An earlier day or the daily chart: no live updates and no OI levels.'}</p>
     </section>
   );

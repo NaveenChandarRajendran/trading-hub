@@ -10,7 +10,7 @@ import { Money } from '../today/TradeTables';
 import { longDate } from '../paper-trade/format';
 import { useMomentum, useSinceStart } from '../strategies/hooks';
 import { MoneyStrip } from '../strategies/MoneyStrip';
-import { lakhs } from '../strategies/StrategyCards';
+import { Rs, lakhs } from '../strategies/StrategyCards';
 import { TOTAL_CAPITAL } from '../strategies/catalog';
 import { START, addUp, allSections, moneyOf, returnPct, type Money as M } from '../strategies/logic/capital';
 import '../today/today.css';
@@ -39,6 +39,51 @@ function Row({ name, m, share, cls = '', to }: { name: string; m: M; share: numb
   );
 }
 
+/** Capital split as a ring, coloured per section. */
+function Donut({ parts }: { parts: { name: string; v: number; color: string }[] }) {
+  const total = parts.reduce((a, p) => a + p.v, 0) || 1;
+  const R = 70, C = 2 * Math.PI * R;
+  let off = 0;
+  return (
+    <svg viewBox="0 0 180 180" className="cap-donut" role="img" aria-label="Capital split">
+      <circle cx="90" cy="90" r={R} fill="none" stroke="var(--surface-2)" strokeWidth="22" />
+      {parts.map((p) => {
+        const len = (p.v / total) * C;
+        const el = <circle key={p.name} cx="90" cy="90" r={R} fill="none" stroke={p.color} strokeWidth="22" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-off} transform="rotate(-90 90 90)" />;
+        off += len;
+        return el;
+      })}
+      <text x="90" y="86" textAnchor="middle" className="cap-donut-big">{lakhs(total)}</text>
+      <text x="90" y="106" textAnchor="middle" className="cap-donut-small">paper capital</text>
+    </svg>
+  );
+}
+
+/** One section as a card: capital, used bar, net, and each strategy as a green / red bar. */
+function SectionCard({ name, to, m, lines, color }: { name: string; to: string; m: M; lines: { key: string; name: string; m: M }[]; color: string }) {
+  const max = Math.max(1, ...lines.map((l) => Math.abs(l.m.net)));
+  const used = m.capital ? Math.min(100, (m.inUse / m.capital) * 100) : 0;
+  return (
+    <Link to={to} className="cap-card" style={{ ['--sec' as string]: color }}>
+      <span className="cap-card-head"><b>{name}</b><span className="cap-card-net"><Rs v={m.net} /></span></span>
+      <span className="cap-card-sub"><span>{lakhs(m.capital)}</span><span className={m.net > 0 ? 'up' : m.net < 0 ? 'down' : ''}>{pctText(m)}</span></span>
+      <span className="sg-bar" title={`${lakhs(m.inUse)} in use`}><i style={{ width: `${used}%`, background: color }} /></span>
+      <span className="td-label">{m.inUse ? `${lakhs(m.inUse)} in use` : 'all free'} · {m.trades} trade{m.trades === 1 ? '' : 's'}</span>
+      <span className="cap-lines">
+        {lines.map((l) => (
+          <span key={l.key} className="cap-line">
+            <span className="cap-line-name">{l.name}</span>
+            <span className="cap-line-bar">
+              <i className={l.m.net >= 0 ? 'up' : 'down'} style={{ width: `${(Math.abs(l.m.net) / max) * 50}%`, [l.m.net >= 0 ? 'left' : 'right']: '50%' }} />
+            </span>
+            <span className="cap-line-v"><Rs v={l.m.net} /></span>
+          </span>
+        ))}
+      </span>
+    </Link>
+  );
+}
+
 export default function CapitalApp() {
   const data = useToday();
   const since = useSinceStart();
@@ -54,27 +99,29 @@ export default function CapitalApp() {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">Total Capital &amp; P&amp;L</h3>
-          <span className="td-label">All paper strategies since {longDate(START)} · no real money</span>
+          <span className="td-label">Paper money since {longDate(START)}</span>
         </div>
         {since.failed && !since.loaded && <Alert kind="warn">Trade history could not be loaded. Is the backend window open?</Alert>}
         <MoneyStrip m={total} title="Total" loaded={since.loaded}
-          today={{ pnl: today.total, sub: <>{today.open} live · {today.closed} closed today (Momentum not included)</> }} />
-        <h4 className="sg-detail-title">How the capital is split</h4>
-        <div className="cap-split" role="img" aria-label="Capital split by section">
-          {secs.map((s, i) => <i key={s.section.id} style={{ width: `${share(s.total.capital)}%`, background: COLORS[i] }} title={`${s.section.name} ${lakhs(s.total.capital)}`} />)}
-        </div>
-        <div className="cap-legend">
-          {secs.map((s, i) => (
-            <span key={s.section.id}><b style={{ background: COLORS[i] }} />{s.section.name} {lakhs(s.total.capital)} ({share(s.total.capital).toFixed(0)}%) · net <Money v={s.total.net} /></span>
-          ))}
-        </div>
+          today={{ pnl: today.total, sub: <>{today.open} live · {today.closed} closed</> }} />
       </section>
 
       <section className="card">
-        <div className="card-head">
-          <h3 className="td-title">Every strategy</h3>
-          <span className="td-label">Net = booked (after charges) + open trades now (before their exit charges)</span>
+        <div className="card-head"><h3 className="td-title">Where the money is</h3><span className="td-label">Tap a section to open it</span></div>
+        <div className="cap-grid">
+          <div className="cap-ring">
+            <Donut parts={secs.map((x, i) => ({ name: x.section.name, v: x.total.capital, color: COLORS[i] }))} />
+            <div className="cap-legend">
+              {secs.map((x, i) => <span key={x.section.id}><b style={{ background: COLORS[i] }} />{x.section.name} · {share(x.total.capital).toFixed(0)}%</span>)}
+            </div>
+          </div>
+          {secs.map((x, i) => <SectionCard key={x.section.id} name={x.section.name} to={x.section.path} m={x.total} lines={x.lines} color={COLORS[i]} />)}
         </div>
+        <p className="td-foot">Manual practice trades (not in the totals): <Money v={manual.net} /> from {manual.trades} trade{manual.trades === 1 ? '' : 's'}.</p>
+      </section>
+
+      <details className="card sg-fold">
+        <summary><h3 className="td-title">Full table</h3><span className="td-label">every number, for the 15 Nov review</span></summary>
         <div className="td-scroll">
           <table className="t td-table cap-table">
             <thead>
@@ -92,16 +139,8 @@ export default function CapitalApp() {
             </tbody>
           </table>
         </div>
-        <p className="td-foot">
-          Manual trades (your practice trades, no fixed capital, not in the totals): net <Money v={manual.net} /> from {manual.trades} trade{manual.trades === 1 ? '' : 's'},
-          brokerage {rs(manual.brokerage)}, taxes {rs(manual.taxes)}.
-        </p>
-        <p className="td-foot">
-          Capital is the money set aside for each strategy, so its return can be compared. Every paper trade is still 1 lot. For sold
-          options, &quot;in use&quot; is an estimated margin (check Dhan&apos;s margin calculator before going live). Brokerage is Dhan&apos;s ₹20 per
-          order (an entry and an exit per trade). Taxes and fees are STT, GST, exchange, SEBI and stamp duty. Stock delivery (Momentum) has no brokerage.
-        </p>
-      </section>
+        <p className="td-foot">Net = booked (after charges) + open trades now. Every trade is 1 lot; capital is what each strategy is allowed. Sold options use an estimated margin.</p>
+      </details>
     </div>
   );
 }

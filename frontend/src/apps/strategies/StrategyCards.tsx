@@ -15,7 +15,8 @@ import { Money, tagOf } from '../today/TradeTables';
 import { sectionOf, STRATEGIES, whosOfInfo, type SectionId, type StrategyInfo } from './catalog';
 import { moneyOfStrategy, returnPct, type Money as M } from './logic/capital';
 
-export interface CardState { kind: Cell['kind'] | 'up' | 'down'; title: string; lines: string[] }
+export interface Meter { label: string; met: number; total: number }
+export interface CardState { kind: Cell['kind'] | 'up' | 'down'; title: string; lines: string[]; meters?: Meter[] }
 
 const ruleOf = (s: SignalsState | null | undefined, k: StrategyInfo['ruleKey']): RuleResult | null | undefined => (k ? s?.rules[k] : undefined);
 export const lakhs = (v: number) => (Math.abs(v) >= 100000 ? `₹${(v / 100000).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L` : `₹${Math.round(v).toLocaleString('en-IN')}`);
@@ -36,29 +37,63 @@ export function cardState(info: StrategyInfo, rows: TodayRow[], signals: Record<
     const sub = keys.length > 1 ? `Sells at ${keys.map((k) => SELL_TIME[k] ?? k).join(' · ')} on expiry day` : c.sub;
     return { kind: selling ? c.kind : 'none', title: selling ? c.title : 'No reading yet', lines: [selling ? sub : 'selling book not running'] };
   }
+  const meters: Meter[] = [];
   for (const x of info.indices) {
     const r = ruleOf(signals[x], info.ruleKey);
     const c = cell(r, undefined);
-    const where = info.indices.length > 1 ? `${INDEX_NAME[x]}: ` : '';
-    lines.push(r ? `${where}${r.side === 'PE' ? 'put' : 'call'} · ${score(r).met} of ${score(r).total} met` : `${where}${c.title.toLowerCase()}`);
+    const where = INDEX_NAME[x];
+    if (r) meters.push({ label: `${where} · ${r.side === 'PE' ? 'put' : 'call'}`, ...score(r) });
+    else lines.push(`${where}: ${c.title.toLowerCase()}`);
   }
   if (open.length) return { kind: 'trade', title: 'In a trade now', lines: open.map((r) => `${r.option.replace(/^(NIFTY|BANKNIFTY) \S+ \S+ /, '$1 ')}`) };
-  if (mine.length) return { kind: pnl >= 0 ? 'up' : 'down', title: `${pnl >= 0 ? 'Won' : 'Lost'} today · ${mine.length} trade${mine.length > 1 ? 's' : ''}`, lines };
+  if (mine.length) return { kind: pnl >= 0 ? 'up' : 'down', title: `${pnl >= 0 ? 'Won' : 'Lost'} today · ${mine.length} trade${mine.length > 1 ? 's' : ''}`, lines, meters };
   const cells = info.indices.map((x) => cell(ruleOf(signals[x], info.ruleKey), undefined));
   const best = cells.find((c) => c.kind === 'go') ?? cells.find((c) => c.kind === 'near') ?? cells.find((c) => c.kind === 'wait') ?? cells[0];
-  if (closed) return { kind: 'none', title: 'No trade today', lines }; // owner 29-Oct-2026: after the close, no stale "Waiting"
-  const title = best.kind === 'go' ? 'GO · entering' : best.kind === 'near' ? 'Close · one condition away' : best.kind === 'none' ? 'No reading yet' : 'Waiting for its setup';
-  return { kind: best.kind, title, lines };
+  if (closed) return { kind: 'none', title: 'No trade today', lines, meters }; // owner 29-Oct-2026: after the close, no stale "Waiting"
+  const title = best.kind === 'go' ? 'GO · entering' : best.kind === 'near' ? 'One condition away' : best.kind === 'none' ? 'No reading yet' : 'Waiting for setup';
+  return { kind: best.kind, title, lines, meters };
 }
 
-/** Capital and since-start lines, the same on every card. */
-export function MoneyLines({ m }: { m: M }) {
-  const pct = returnPct(m);
+/** Whole rupees with a sign, coloured (cards: no paise, owner 31-Oct-2026 "less clutter"). */
+export function Rs({ v }: { v: number | null }) {
+  if (v == null) return <span className="num">–</span>;
+  const r = Math.round(v);
+  return <span className={`num ${r > 0 ? 'up' : r < 0 ? 'down' : ''}`}>{r > 0 ? '+' : r < 0 ? '−' : ''}₹{Math.abs(r).toLocaleString('en-IN')}</span>;
+}
+
+/** Checklist progress as dots (owner 31-Oct-2026: "graphical, not wordings"). */
+export function MeterRow({ m }: { m: Meter }) {
+  const all = m.total > 0 && m.met >= m.total;
   return (
-    <>
-      <span className="sg-line sg-cap">Capital {lakhs(m.capital)}{m.inUse > 0 ? ` · in use ${lakhs(m.inUse)}` : ' · none in use'}</span>
-      <span className="sg-line sg-cap">Since start <Money v={m.net} />{pct != null && m.net !== 0 ? <span className={m.net > 0 ? 'up' : 'down'}> ({pct > 0 ? '+' : ''}{pct.toFixed(2)}%)</span> : null}</span>
-    </>
+    <span className="sg-meter">
+      <span className="sg-meter-label">{m.label}</span>
+      <span className="sg-dots" aria-label={`${m.met} of ${m.total} met`}>
+        {Array.from({ length: m.total }, (_, i) => <i key={i} className={i < m.met ? (all ? 'on all' : 'on') : ''} />)}
+      </span>
+      <b className="sg-meter-n">{m.met}/{m.total}</b>
+    </span>
+  );
+}
+
+/** Card footer, the same on every card: capital with a "used" bar, and the P&L since start. */
+export function MoneyLines({ m, noCapital = false }: { m: M; noCapital?: boolean }) {
+  const pct = returnPct(m);
+  const used = m.capital ? Math.min(100, (m.inUse / m.capital) * 100) : 0;
+  return (
+    <span className="sg-foot">
+      <span className="sg-foot-cell">
+        <span className="sg-foot-label">{noCapital ? 'In use' : 'Capital'}</span>
+        <span className="sg-foot-val">{noCapital ? (m.inUse ? lakhs(m.inUse) : '₹0') : lakhs(m.capital)}</span>
+        {!noCapital && <span className="sg-bar" title={`${lakhs(m.inUse)} in use`}><i style={{ width: `${used}%` }} /></span>}
+        {!noCapital && <span className="sg-foot-label">{m.inUse ? `${lakhs(m.inUse)} in use` : 'free'}</span>}
+      </span>
+      <span className="sg-foot-cell">
+        <span className="sg-foot-label">Since start</span>
+        <span className={`sg-foot-val ${m.net > 0 ? 'up' : m.net < 0 ? 'down' : ''}`}><Rs v={m.net} /></span>
+        {pct != null && !noCapital && <span className={`sg-foot-label ${m.net > 0 ? 'up' : m.net < 0 ? 'down' : ''}`}>{pct > 0 ? '+' : ''}{pct.toFixed(2)}%</span>}
+        {noCapital && <span className="sg-foot-label">{m.trades} trade{m.trades === 1 ? '' : 's'}</span>}
+      </span>
+    </span>
   );
 }
 
@@ -130,19 +165,21 @@ export function RulesDetail({ title, rules, link }: { title: string; rules: read
   );
 }
 
-export function StrategyCards({ sections, rows, signals, selling, linkToPage = false, closed = false, history = [] }: {
+export function StrategyCards({ sections, rows, signals, selling, linkToPage = false, closed = false, history = [], onPick, extra }: {
   sections: SectionId[]; rows: TodayRow[]; signals: Record<string, SignalsState | null>; selling: SellingState | undefined; linkToPage?: boolean;
   closed?: boolean; // market closed: cards say how the day ended
   history?: JTrade[]; // closed trades since start (capital and P&L lines)
+  extra?: ReactNode; // Today: the Momentum and Manual sections, laid out with the others
+  onPick?: (who: string) => void; // strategy page: a click also shows that strategy on the chart (owner 31-Oct-2026)
 }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
-    <div className="sg-sections">
+    <div className={`sg-sections ${sections.length > 1 ? 'many' : 'one'}`}>
       {sections.map((sid) => {
         const list = STRATEGIES.filter((s) => s.section === sid);
         const shown = list.find((s) => s.who === open);
         return (
-          <div key={sid} className="sg-section">
+          <div key={sid} className={`sg-section ${shown ? 'has-detail' : ''}`} style={{ ['--n' as string]: list.length }}>
             {sections.length > 1 && (
               <div className="sg-section-head">
                 <Link to={sectionOf(sid).path} className="sg-section-name">{sectionOf(sid).name}</Link>
@@ -158,13 +195,18 @@ export function StrategyCards({ sections, rows, signals, selling, linkToPage = f
                 const isOpen = open === info.who;
                 return (
                   <CardShell key={info.who} kind={st.kind} open={isOpen} toPage={linkToPage ? sectionOf(info.section).path : undefined}
-                    onMore={() => setOpen(isOpen ? null : info.who)} more={info.ruleKey ? 'See checklist' : 'See rules'}>
-                    <span className="sg-card-top">
-                      <span className={`td-tag ${tagOf(info.who)}`}>{info.name}</span>
-                      {pnl != null && <Money v={pnl} />}
+                    onMore={() => { setOpen(isOpen ? null : info.who); onPick?.(info.who); }} more={info.ruleKey ? 'See checklist' : 'See rules'}>
+                    <span className="sg-card-main">
+                      <span className="sg-card-top">
+                        <span className={`td-tag ${tagOf(info.who)}`}>{info.name}</span>
+                        {pnl != null && <Rs v={pnl} />}
+                      </span>
+                      <span className={`sg-chip ${st.kind}`}>{st.title}</span>
                     </span>
-                    <span className={`sg-chip ${st.kind}`}>{st.title}</span>
-                    {st.lines.map((l) => <span key={l} className="sg-line">{l}</span>)}
+                    <span className="sg-card-mid">
+                      {st.meters?.map((m) => <MeterRow key={m.label} m={m} />)}
+                      {st.lines.map((l) => <span key={l} className="sg-line">{l}</span>)}
+                    </span>
                     <MoneyLines m={moneyOfStrategy(info, history, rows)} />
                   </CardShell>
                 );
@@ -174,6 +216,7 @@ export function StrategyCards({ sections, rows, signals, selling, linkToPage = f
           </div>
         );
       })}
+      {extra}
     </div>
   );
 }

@@ -1,0 +1,5 @@
+.fullchart { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 120px); min-height: 520px; }
+.fullchart-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.fullchart-bar .btn { margin-left: auto; }
+.fullchart-box { flex: 1; padding: 0; overflow: hidden; min-height: 460px; }
+.fullchart-off { flex: 1; display: grid; place-items: center; color: var(--text-2); }

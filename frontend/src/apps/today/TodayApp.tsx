@@ -13,7 +13,7 @@ import { useMomentum, useSinceStart } from '../strategies/hooks';
 import { MANUAL_RULES } from '../strategies/catalog';
 import { moneyOf } from '../strategies/logic/capital';
 import { MomentumCards } from '../strategies/MomentumParts';
-import { CardShell, RulesDetail, StrategyCards } from '../strategies/StrategyCards';
+import { CardShell, MoneyLines, Rs, RulesDetail, StrategyCards } from '../strategies/StrategyCards';
 import { capitalByBook, forIndex, summarize } from './logic/today';
 import { ClosedTable, Money, OpenTable, tagOf } from './TradeTables';
 import { useToday } from './useToday';
@@ -43,6 +43,7 @@ export default function TodayApp() {
   const momentum = useMomentum();
   const since = useSinceStart();
   const [manualOpen, setManualOpen] = useState(false);
+  const [momOpen, setMomOpen] = useState(false);
   const now = useNow();
   const [index, setIndex] = useState<Index>('both');
   const [phone, setPhone] = useState<boolean | null>(null); // phone alerts set up (Setup_Phone_Alerts.bat)
@@ -128,37 +129,40 @@ export default function TodayApp() {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">Strategies today</h3>
-          <span className="td-label">Click a card to open its page · click &quot;See checklist&quot; for its live checklist</span>
+          <span className="td-label">Tap a card to open its page</span>
         </div>
-        <StrategyCards sections={['optionBuy', 'optionSell', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage closed={data.marketClosed} history={since.closed} />
-        <div className="sg-section">
+        <StrategyCards sections={['optionBuy', 'optionSell', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage closed={data.marketClosed} history={since.closed}
+          extra={<>
+        <div className={`sg-section ${momOpen ? 'has-detail' : ''}`} style={{ ['--n' as string]: 2 }}>
           <div className="sg-section-head">
             <Link to="/strategies/momentum" className="sg-section-name">Momentum</Link>
-            <span className="td-label">Momentum 20 stock books, rebalanced monthly</span>
+            <span className="td-label">Monthly stock books</span>
           </div>
-          <MomentumCards s={momentum.data} failed={momentum.failed} compact />
+          <MomentumCards s={momentum.data} failed={momentum.failed} compact open={momOpen} onToggle={setMomOpen} history={since.closed} />
         </div>
-        <div className="sg-section">
-          <div className="sg-section-head"><Link to="/option-chain" className="sg-section-name">Manual trades</Link><span className="td-label">Your own practice trades from Buy / Sell</span></div>
+        <div className={`sg-section ${manualOpen ? 'has-detail' : ''}`} style={{ ['--n' as string]: 1 }}>
+          <div className="sg-section-head"><Link to="/option-chain" className="sg-section-name">Manual trades</Link><span className="td-label">Your practice trades</span></div>
           <div className="sg-cards">
             {(() => {
               const m = moneyOf(['Manual'], 0, since.closed, rows);
               const k = !manual?.trades ? 'none' : manual.status === 'in-trade' ? 'trade' : manual.pnl >= 0 ? 'up' : 'down';
               return (
                 <CardShell kind={k} open={manualOpen} toPage="/option-chain" onMore={() => setManualOpen(!manualOpen)} more="See rules">
-                  <span className="sg-card-top"><span className={`td-tag ${tagOf('Manual')}`}>Manual trades (practice)</span>{manual?.trades ? <Money v={manual.pnl} /> : null}</span>
-                  <span className={`sg-chip ${k}`}>
-                    {!manual?.trades ? 'No trade today' : manual.open ? `${manual.open} open` : `${manual.trades} trade${manual.trades > 1 ? 's' : ''} closed`}
+                  <span className="sg-card-main">
+                    <span className="sg-card-top"><span className={`td-tag ${tagOf('Manual')}`}>Manual trades</span>{manual?.trades ? <Rs v={manual.pnl} /> : null}</span>
+                    <span className={`sg-chip ${k}`}>
+                      {!manual?.trades ? 'No trade today' : manual.open ? `${manual.open} open` : `${manual.trades} trade${manual.trades > 1 ? 's' : ''} closed`}
+                    </span>
                   </span>
-                  {manual?.trades ? <span className="sg-line">{manual.won} won · {manual.lost} lost</span> : null}
-                  <span className="sg-line sg-cap">{m.inUse > 0 ? `In use ${lakhs(m.inUse)}` : 'No fixed capital · none in use'}</span>
-                  <span className="sg-line sg-cap">Since start <Money v={m.net} /> · {m.trades} trade{m.trades === 1 ? '' : 's'}</span>
+                  <span className="sg-card-mid">{manual?.trades ? <span className="sg-line"><span className="up">{manual.won} won</span> · <span className="down">{manual.lost} lost</span></span> : null}</span>
+                  <MoneyLines m={m} noCapital />
                 </CardShell>
               );
             })()}
           </div>
           {manualOpen && <RulesDetail title="Manual trades (practice)" rules={MANUAL_RULES} link={{ to: '/option-chain', text: 'Open Buy / Sell →' }} />}
         </div>
+          </>} />
       </section>
 
       {/* 3. open trades */}
@@ -180,9 +184,7 @@ export default function TodayApp() {
       </section>
 
       <p className="td-foot">
-        <span className="up">Green = profit</span> · <span className="down">red = loss</span>. Closed trades are after charges; open trades are
-        before charges. Stop and target show the option price and how far it is from the entry. For sold options the capital is an
-        estimated margin (a broker&apos;s exact figure can differ). Paper trading only: no real orders.
+        <span className="up">Green = profit</span> · <span className="down">red = loss</span> · closed trades after charges · paper only
       </p>
     </div>
   );

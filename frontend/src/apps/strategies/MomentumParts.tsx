@@ -7,7 +7,7 @@ import { bookStatus, bookedPnl, switchText, type MomBook, type MomHolding, type 
 import { Money } from '../today/TradeTables';
 import { MOMENTUM_RULES, momName } from './catalog';
 import { moneyOfMomentum } from './logic/capital';
-import { CardShell, MoneyLines, RulesDetail } from './StrategyCards';
+import { CardShell, MoneyLines, Rs, RulesDetail } from './StrategyCards';
 
 const pctText = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
 const rs = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -15,18 +15,32 @@ const short = (b: MomBook) => momName(b.key); // owner 30-Oct-2026: "With Nifty 
 const kind = (b: MomBook) => (b.holdings.length ? 'trade' : b.pnl > 0 ? 'up' : b.pnl < 0 ? 'down' : 'wait');
 
 /** The two book cards. compact (Today): a click on the card opens the Momentum page, "See rules" opens the rules. */
-export function MomentumCards({ s, failed, compact = false }: { s: MomState | undefined; failed: boolean; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
+export function MomentumCards({ s, failed, compact = false, open: openIn, onToggle }: {
+  s: MomState | undefined; failed: boolean; compact?: boolean; open?: boolean; onToggle?: (v: boolean) => void; history?: unknown;
+}) {
+  const [openOwn, setOpenOwn] = useState(false);
+  const open = openIn ?? openOwn;
+  const setOpen = (v: boolean) => { setOpenOwn(v); onToggle?.(v); };
   if (!s) return <p className="td-foot">{failed ? 'Momentum books are not running (backend off or not set up yet).' : 'Loading…'}</p>;
+  const sw = s.signal;
   return (
     <>
       <div className="sg-cards">
         {s.books.map((b) => (
           <CardShell key={b.key} kind={kind(b)} open={open} toPage={compact ? '/strategies/momentum' : undefined} onMore={() => setOpen(!open)} more="See rules">
-            <span className="sg-card-top"><span className="td-tag s4" title={b.name}>{short(b)}</span>{b.trades.length > 0 && <Money v={b.pnl} />}</span>
-            <span className={`sg-chip ${kind(b)}`}>{b.holdings.length ? `Holding ${b.holdings.length} stocks` : 'In cash'}</span>
-            <span className="sg-line">{b.holdings.length || b.trades.length ? <>Value {rs(b.value)} of {rs(b.capital)} ({pctText(b.pnlPct)})</> : <>{rs(b.capital)} ready, nothing bought yet</>}</span>
-            <span className="sg-line">{bookStatus(b, s)}</span>
+            <span className="sg-card-main">
+              <span className="sg-card-top"><span className="td-tag s4" title={b.name}>{short(b)}</span>{b.trades.length > 0 && <Rs v={b.pnl} />}</span>
+              <span className={`sg-chip ${kind(b)}`}>{b.holdings.length ? `Holding ${b.holdings.length} stocks` : 'In cash'}</span>
+            </span>
+            <span className="sg-card-mid">
+              {b.key === 'momSwitch' && sw && (
+                <span className={`sg-switch ${sw.regimeOk ? 'up' : 'down'}`} title={switchText(sw)}>
+                  {sw.regimeOk ? '▲ Nifty above 200-day avg · invest' : '▼ Nifty below 200-day avg · stay in cash'}
+                </span>
+              )}
+              {b.key === 'momAll' && <span className="sg-switch">Always holds the top 20</span>}
+              <span className="sg-line">{b.holdings.length ? `${b.holdings.length} stocks · cash ${rs(b.cash)}` : bookStatus(b, s)}</span>
+            </span>
             <MoneyLines m={moneyOfMomentum(b.key, s)} />
           </CardShell>
         ))}
@@ -60,7 +74,7 @@ function BookDetail({ b }: { b: MomBook }) {
     <details className="card sg-fold">
       <summary>
         <h3 className="td-title">{short(b)} · {b.holdings.length} stocks</h3>
-        <span className="td-label">Cash {rs(b.cash)} · booked <span className={toneOf(bookedPnl(b))}>{signedRupees(bookedPnl(b))}</span> · {sells.length} sold so far · click to open</span>
+        <span className="td-label">Cash {rs(b.cash)} · booked <span className={toneOf(bookedPnl(b))}>{signedRupees(bookedPnl(b))}</span> · {sells.length} sold</span>
       </summary>
       {!b.holdings.length ? <EmptyState>No stocks held right now.</EmptyState> : (
         <>
@@ -112,16 +126,7 @@ export function MomentumDetail({ s, failed }: { s: MomState | undefined; failed:
   if (!s) return <section className="card"><EmptyState>{failed ? 'Momentum books are not running (backend off or not set up yet).' : 'Loading…'}</EmptyState></section>;
   return (
     <>
-      <section className="card">
-        <div className="card-head">
-          <h3 className="td-title">The market switch</h3>
-          <span className="td-label">Next month-end check {s.nextCheck}{s.busy ? ' · updating…' : ''}</span>
-        </div>
-        <p className="sg-how">{switchText(s.signal)}. <b>With Nifty switch</b> holds stocks only while Nifty is above its 200-day average;{' '}
-          <b>Without switch</b> always holds the top 20.</p>
-        {s.error && <p className="td-foot down">{s.error}</p>}
-        {s.signal && <p className="sg-how"><b>Top 20 at the last check:</b> {s.signal.top.join(', ')}</p>}
-      </section>
+      {s.error && <p className="td-foot down">{s.error}</p>}
       {s.books.map((b) => <BookDetail key={b.key} b={b} />)}
     </>
   );

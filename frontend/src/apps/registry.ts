@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live' | 'money';
+export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live';
 
 /** Sidebar sections, in display order. A section without a label has no header (always open).
  * Owner 27-Oct-2026 ("very confusing layout"): the pages used every day on top, the market data tools folded away
@@ -12,7 +12,6 @@ export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[
   { id: 'tools', label: 'Trade and review' },
   { id: 'live', label: 'Live market data', closedByDefault: true },
   { id: 'manual', label: 'Paste tools', closedByDefault: true },
-  { id: 'money', label: 'My capital' }, // owner 30-Oct-2026: at the bottom, under Paste tools
 ];
 
 export interface AppEntry {
@@ -39,6 +38,16 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./today/TodayApp')),
   },
   {
+    // owner 30-Oct-2026: every strategy's capital, net P&L since start, brokerage and taxes, on one page;
+    // 31-Oct: right under Today (at the bottom it could not be folded and got lost)
+    id: 'capital',
+    group: 'home',
+    name: 'Total Capital & P&L',
+    path: '/capital',
+    hint: 'Your paper money: how much each strategy has and has made',
+    icon: '₹',
+    component: lazy(() => import('./capital/CapitalApp')),
+  },  {
     id: 'option-buy',
     group: 'strategies',
     name: 'Option Buy',
@@ -95,6 +104,16 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./paper-journal/PaperJournalApp')),
   },
   {
+    // owner 31-Oct-2026: TradingView's own full chart with drawing tools and indicators (free widget)
+    id: 'full-chart',
+    group: 'tools',
+    name: 'Full Chart',
+    path: '/full-chart',
+    hint: "TradingView's chart with drawing tools and indicators",
+    icon: '◰',
+    component: lazy(() => import('./full-chart/FullChartApp')),
+  },
+  {
     id: 'order-flow',
     group: 'tools',
     name: 'Order Flow',
@@ -112,16 +131,7 @@ export const apps: AppEntry[] = [
     icon: '↺',
     component: lazy(() => import('./backtest/BacktestApp')),
   },
-  {
-    // owner 30-Oct-2026: every strategy's capital, net P&L since start, brokerage and taxes, on one page
-    id: 'capital',
-    group: 'money',
-    name: 'Total Capital & P&L',
-    path: '/capital',
-    hint: 'How much each strategy has, what it uses and what it has made since paper trading started',
-    icon: '₹',
-    component: lazy(() => import('./capital/CapitalApp')),
-  },
+
   {
     id: 'option-strategy',
     group: 'manual',

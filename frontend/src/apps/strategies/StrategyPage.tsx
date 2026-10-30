@@ -56,7 +56,7 @@ export function IndexCard({ symbol, c, vix }: { symbol: string; c: ContextRow | 
 export function OiBlock({ symbol, sig }: { symbol: string; sig: SignalsState | null }) {
   return (
     <details className="card sg-fold">
-      <summary><h3 className="td-title">{INDEX_NAME[symbol]} · OI and order flow</h3><span className="td-label">click to open or close</span></summary>
+      <summary><h3 className="td-title">{INDEX_NAME[symbol]} · OI and order flow</h3></summary>
       <div className="db-context-index">
         <TrendingOiCard rows={sig?.trendingOi ?? []} />
         <div className="db-two">
@@ -109,17 +109,14 @@ export default function StrategyPage({ section }: { section: SectionId }) {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">{info.name} at a glance</h3>
-          <span className="td-label">Paper trading · each strategy has its own capital · <Link to="/capital">All strategies: Total Capital &amp; P&amp;L →</Link></span>
+          <Link className="td-label" to="/capital">All strategies →</Link>
         </div>
         <MoneyStrip m={money} title={info.name} loaded={since.loaded}
-          today={{ pnl: sum.total, sub: <>{sum.open} live · {sum.closed} closed · <span className="up">{sum.won} won</span> · <span className="down">{sum.lost} lost</span></> }} />
-        <div className="sg-strip">
-          {indices.map((x, i) => <IndexCard key={x} symbol={x} c={data.context[x as 'NIFTY' | 'BANKNIFTY']} vix={i === indices.length - 1 ? vix : undefined} />)}
-          <div className="sg-strip-end">
-            {auto && <Link to="/today" className={`pill ${auto.auto ? 'up' : 'neutral'}`} title="Turn it on or off on Today">Auto paper trading {auto.auto ? 'ON' : 'OFF'}</Link>}
-            {data.marketOpen && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
-            {isSell && <span className="td-label">Nifty options only · margin in use is an estimate</span>}
-          </div>
+          today={{ pnl: sum.total, sub: <>{sum.open} live · <span className="up">{sum.won} won</span> · <span className="down">{sum.lost} lost</span></> }}
+          extra={indices.map((x, i) => <IndexCard key={x} symbol={x} c={data.context[x as 'NIFTY' | 'BANKNIFTY']} vix={i === indices.length - 1 ? vix : undefined} />)} />
+        <div className="sg-strip-end sg-pills">
+          {auto && <Link to="/today" className={`pill ${auto.auto ? 'up' : 'neutral'}`} title="Turn it on or off on Today">Auto paper trading {auto.auto ? 'ON' : 'OFF'}</Link>}
+          {data.marketOpen && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
         </div>
       </section>
 
@@ -131,9 +128,10 @@ export default function StrategyPage({ section }: { section: SectionId }) {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">{info.name} strategies</h3>
-          <span className="td-label">{list.length} on paper · click a card for its {isSell ? 'rules' : 'live checklist'}</span>
+          <span className="td-label">Tap a card for its {isSell ? "rules" : "checklist"}</span>
         </div>
-        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} history={since.closed} />
+        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} history={since.closed}
+          onPick={(who) => { if (ruled.some((r) => r.who === who)) setPick(who); }} />
       </section>
 
       {/* 3. chart */}
@@ -151,7 +149,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
       <div className={chartIndices.length > 1 ? 'db-split' : ''}>
         {chartIndices.map((x) => (
           <ChartPanel key={x} d={dash[x]} sig={signals[x]} strategy={strategy} indicators={toggles.indicators}
-            note={isSell ? 'Nifty price. The selling rules use Nifty options; their sold strikes are in the tables below.' : undefined} />
+            note={isSell ? 'Nifty price. Sold strikes are in the tables below.' : undefined} />
         ))}
       </div>
 

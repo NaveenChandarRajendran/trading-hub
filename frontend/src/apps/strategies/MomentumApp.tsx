@@ -17,14 +17,14 @@ export default function MomentumApp() {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">Momentum at a glance</h3>
-          <span className="td-label">Paper trading · two books of ₹5 lakh each · <Link to="/capital">All strategies: Total Capital &amp; P&amp;L →</Link></span>
+          <Link className="td-label" to="/capital">All strategies →</Link>
         </div>
-        <MoneyStrip m={money} title="Momentum" loaded={m.data != null} brokerageNote="none on stock delivery" />
+        <MoneyStrip m={money} title="Momentum" loaded={m.data != null} />
       </section>
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">Momentum strategies</h3>
-          <span className="td-label">Each month-end: rank NSE stocks by momentum, hold the top 20 for a month · click a card for its rules</span>
+          <span className="td-label">Top 20 NSE stocks, picked every month-end{m.data ? ` · next ${m.data.nextCheck}` : ""}</span>
         </div>
         <MomentumCards s={m.data} failed={m.failed} />
       </section>

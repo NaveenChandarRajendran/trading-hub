@@ -102,20 +102,20 @@ export interface ChartPreset { interval: number | null; indicators: IndicatorTog
   warm?: number } // earlier sessions the chart loads so its indicators equal the rule's (default 2 = 4 sessions, SuperTrend Breakout) // the rule's own RSI levels (default: Trend zones 30-45 / 55-70)
 const OFF: IndicatorToggles = { rsi: false, ema: false, volume: false, supertrend: false, bollinger: false, vwap: false, delta: false };
 export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
-  all: { interval: null, indicators: DEFAULT_INDICATORS, emaPeriod: 20, bb: { period: 20, mult: 2 }, note: 'Just the price. Pick a strategy above to add its indicators, OI levels and trades.' },
+  all: { interval: null, indicators: DEFAULT_INDICATORS, emaPeriod: 20, bb: { period: 20, mult: 2 }, note: 'Just the price. Pick a strategy for its lines.' },
   fourPillar: { interval: 5, indicators: { ...OFF, ema: true, vwap: true, rsi: true, delta: true }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'EMA 20, VWAP, RSI 14, pivot and OI levels, cumulative delta. India VIX and PCR are on the strategy box.' },
   superTrend: { interval: 5, indicators: { ...OFF, supertrend: true, bollinger: true, rsi: true }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'SuperTrend (10, 2), Bollinger (20, 2), RSI 14, pivot and OI levels.' },
   dharaniV2: { interval: 3, indicators: { ...OFF, supertrend: true, bollinger: true, ema: true, rsi: true }, emaPeriod: 200, bb: { period: 20, mult: 2.5 }, // the call's Bollinger (owner 30-Oct-2026: was 15, 3)
     rsiGuides: [{ price: 70, side: 'call', title: 'Call: above 70' }], // the put checks RSI 20 < 30 on the FUTURES, not this index RSI 14
-    note: 'Index chart for the CALL: SuperTrend (10, 2), Bollinger (20, 2.5), RSI 14 above 70, Pivot R1 (solid). EMA 200 is for the put, which is checked on the futures candles (see the checklist). Williams %R and CCI are on the strategy box.' },
+    note: 'Call: SuperTrend, Bollinger (20, 2.5), RSI above 70, Pivot R1. Put checks run on futures (see checklist).' },
   tradingHub: { interval: 5, indicators: { ...OFF, supertrend: true, ema: true, vwap: true, bollinger: true, rsi: true, delta: true }, emaPeriod: 20,
     bb: { period: 20, mult: 2 }, note: 'SuperTrend, VWAP, EMA 20, Bollinger (20, 2), RSI 14, pivot. Trending OI is on the strategy box.' },
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 }, warm: 10, // the rule's 12 sessions
-    note: 'EMA 200 and VWAP (BankNifty only). ATR and the 10-day average range are on the strategy box.' },
+    note: 'EMA 200 and VWAP. Bank Nifty only.' },
   orbPullback: { interval: 5, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
-    note: 'The 15-minute box (09:15-09:29 high / low) is the two solid lines; the break and the pullback are on the strategy box.' },
+    note: 'Solid lines = the 9:15-9:29 box high and low.' },
   orbPullback5: { interval: 1, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'The 5-minute box (09:15-09:19 high / low) is the two solid lines; the break and the pullback are on the strategy box.' },
 };
