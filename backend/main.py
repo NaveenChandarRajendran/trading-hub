@@ -385,6 +385,8 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
     sources = sig_service.MarketSources(tracker, candles, get_expiries, lot_size, trending_oi_body, trader)
     svc = sig_service.SignalService(cfg, sources, trader, orderflow=flow, paper=paper)
     svc.phone, svc.rows_today = phone, rows_today
+    if paper:
+        paper.fill_listeners.append(notify.manual_fill_listener(phone, paper, trader, rows_today))
     svc_ref["svc"] = svc
     svc.selling = None
     if paper and cfg.get("selling", {}).get("enabled", False):  # Rs 3 lakh option SELLING paper book (owner 28-Oct-2026)

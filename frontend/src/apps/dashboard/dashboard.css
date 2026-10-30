@@ -111,12 +111,9 @@
 .db .db-flow-big { margin: 0; font-size: var(--fs-xl); font-weight: 600; }
 .db .db-flow-big.up { color: var(--up); }
 .db .db-flow-big.down { color: var(--down); }
-.db .db-flow-bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--sp-2); height: 84px; align-items: end; }
-.db .db-flow-bar { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 2px; }
-.db .db-flow-fill { display: block; min-height: 2px; border-radius: var(--r-sm); }
-.db .db-flow-fill.up { background: var(--up); }
-.db .db-flow-fill.down { background: var(--down); }
-.db .db-flow-time { font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
+.db .db-flow-heads { display: flex; flex-wrap: wrap; gap: var(--sp-4); }
+.db .db-flow-heads > span { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.db .db-flow td:first-child { white-space: nowrap; }
 .db .db-rule-note b.up { color: var(--up); }
 .db .db-rule-note b.down { color: var(--down); }
 .db .db-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }

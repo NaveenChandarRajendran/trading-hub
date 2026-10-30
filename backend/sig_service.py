@@ -637,7 +637,7 @@ class SignalService:
         return [p for p in rows if p["open_qty"] > 0 and p.get("symbol") == symbol and p["security_id"] not in managed]
 
     def flow_summary(self, symbol, side=None):
-        """The main page's 'Order flow, last 30 min' card: estimated delta of the last 6 completed 5-minute candles."""
+        """The 'Order flow' card: estimated delta per 5-minute candle (table like Trending OI) and the last 30 min total."""
         if not self.orderflow:
             return None
         fut, bars = self.orderflow.series(symbol, 5)
@@ -659,6 +659,10 @@ class SignalService:
         return {
             "future": fut["name"], "cumulative": cum, "change30": sum(b["delta"] for b in last6),
             "last6": [{"time": datetime.fromtimestamp(b["time"], IST).strftime("%H:%M"), "delta": b["delta"]} for b in last6],
+            # Trending OI-style table: the last 6 candles newest first, the forming one marked live
+            "rows": [{"time": datetime.fromtimestamp(b["time"], IST).strftime("%H:%M"), "ltp": b["close"], "buy": b["buy"],
+                      "sell": b["sell"], "delta": b["delta"], "cumulative": b["cumulative"], "live": b["time"] + 300 > now}
+                     for b in reversed(bars[-6:])],
             "negative": neg, "positive": pos, "side": side, "agrees": agrees,
             "dext": {"typed": len(pairs), "matched": sum(1 for d, v in pairs if dext_match(d, v))},
             "usedInRules": bool(self.cfg.get("orderFlow", {}).get("useEstimatedDelta")),

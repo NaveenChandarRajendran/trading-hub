@@ -190,12 +190,16 @@ export interface SignalsState {
   orderFlow: FlowSummary | null;
 }
 
-/** "Order flow, last 30 min" card: estimated delta of the last 6 completed 5-minute candles. */
+export interface FlowRow5 { time: string; ltp: number; buy: number; sell: number; delta: number; cumulative: number; live: boolean }
+
+/** "Order flow" card: estimated delta per 5-minute candle and the last 30 min total (6 completed candles). */
 export interface FlowSummary {
   future: string;
   cumulative: number;
   change30: number;
   last6: { time: string; delta: number }[];
+  /** Last 6 candles, newest first, the forming one marked live (Trending OI-style table). Absent from older backends. */
+  rows?: FlowRow5[];
   negative: number;
   positive: number;
   side: 'CE' | 'PE' | null;

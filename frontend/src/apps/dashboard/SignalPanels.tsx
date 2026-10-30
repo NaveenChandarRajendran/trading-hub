@@ -201,31 +201,55 @@ export function SrCard({ sr, components }: { sr: SrView | null; components: stri
 // ---------------------------------------------------------------- order flow card (next to the rule cards)
 export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined; symbol: string }) {
   const kfmt = (v: number) => (Math.abs(v) >= 1000 ? `${signed(1)(v / 1000)}K` : signed(0)(v));
-  const max = Math.max(1, ...(f?.last6 ?? []).map((b) => Math.abs(b.delta)));
+  const kabs = (v: number) => (v >= 1000 ? `${inr(1)(v / 1000)}K` : n0(v));
   const side = f?.side === 'PE' ? 'put' : f?.side === 'CE' ? 'call' : '';
+  const rows = f?.rows ?? [];
+  const last = f?.last6[f.last6.length - 1]; // latest completed 5-min candle
   return (
     <section className="card db-flow">
       <div className="card-head">
-        <h3 className="card-title">Order flow · last 30 min (est.)</h3>
+        <h3 className="card-title">Order flow · last 5 rows (5 min, est.)</h3>
         {f?.agrees != null && <Pill tone={f.agrees ? 'up' : 'neutral'}>{f.agrees ? `Delta agrees (${side})` : `Delta does not agree (${side})`}</Pill>}
       </div>
       {!f ? <p className="db-muted">No order flow yet. It builds from the live feed of the {NAMES[symbol]} future.</p> : (
         <>
-          <p className="db-rule-note">Cumulative delta (estimated, {f.future})</p>
-          <p className={`db-flow-big num ${f.cumulative >= 0 ? 'up' : 'down'}`}>{kfmt(f.cumulative)} {f.change30 >= 0 ? '▲' : '▼'}</p>
-          <div className="db-flow-bars" role="img" aria-label="Delta of the last 6 five-minute candles">
-            {f.last6.map((b) => (
-              <span key={b.time} className="db-flow-bar">
-                <span className={`db-flow-fill ${b.delta >= 0 ? 'up' : 'down'}`} style={{ height: `${Math.round((Math.abs(b.delta) / max) * 100)}%` }} />
-                <span className="db-flow-time">{b.time}</span>
-              </span>
-            ))}
+          <div className="db-flow-heads">
+            <span>
+              <span className="db-muted">Last 5 min{last ? ` (${last.time})` : ''}</span>
+              <b className={`db-flow-big num ${tone(last?.delta ?? 0)}`}>{last ? kfmt(last.delta) : '—'}</b>
+              {last && <Pill tone={last.delta > 0 ? 'up' : last.delta < 0 ? 'down' : 'neutral'}>{last.delta >= 0 ? 'Buyers' : 'Sellers'}</Pill>}
+            </span>
+            <span>
+              <span className="db-muted">Cumulative (day)</span>
+              <b className={`num ${tone(f.cumulative)}`}>{kfmt(f.cumulative)}</b>
+              <span className="db-muted">Last 30 min <b className={`num ${tone(f.change30)}`}>{kfmt(f.change30)}</b></span>
+            </span>
           </div>
+          {rows.length > 0 && (
+            <div className="db-scroll">
+              <table className="t">
+                <thead><tr><th>Time</th><th>Future</th><th>Buy vol</th><th>Sell vol</th><th>Delta</th><th>Cumulative</th><th>Sentiment</th></tr></thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.time} className={r.live ? 'hl' : ''}>
+                      <td>{r.time}{r.live && ' (live)'}</td>
+                      <td className="num">{n2(r.ltp)}</td>
+                      <td className="num up">{kabs(r.buy)}</td>
+                      <td className="num down">{kabs(r.sell)}</td>
+                      <td className={`num ${tone(r.delta)}`}>{kfmt(r.delta)}</td>
+                      <td className={`num ${tone(r.cumulative)}`}>{kfmt(r.cumulative)}</td>
+                      <td><Pill tone={r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : 'neutral'}>{r.delta >= 0 ? 'Buyers' : 'Sellers'}</Pill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="db-rule-note">
             Last 6 candles: <b className="down">{f.negative} of 6 negative</b> · <b className="up">{f.positive} positive</b>
             {f.dext.typed > 0 && <> · Dext match {f.dext.matched} of {f.dext.typed}</>}
           </p>
-          <p className="db-rule-note">{f.usedInRules ? 'The rules use this estimate.' : 'Not used by the rules yet (delta tick: not checked).'}</p>
+          <p className="db-rule-note">{f.future} · estimate from Dhan's price feed (Dext is the true figure). {f.usedInRules ? 'The rules use this estimate.' : 'Not used by the rules.'}</p>
         </>
       )}
       <Link className="btn" to="/order-flow">Open full order flow page</Link>

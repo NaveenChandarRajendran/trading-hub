@@ -74,6 +74,7 @@ class PaperService:
         self._watch = {}  # group -> {(segment, id)} kept subscribed: "auto" (autopaper.py), "orderflow" (index futures)
         self.orderflow = None  # orderflow.OrderFlowService: estimated delta from the index futures' Full packets
         self.books = []  # strategy_books.StrategyBook: one paper account per auto strategy, fed the same ticks
+        self.fill_listeners = []  # called with every fill of this account (main.py: phone message for manual trades)
         self.tick_listeners = []  # other paper books fed every option Full packet (sell_desk.SellDesk)
         self._feed_status = None
         self._timer = None
@@ -215,6 +216,9 @@ class PaperService:
         self._flush()
         for ev in events:
             self._broadcast({"type": ev.kind, "data": self._with_instrument(ev.data)})
+            if ev.kind == "trade":
+                for f in self.fill_listeners:
+                    f(self._with_instrument(ev.data))
         self._broadcast({"type": "funds", "data": self.funds()})
         self._sync_feed()
 

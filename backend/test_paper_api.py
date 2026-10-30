@@ -350,3 +350,38 @@ def test_strategy_books_get_the_same_ticks_and_stay_separate(env):
     book.place_order(CE, "SELL", 1, "SL-M", trigger_price=90.0)
     svc.on_packet(full(CE, 89.0, 88.95, 89.05))
     assert book.open_qty(CE) == 0
+
+
+# ---------- phone messages for manual trades (owner 30-Oct-2026: exit came, entry did not) ----------
+def test_manual_buy_and_sell_send_entry_and_exit_to_the_phone(env):
+    import notify
+    from journal import manual_round_trips
+    c, svc, clock, feed, tmp = env
+    sent = []
+    phone = type("P", (), {"send": lambda self, t: sent.append(t)})()
+    rows = lambda: manual_round_trips(svc.trades(clock().date().isoformat()), clock().date().isoformat())  # noqa: E731
+    svc.fill_listeners.append(notify.manual_fill_listener(phone, svc, None, rows))
+    svc.on_packet(full(CE, 100, 99.9, 100.0))
+    assert buy(c).status_code == 200
+    wait_until(lambda: len(sent) == 1)
+    assert sent[0] == "🔵 ENTRY · Manual\nNIFTY 27 OCT 25100 CALL · 65 qty @ 100.00 · 09:20"
+    clock.now = at("09:40")
+    svc.on_packet(full(CE, 110, 110.0, 110.1))
+    assert sell(c).status_code == 200
+    wait_until(lambda: len(sent) == 2)
+    assert sent[1].startswith("🟢 EXIT · Manual · +₹") and "100.00 → 110.00 · Manual · 09:40" in sent[1]
+
+
+def test_manual_sell_watched_by_a_stop_and_target_sends_no_second_exit(env):
+    import notify
+    c, svc, clock, feed, tmp = env
+    sent = []
+    phone = type("P", (), {"send": lambda self, t: sent.append(t)})()
+    trader = type("T", (), {"state": {"trades": [{"account": "manual", "instrument": {"id": CE}, "status": "open"}]}})()
+    svc.fill_listeners.append(notify.manual_fill_listener(phone, svc, trader, lambda: []))
+    svc.on_packet(full(CE, 100, 99.9, 100.0))
+    buy(c)
+    svc.on_packet(full(CE, 90, 90.0, 90.1))
+    sell(c)
+    wait_until(lambda: svc.open_qty(CE) == 0)
+    assert len(sent) == 1 and sent[0].startswith("🔵 ENTRY")

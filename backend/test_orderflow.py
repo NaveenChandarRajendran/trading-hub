@@ -88,3 +88,19 @@ def test_an_earlier_day_is_recomputed_from_its_raw_log(tmp_path):
     svc = OrderFlowService(store, lambda s: None, clock=lambda: at("12:00"))
     f, rows = svc.series("NIFTY", 1, at("10:00").date().replace(day=22))
     assert f["securityId"] == 7 and [(r["buy"], r["sell"]) for r in rows] == [(300, 0)]  # not the saved 999 sold
+
+
+def test_main_page_card_rows_newest_first_with_the_forming_candle_live():
+    """Owner 30-Oct-2026: the card reads like Trending OI, one row per 5-min candle."""
+    from types import SimpleNamespace
+    from sig_service import SignalService
+    t0 = at("10:00").timestamp()
+    bars = [{"time": t0 + 300 * k, "buy": 100 + k, "sell": 50, "delta": 50 + k, "cumulative": 60 * (k + 1), "close": 23000 + k}
+            for k in range(8)]  # 10:00 .. 10:35, the 10:35 candle still forming at 10:37
+    of = SimpleNamespace(series=lambda s, i: ({"name": "NIFTY NOV FUT"}, bars), typed=lambda s, i: {})
+    me = SimpleNamespace(orderflow=of, clock=lambda: at("10:37"), cfg={})
+    f = SignalService.flow_summary(me, "NIFTY")
+    assert [r["time"] for r in f["rows"]] == ["10:35", "10:30", "10:25", "10:20", "10:15", "10:10"]
+    assert f["rows"][0]["live"] and not any(r["live"] for r in f["rows"][1:])
+    assert f["rows"][1] == {"time": "10:30", "ltp": 23006, "buy": 106, "sell": 50, "delta": 56, "cumulative": 420, "live": False}
+    assert [b["time"] for b in f["last6"]][-1] == "10:30" and f["change30"] == sum(50 + k for k in range(1, 7))

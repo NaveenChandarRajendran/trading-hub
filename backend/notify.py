@@ -62,6 +62,18 @@ def exit_text(t, day_pnl=None):
     return line
 
 
+def manual_entry_text(fill):
+    """A BUY filled on the owner's own Buy / Sell screen (owner 30-Oct-2026: exits came to the phone, entries did not)."""
+    return (f"🔵 ENTRY · Manual\n{fill.get('name') or fill['security_id']} · {fill['qty']} qty @ {fill['price']:.2f} "
+            f"· {str(fill.get('time') or '')[11:16]}")
+
+
+def bracket_text(t):
+    """Stop + target attached to a manual position."""
+    return (f"🎯 STOP + TARGET · Manual\n{t['instrument']['name']} · {t['qty']} qty · bought {t['entryPrice']:.2f} "
+            f"· stop {t['stop']:.2f} · target {t['target']:.2f}")
+
+
 def market_line(market):
     """market: [(name, spot, previous close)] -> "Market: Nifty 22,718 (−0.4%) · Bank Nifty 54,347 (−0.3%)"."""
     parts = []
@@ -310,6 +322,8 @@ class Notifier:
         try:
             if event == "entry":
                 self.send(entry_text(trade))
+            elif event == "bracket":
+                self.send(bracket_text(trade))
             elif event.startswith("exit") and trade.get("status") == "closed":
                 self.send(exit_text(trade, day_pnl))
         except Exception:
@@ -326,6 +340,28 @@ def day_rows(journal, paper, day):
         except Exception:
             log.exception("phone alerts: manual trades %s", day)
     return rows
+
+
+def manual_fill_listener(phone, paper, trader, rows_today):
+    """Phone messages for the owner's own Buy / Sell trades: entry on every BUY fill; exit when a SELL closes a
+    position no stop + target is watching (those send their own exit message through the auto trader)."""
+    def watched(sid):
+        return trader is not None and any(t.get("account") == "manual" and t["instrument"]["id"] == sid
+                                          for t in trader.state["trades"])
+
+    def on_fill(fill):
+        try:
+            if fill["side"] == "BUY":
+                phone.send(manual_entry_text(fill))
+            elif not watched(fill["security_id"]) and paper.open_qty(fill["security_id"]) <= 0:
+                rows = rows_today()
+                trip = next((r for r in reversed(rows) if r.get("source") == "manual" and r["status"] == "closed"
+                             and r["id"].split("-")[-2] == str(fill["security_id"])), None)
+                if trip:
+                    phone.send(exit_text({**trip, "instrument": {"name": trip["instrument"]}}, day_pnl(rows)))
+        except Exception:
+            log.exception("phone alert for a manual fill failed")
+    return on_fill
 
 
 def day_pnl(rows):

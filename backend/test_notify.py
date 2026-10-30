@@ -211,3 +211,9 @@ def test_phone_lists_live_rules_by_section_and_every_strangle_leg():
     ]
     assert "Trend" not in text
     assert notify.open_text("29 Oct", groups, {"Rebound Call"}).split("\n")[1] == "Watching: Power Breakout, 2-month Strangle (sell)"
+
+
+def test_stop_and_target_on_a_manual_trade_goes_to_the_phone(tmp_path):
+    n = notify.Notifier(keys_file=keys(tmp_path), post=lambda u, b: Resp(), start=False)
+    n.on_order({**TRADE, "rule": "Manual"}, "bracket")
+    assert n.q.get() == "🎯 STOP + TARGET · Manual\nNIFTY 27 OCT 22800 CALL · 65 qty · bought 95.30 · stop 85.77 · target 114.36"
