@@ -183,7 +183,7 @@ def test_market_block_reads_like_the_dashboard():
          "toi": [-36.03, -48.24, -59.32, -58.39, -55.0], "support": 22500.0, "resistance": 22700.0, "flow": -159640}
     assert notify.oi_block(d) == [
         "📊 Nifty 22,635 (−0.5%)",
-        "• OI (Dhan): Bearish · OI change (Sensibull): Bullish → mixed",
+        "• OI build-up (puts = support): Dhan Bearish · Sensibull Bullish → mixed",
         "• Trending OI last 5: -36 -48 -59 -58 -55 → bearish, getting weaker",
         "• OI support 22,500 · resistance 22,700",
         "• Order flow: −1.60 L (sellers ahead)",

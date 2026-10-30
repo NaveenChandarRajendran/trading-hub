@@ -490,7 +490,8 @@ class SignalService:
                     _f, mins = self.orderflow.series(sym, 1)
                     flow = mins[-1]["cumulative"] if mins else None
                 out.append({"name": name, "spot": st.get("spot"), "prev": (st.get("prev") or {}).get("close"),
-                            "oi": (st.get("oi") or {}).get("verdict"), "sb": (st.get("sb") or {}).get("verdict"),
+                            "oi": ((st.get("oi") or {}).get("buildUp") or {}).get("verdict"),
+                            "sb": ((st.get("sb") or {}).get("buildUp") or {}).get("verdict"),
                             "toi": [r.get("strengthPct") for r in (st.get("toi") or [])[:5]],
                             "support": (lv.get("S") or [{}])[0].get("strike"), "resistance": (lv.get("R") or [{}])[0].get("strike"),
                             "flow": flow})

@@ -103,3 +103,13 @@ def test_oi_change_lean_and_atm_strike():
     from sig_service import _spot_vs_atm
     assert _spot_vs_atm(v) == 11.35
     assert _spot_vs_atm(None) is None
+
+
+def test_build_up_reads_put_heavy_oi_as_support():
+    """Owner 30-Oct-2026: puts 63 % of OI + change and more puts added today = Bullish (support), not Bearish."""
+    from sig_oi import build_up
+    assert build_up(6177613, 3617530, 1620843, 790150)["verdict"] == "Bullish"
+    assert build_up(3617530, 6177613, 790150, 1620843)["verdict"] == "Bearish"
+    assert build_up(6177613, 3617530, 500, 900)["verdict"] == "Neutral"  # more calls added today: mixed
+    assert build_up(5100, 4900)["verdict"] == "Neutral"  # 51 % puts: inside the band
+    assert build_up(0, 0) is None

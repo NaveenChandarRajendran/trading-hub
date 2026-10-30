@@ -55,6 +55,28 @@ def _rows(body):
     return sorted((r for r in body.get("rows", []) if _num(r.get("strike")) > 0), key=lambda r: _num(r["strike"]))
 
 
+# ------------------------------------------------------------------ OI build-up (display only)
+BUILD_LEAN = 0.10  # puts (or calls) at least 55 % of the total
+
+
+def build_up(put, call, put_chg=None, call_chg=None):
+    """Owner 30-Oct-2026: put-heavy OI = put writers = support = Bullish; call-heavy = resistance = Bearish. Display and
+    phone only: no rule reads this (the rules keep their own verdicts). put / call: OI + change (Dhan) or the change since
+    09:15 (Sensibull); put_chg / call_chg: today's change, which must point the same way (else Neutral, "mixed")."""
+    den = abs(put) + abs(call)
+    if not den:
+        return None
+    lean = (put - call) / den
+    added = None if put_chg is None or call_chg is None else (put_chg > call_chg) - (put_chg < call_chg)
+    if lean >= BUILD_LEAN and added in (None, 1):
+        verdict = "Bullish"
+    elif lean <= -BUILD_LEAN and added in (None, -1):
+        verdict = "Bearish"
+    else:
+        verdict = "Neutral"
+    return {"verdict": verdict, "putShare": round((lean + 1) * 50, 1), "putChg": put_chg, "callChg": call_chg}
+
+
 # ------------------------------------------------------------------ OI & OI Change
 def oi_change_view(body):
     meta = body["meta"]
@@ -92,6 +114,7 @@ def oi_change_view(body):
         "windows": windows, "unit": "contracts",
         # owner 26-Oct-2026: the "lean" next to the verdict (share of puts in OI + change) and where spot sits vs the ATM strike
         "atm": rows[atm]["strike"], "putShare": _div(tot("putNet") * 100, tot("putNet") + tot("callNet")),
+        "buildUp": build_up(tot("putNet"), tot("callNet"), tot("putChg"), tot("callChg")),
     }
 
 
@@ -143,6 +166,7 @@ def sensibull_view(body, range_=SB_RANGE, picked=SB_DEFAULT):
         "average": anticipated, "points": points, "spot": spot,
         "support": anticipated - interval, "resistance": anticipated + interval,
         "pcr": _mean(w["pcr"] for w in chosen), "used": used, "unit": "lakh units",
+        "buildUp": build_up(max(chosen, key=lambda w: w["n"])["put"], max(chosen, key=lambda w: w["n"])["call"]),
         "since": meta.get("openOiAt") or "previous close",  # what the change in OI counts from
     }
 

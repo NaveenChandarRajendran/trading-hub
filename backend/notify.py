@@ -242,7 +242,7 @@ def oi_block(d):
     oi, sb = d.get("oi"), d.get("sb")
     if oi or sb:
         both = " → agree" if oi and oi == sb else " → mixed" if oi and sb else ""
-        out.append(f"• OI (Dhan): {oi or '—'} · OI change (Sensibull): {sb or '—'}{both}")
+        out.append(f"• OI build-up (puts = support): Dhan {oi or '—'} · Sensibull {sb or '—'}{both}")
     toi = [x for x in (d.get("toi") or [])[:5] if x is not None]
     if toi:
         bear = sum(1 for x in toi if x < 0)

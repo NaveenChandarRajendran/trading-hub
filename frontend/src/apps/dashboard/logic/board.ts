@@ -78,8 +78,8 @@ export function cell(r: RuleResult | null | undefined, open: AutoTrade | undefin
 }
 
 /** "3 of 3 Bearish" / "Split: 1 bullish · 1 bearish · 1 neutral" from the three OI views. */
-export function votesText(views: (OiView | TrendingView | null | undefined)[]): string {
-  const vs = views.filter((v): v is OiView | TrendingView => !!v).map((v) => v.verdict);
+export function votesText(views: ({ verdict: OiView['verdict'] } | null | undefined)[]): string {
+  const vs = views.filter((v): v is { verdict: OiView['verdict'] } => !!v).map((v) => v.verdict);
   if (!vs.length) return '—';
   const n = (k: string) => vs.filter((v) => v === k).length;
   const top = (['Bullish', 'Bearish', 'Neutral'] as const).find((k) => n(k) > vs.length / 2);

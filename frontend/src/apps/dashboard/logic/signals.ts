@@ -59,8 +59,12 @@ export interface TrendingView {
   unit: string;
 }
 
+/** Owner 30-Oct-2026: put-heavy OI = support = Bullish, call-heavy = resistance = Bearish (backend sig_oi.build_up). */
+export interface BuildUp { verdict: 'Bullish' | 'Bearish' | 'Neutral'; putShare: number; putChg: number | null; callChg: number | null }
+
 export interface OiView {
   verdict: 'Bullish' | 'Bearish' | 'Neutral';
+  buildUp?: BuildUp | null;
   average: number;
   points: number;
   spot: number;

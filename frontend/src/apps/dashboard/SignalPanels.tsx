@@ -1,7 +1,7 @@
 // Dashboard sections fed by GET /api/signals/state (backend sig_service.py): day levels, the two rule cards, the OI
 // section, the paper trade card and the snapshot log bar. Display only: every number and tick comes from the backend's
 // evaluation, which is what the signal watcher trades on.
-import { putShare, votesText } from './logic/board';
+import { votesText } from './logic/board';
 import { pivots } from './logic/indicators';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -11,7 +11,7 @@ import type { ToiRow } from '../trending-oi/logic/api';
 import type { Position } from '../paper-trade/logic/api';
 import {
   banner, distance, fetchAccountOrders, minutesSince, shadowCsvNote, snapshotsCsvUrl, tick, type AutoStatus, type AutoTrade,
-  type AccountKey, type BookFunds, type ContextRow, type FlowSummary, type OiView, type RuleResult, type SignalsState, type SrView,
+  type AccountKey, type BookFunds, type BuildUp, type ContextRow, type FlowSummary, type OiView, type RuleResult, type SignalsState, type SrView,
 } from './logic/signals';
 
 const n2 = (v: number | null | undefined) => (v == null ? '—' : inr(2)(v));
@@ -145,15 +145,17 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
   const t = views?.trending ?? null;
   const dhanR = sr?.levels.R[0]?.strike;
   const dhanS = sr?.levels.S[0]?.strike;
-  const votes = votesText([views?.dhan, views?.sensibull, views?.trending]);
-  const lean = putShare(views?.dhan);
+  // headline = OI build-up (puts = support), owner 30-Oct-2026; Trending OI already reads put adds as bullish
+  const votes = votesText([views?.dhan?.buildUp, views?.sensibull?.buildUp, views?.trending]);
+  const bu = (b: BuildUp | null | undefined, what: string) => (b ? <><Pill tone={verdictTone(b.verdict)}>{b.verdict}</Pill><span className="db-muted"> · puts {n0(b.putShare)}% of {what}</span></> : '—');
   return (
     <section className="card">
       <div className="card-head"><h3 className="card-title">OI views side by side</h3><Pill tone={verdictTone(votes.split(' ').pop())}>{votes === '—' ? 'Dhan · Sensibull · Trending OI' : votes}</Pill></div>
       <table className="t">
         <thead><tr><th /><th>Dhan<br /><span className="db-muted">OI &amp; OI Change Live</span></th><th>Sensibull<br /><span className="db-muted">OI Change Live (record only)</span></th><th>Trending OI<br /><span className="db-muted">last {t?.strength.length ?? 3} rows{t?.time ? ` to ${t.time.slice(0, 5)}` : ''}</span></th></tr></thead>
         <tbody>
-          <tr><td>Verdict</td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill>{lean != null && <span className="db-muted" title="Share of puts in OI + change: above 50 % leans bullish"> · OI lean {n0(lean)}% puts</span>}</td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(t?.verdict)}>{t?.verdict ?? '—'}</Pill></td></tr>
+          <tr><td><b>OI build-up</b><br /><span className="db-muted">puts 55%+ = support = Bullish</span></td><td>{bu(views?.dhan?.buildUp, 'OI + change')}</td><td>{bu(views?.sensibull?.buildUp, "today's change")}</td><td><Pill tone={verdictTone(t?.verdict)}>{t?.verdict ?? '—'}</Pill><span className="db-muted"> · put adds minus call adds</span></td></tr>
+          <tr><td>Average vs spot<br /><span className="db-muted">course sheet method</span></td><td><Pill tone={verdictTone(d?.verdict)}>{d?.verdict ?? '—'}</Pill></td><td><Pill tone={verdictTone(s?.verdict)}>{s?.verdict ?? '—'}</Pill></td><td>—</td></tr>
           <tr><td>Average (final / anticipated)</td><td className="num">{d?.average ?? '—'}</td><td className="num">{s?.average ?? '—'}</td><td className="num">{t ? `Strength ${t.strength.map((x) => `${signed(0)(x)}%`).join(' / ')}` : '—'}</td></tr>
           <tr><td>vs spot {spot ? n2(spot) : ''}</td><td className="num">{d?.vsSpot ?? '—'}</td><td className="num">{s?.vsSpot ?? '—'}</td><td className="num">{t ? `needs ±${n0(t.threshold)}% on every row` : '—'}</td></tr>
           <tr><td>Support</td><td className="num">{n0(dhanS)}</td><td className="num">{n0(views?.sensibull?.support)}</td><td className="num">—</td></tr>
