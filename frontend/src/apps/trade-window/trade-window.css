@@ -46,7 +46,7 @@
 .ds .tw-scroll { overflow-x: auto; }
 .ds .tw-scroll .t .tw-txt { text-align: left; }
 .ds .tw-closed td { color: var(--text-3); }
-.ds .tw-price { width: 84px; }
+.ds .tw-price { width: 70px; }
 .ds .tw-row-actions { display: inline-flex; gap: var(--sp-1); align-items: center; white-space: nowrap; }
 .ds .tw .sc-trail-pop { left: auto; right: 0; }
 .ds .tw-reason { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -58,3 +58,8 @@
   .ds .tw-buy.right { align-items: flex-start; }
   .ds .tw-mid { justify-content: flex-start; }
 }
+.ds.tw-float { position: fixed; inset: 0 auto auto 0; width: 0; height: 0; z-index: 60; } /* the floating Trail form (TrailControl floating) */
+/* positions table: compact enough to fit a laptop screen without a sideways scrollbar */
+.ds .tw-scroll .t th, .ds .tw-scroll .t td { padding-left: var(--sp-1); padding-right: var(--sp-1); }
+.ds .tw-scroll .t th:first-child, .ds .tw-scroll .t td:first-child { padding-left: var(--sp-2); }
+.ds .tw-row-actions .btn.sc-pct, .ds .tw-row-actions .sc-trail-btn { padding: 0 var(--sp-2); }

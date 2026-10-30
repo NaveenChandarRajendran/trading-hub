@@ -102,7 +102,7 @@ function PositionsTab({ sc, enabled, say }: { sc: Scalper; enabled: boolean; say
                           ))}
                           <button type="button" className="btn sc-pct" disabled={busy || !enabled} title="Sell everything at market"
                             onClick={() => run(() => api.exit(p.security_id), `Exit sent for ${p.name}.`)}>100%</button>
-                          <TrailControl pos={p} ltp={liveLtp(sc, p)} enabled={enabled && !busy}
+                          <TrailControl pos={p} ltp={liveLtp(sc, p)} enabled={enabled && !busy} floating
                             onDone={(pos, text) => { sc.putPosition(pos); say('info', text); }} onError={(text) => say('error', text)} />
                         </span>
                       ) : <span className="muted">closed</span>}
