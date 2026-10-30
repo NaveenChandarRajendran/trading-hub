@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ApiError } from '../../shared/api';
+import { API_BASE, ApiError, requestJson } from '../../shared/api';
 import { Alert, Segmented } from '../../shared/ui';
 import { price, rupees } from './format';
 import { api, type Order, type OrderType, type Side } from './logic/api';
 import { keyOf } from './logic/feed';
-import { ORDER_TYPES, TICK_SIZE, checkTicket, needsPrice, needsTrigger } from './logic/ticket';
+import { ORDER_TYPES, TICK_SIZE, bracketPrices, checkTicket, needsPrice, needsTrigger } from './logic/ticket';
 import type { Paper } from './usePaper';
 
 export interface TicketTarget {
@@ -29,6 +29,10 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
   const [lots, setLots] = useState(String(o?.lots ?? 1));
   const [px, setPx] = useState(o?.price != null ? String(o.price) : tick?.ltp ? tick.ltp.toFixed(2) : '');
   const [trigger, setTrigger] = useState(o?.trigger_price != null ? String(o.trigger_price) : '');
+  // owner 30-Oct-2026: set the stop + target while buying (manual trades only); placed right after the fill
+  const [withBracket, setWithBracket] = useState(true);
+  const [stopPct, setStopPct] = useState('10');
+  const [targetPct, setTargetPct] = useState('20');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,6 +57,11 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
   // a TRIGGERED SL keeps its trigger: only the limit price can change
   const triggerLocked = o?.status === 'TRIGGERED';
 
+  const canBracket = !o && target.side === 'BUY' && orderType === 'MARKET';
+  const preview = bracketPrices(tick?.ask || tick?.ltp || 0, Number(stopPct), Number(targetPct));
+  const bracketError = canBracket && withBracket && !bracketPrices(1, Number(stopPct), Number(targetPct))
+    ? 'Stop % must be between 0 and 100 and target % above 0' : '';
+
   const submit = async () => {
     setBusy(true);
     setError('');
@@ -72,7 +81,17 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
           setBusy(false);
           return;
         }
-        onDone(`${target.side === 'BUY' ? 'Buy' : 'Sell'} ${r.qty} ${target.name}: ${r.status.toLowerCase()}.`);
+        let msg = `${target.side === 'BUY' ? 'Buy' : 'Sell'} ${r.qty} ${target.name}: ${r.status.toLowerCase()}.`;
+        const levels = canBracket && withBracket && r.status === 'FILLED' ? bracketPrices(r.order.avg_price ?? 0, Number(stopPct), Number(targetPct)) : null;
+        if (levels) {
+          try {
+            await requestJson(API_BASE, '/api/autopaper/bracket', { method: 'POST', body: { securityId: target.securityId, stopPrice: levels.stop, targetPrice: levels.target } });
+            msg += ` Stop ${levels.stop.toFixed(2)} and target ${levels.target.toFixed(2)} placed.`;
+          } catch (e) {
+            msg += ` Stop + target NOT placed (${e instanceof ApiError ? e.message : 'no answer'}): set them on the Today page.`;
+          }
+        }
+        onDone(msg);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not send the order.');
@@ -114,6 +133,23 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
             </label>
           )}
         </div>
+        {canBracket && (
+          <div className="pt-bracket">
+            <label className="pt-check"><input type="checkbox" checked={withBracket} onChange={(e) => setWithBracket(e.target.checked)} /> Add stop + target after the buy</label>
+            {withBracket && (
+              <div className="pt-fields">
+                <label className="field">Stop % below buy
+                  <input type="number" min={1} max={99} step={1} value={stopPct} onChange={(e) => setStopPct(e.target.value)} />
+                  <span className="pt-hint num">{preview ? `about ${price(preview.stop)}` : ''}</span>
+                </label>
+                <label className="field">Target % above buy
+                  <input type="number" min={1} step={1} value={targetPct} onChange={(e) => setTargetPct(e.target.value)} />
+                  <span className="pt-hint num">{preview ? `about ${price(preview.target)}` : ''}</span>
+                </label>
+              </div>
+            )}
+          </div>
+        )}
         <dl className="pt-money num">
           {target.side === 'BUY' ? (
             <>
@@ -128,13 +164,13 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
           )}
           <dt>Est. charges</dt><dd>{rupees(check.charges)}</dd>
         </dl>
-        {(check.errors.length > 0 || error) && (
-          <Alert kind="error">{error || check.errors[0]}</Alert>
+        {(check.errors.length > 0 || error || bracketError) && (
+          <Alert kind="error">{error || check.errors[0] || bracketError}</Alert>
         )}
         <div className="pt-ticket-actions">
           <span className="muted">Paper trade · simulated fill</span>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={submit} disabled={busy || check.errors.length > 0}>
+          <button className="btn primary" onClick={submit} disabled={busy || check.errors.length > 0 || !!bracketError}>
             {busy ? 'Sending…' : verb}
           </button>
         </div>

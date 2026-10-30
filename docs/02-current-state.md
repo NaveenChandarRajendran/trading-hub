@@ -13,6 +13,9 @@ _Last updated: 2026-10-30 (Sat 31 Oct release: one OI build-up verdict, R1/Bolli
 - **Order flow card**: 5-min table like Trending OI (`flow_summary.rows`, newest on top, live row marked).
 - **Manual trades** send a phone entry message (`notify.manual_fill_listener`, `PaperService.fill_listeners`).
 - **Box Pullback 5/1 removed** everywhere (app, phone, journal, Excel tab). Only 15/5 trades from Mon 2 Nov.
+- Buy / Sell ticket: a MARKET buy can carry stop % / target % boxes (default 10 / 20, owner 30-Oct); right after the
+  fill the page calls `/api/autopaper/bracket` with prices from the fill (`ticket.bracketPrices`). Manual trades only.
+- Selling book 2-month strangle 5 % away instead of 3 % (owner OK 30-Oct); an open strangle keeps its strikes.
 - Rebound Call: no entries after the 14:30 candle, time exit 15:14 (shown on the open-trade card).
 
 ## Momentum 20 stock books, 2 x Rs 5 L PAPER (owner 28-Oct-2026)

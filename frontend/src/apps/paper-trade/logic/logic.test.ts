@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChargeRates, PnlRow } from './api';
 import { buildCalendar, fyOf, fyRange, istToday, level, weeksBetween } from './calendar';
 import { byMonth, summarize, toCsv } from './pnl';
-import { checkTicket, estimateCharges, type TicketInput } from './ticket';
+import { bracketPrices, checkTicket, estimateCharges, type TicketInput } from './ticket';
 
 // same values as backend/paper_charges.py RATES
 const RATES: ChargeRates = { brokeragePerOrder: 20, sttSell: 0.0015, transaction: 0.0003503, sebi: 1e-6, stampBuy: 0.00003, gst: 0.18 };
@@ -153,5 +153,18 @@ describe('chain window', () => {
     expect(spotGapAfter(rows, 24990)).toBe(-1); // below the rows shown
     expect(spotGapAfter(rows, 25200)).toBe(-1); // on the last strike: nothing below to draw against
     expect(spotGapAfter(rows, null)).toBe(-1);
+  });
+});
+
+describe('bracketPrices', () => {
+  it('turns the % boxes into stop and target prices on the tick size', () => {
+    expect(bracketPrices(144.35, 10, 20)).toEqual({ stop: 129.9, target: 173.2 });
+    expect(bracketPrices(100, 15, 30)).toEqual({ stop: 85, target: 130 });
+  });
+  it('refuses wrong boxes', () => {
+    expect(bracketPrices(100, 0, 20)).toBeNull();
+    expect(bracketPrices(100, 100, 20)).toBeNull();
+    expect(bracketPrices(100, 10, 0)).toBeNull();
+    expect(bracketPrices(0, 10, 20)).toBeNull();
   });
 });

@@ -68,3 +68,5 @@
 .pt .pt-chain { white-space: nowrap; }
 .pt .pt-chain .pt-cell-sub { color: var(--text-3); font-size: var(--fs-xs); }
 .pt .pt-chain td.pt-pcr { font-weight: 400; color: var(--text-2); }
+.pt .pt-bracket { display: grid; gap: var(--sp-2); }
+.pt .pt-check { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }

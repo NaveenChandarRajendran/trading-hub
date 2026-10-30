@@ -100,3 +100,10 @@ export function checkTicket(t: TicketInput): TicketCheck {
   if (t.orderType === 'MARKET' && px == null) errors.push('No live price yet for this strike.');
   return { qty, premium, charges, required, errors };
 }
+
+/** Stop + target prices for a hand-bought option from its fill price and the % boxes (owner 30-Oct-2026); null if a box is wrong. */
+export function bracketPrices(fill: number, stopPct: number, targetPct: number): { stop: number; target: number } | null {
+  if (!(fill > 0) || !(stopPct > 0 && stopPct < 100) || !(targetPct > 0)) return null;
+  const round = (x: number) => Math.round(x / TICK_SIZE) * TICK_SIZE;
+  return { stop: Number(round(fill * (1 - stopPct / 100)).toFixed(2)), target: Number(round(fill * (1 + targetPct / 100)).toFixed(2)) };
+}
