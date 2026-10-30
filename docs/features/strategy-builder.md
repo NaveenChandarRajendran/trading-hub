@@ -76,6 +76,11 @@ Naveen: SENSEX in the Strategy Builder only (not Paper Trading / Power Scalper /
 - The manual paper engine (Paper Trading, Power Scalper, Trade Window) refuses SENSEX IDs.
 - Checked live on 29-Oct after hours: expiries, the chain via index 51, instruments `BSE_FNO` lot 20, margin answered.
 
+## Option chain drawer and toggle picks (30-Oct-2026)
+Naveen: the option chain opens in a drawer from the left ("+ Add legs" on the Legs card; × / Esc / Done close it), the
+payoff stays in view. B / S on the chain toggles: the same button again removes that leg; the other button on a held
+strike flips its side (lots kept); lots are changed in the legs table (`addFromChain`, `ChainDrawer.tsx`).
+
 ## Untraded strikes and "No market" (29-Oct-2026, branch `feature/sensex-support`)
 Bug: SENSEX 5 Nov 77,200 CE showed LTP 548.50 (IV 37.6), so an iron condor came out as a ₹9,322 debit. Dhan sends a
 strike with no OI and no trade today with `last_price` = `previous_close_price` = the exchange's base price (checked

@@ -1,5 +1,5 @@
-// Option chain for picking legs: CE | strike | PE with OI, IV and LTP, and B / S buttons beside each price. A click adds
-// that leg to the open tab (or one more lot to the same leg). ATM row highlighted, in-the-money cells tinted, and what
+// Option chain for picking legs: CE | strike | PE with OI, IV and LTP, and B / S buttons beside each price. A click marks
+// that leg in the open tab; the same button again removes it, the other one flips it (logic/legs.ts addFromChain). ATM row highlighted, in-the-money cells tinted, and what
 // the design already holds on a strike shown on it. Opens scrolled to ATM; ±10 / ±20 strikes or all of them.
 // Untraded strikes (no OI, no trade today: Dhan's price there is the exchange's base price) are hidden, as on Dhan's own
 // chain; "Show untraded strikes" lists them greyed with "No trades" and no B / S. A side that has no trades on a
@@ -17,7 +17,7 @@ import type { Side } from './logic/payoff';
 import type { Market } from './useMarket';
 
 const ROW_PX = 30;
-const VIEW_PX = 360;
+const VIEW_PX = 360; // fallback list height; ATM is centred in the list's real height (taller in the drawer)
 
 /** Open interest in units as "1.2L" / "85K" / "650". */
 const oiText = (v: number | null | undefined) => {
@@ -52,7 +52,7 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
 
   // open (and after an expiry / range change) scrolled to ATM
   useEffect(() => {
-    if (box.current && atm != null) box.current.scrollTop = centerScrollTop(atm, ROW_PX, VIEW_PX);
+    if (box.current && atm != null) box.current.scrollTop = centerScrollTop(atm, ROW_PX, box.current.clientHeight || VIEW_PX);
   }, [expiry, range, atm != null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cell = (strike: number, type: OptionType) => {
@@ -65,7 +65,7 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
         {(['B', 'S'] as Side[]).map((side) => (
           <button key={side} type="button" className={`sb-oc-btn ${side === 'B' ? 'buy' : 'sell'}${held.includes(`${side} `) ? ' on' : ''}`}
             disabled={noTrades}
-            title={noTrades ? `${inr(0)(strike)} ${type}: no trades today, no market` : `${side === 'B' ? 'Buy' : 'Sell'} ${inr(0)(strike)} ${type} at ${price(midPrice(q))}`}
+            title={noTrades ? `${inr(0)(strike)} ${type}: no trades today, no market` : held.includes(`${side} `) ? `Remove ${side === 'B' ? 'Buy' : 'Sell'} ${inr(0)(strike)} ${type}` : `${side === 'B' ? 'Buy' : 'Sell'} ${inr(0)(strike)} ${type} at ${price(midPrice(q))}`}
             onClick={() => onPick({ expiry, strike, type, side })}>{side}</button>
         ))}
       </span>
@@ -98,7 +98,7 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
             {STRIKE_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
-        <span className="muted sb-small">B / S adds the leg (again: one more lot)</span>
+        <span className="muted sb-small">B / S marks a leg · again removes it · the other button flips it</span>
         <label className="sb-check sb-oc-untraded" title="Strikes with no open interest and no trade today: Dhan's price there is not a trade">
           <input type="checkbox" checked={showUntraded} onChange={(e) => toggleUntraded(e.target.checked)} />
           Show untraded strikes{hidden ? ` (${hidden})` : ''}
@@ -109,7 +109,7 @@ export function OptionChainPanel({ market, legs, expiry, onExpiry, range, onRang
         <span className="sb-oc-strike">Strike</span>
         <span className="sb-oc-side pe"><span /><span>PE LTP</span><span>IV</span><span>OI</span></span>
       </div>
-      <div className="sb-oc-rows" ref={box} style={{ maxHeight: VIEW_PX }}>
+      <div className="sb-oc-rows" ref={box}>
         {!list.rows.length && <p className="muted sb-small sb-oc-empty">Loading strikes…</p>}
         {list.rows.map((r, i) => (
           <div key={r.strike} className={`sb-oc-row${i === atm ? ' atm' : ''}`} style={{ height: ROW_PX }}>

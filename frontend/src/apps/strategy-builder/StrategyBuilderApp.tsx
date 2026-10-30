@@ -4,7 +4,7 @@
 // into an options strategy (all-or-nothing, PAPER ONLY; ADR 0010) and Paper positions below shows / exits what is held. Legs are picked on the option chain
 // (or a template) on the left; payoff chart (target date and IV what-if sliders, weekly bands), summary with Dhan basket
 // margin, and Greeks on the right. Portfolios (the switch at the top) reports how each options strategy did.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../shared/api';
 import { inr } from '../../shared/grid';
 import { Alert, EmptyState, Segmented, Status } from '../../shared/ui';
@@ -26,6 +26,7 @@ import { yearsToExpiry } from './logic/blackScholes';
 import { summarize } from './logic/summary';
 import { TEMPLATES, buildTemplate, type TemplateId } from './logic/templates';
 import { LegsTable } from './LegsTable';
+import { ChainDrawer } from './ChainDrawer';
 import { OptionChainPanel } from './OptionChainPanel';
 import { PayoffChart } from './PayoffChart';
 import { SummaryPanel } from './SummaryPanel';
@@ -70,6 +71,8 @@ export default function StrategyBuilderApp() {
   const [chainExpiry, setChainExpiry] = useState(''); // '' = the toolbar's expiry
   const [range, setRange] = useState<StrikeRange>('10');
   const [notice, setNotice] = useState('');
+  const [chainOpen, setChainOpen] = useState(false); // the option chain drawer
+  const closeChain = useCallback(() => setChainOpen(false), []);
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const [trading, setTrading] = useState(false);
   const [placed, setPlaced] = useState<{ strategyId: number; nonce: number } | null>(null);
@@ -316,14 +319,16 @@ export default function StrategyBuilderApp() {
 
       <div className="sb-body">
         <div className="sb-left">
-        <section className="card sb-left">
-          <div className="card-head"><span className="card-title">Option chain</span></div>
+        <ChainDrawer open={chainOpen} onClose={closeChain} held={tab.legs.length} title={`Option chain · ${tab.symbol}`}>
           <OptionChainPanel market={market} legs={tab.legs} expiry={chainEx} onExpiry={setChainExpiry} range={range} onRange={setRange} onPick={pick} />
           {notice && <Alert kind="warn">{notice}</Alert>}
-        </section>
+        </ChainDrawer>
         <section className="card sb-left">
-          <div className="card-head"><span className="card-title">Legs</span><span className="muted sb-small">Price = live mid unless you type one</span></div>
-          {tab.legs.length === 0 && <EmptyState>Pick legs on the option chain above (B / S), or a template.</EmptyState>}
+          <div className="card-head">
+            <span className="card-title">Legs</span><span className="muted sb-small">Price = live mid unless you type one</span>
+            <button type="button" className="btn primary sb-add-legs" onClick={() => setChainOpen(true)}>+ Add legs</button>
+          </div>
+          {tab.legs.length === 0 && <EmptyState>Click + Add legs to mark Buy / Sell on the option chain, or pick a template.</EmptyState>}
           <LegsTable legs={tab.legs} onChange={setLegs} market={market} noMarket={priced.noMarket} />
           {noMarket && <Alert kind="warn">No market: {noMarket}</Alert>}
           {waiting.length > 0 && <p className="muted sb-small">{waiting.length} leg(s) have no price yet: they are left out until one arrives (or type one).</p>}

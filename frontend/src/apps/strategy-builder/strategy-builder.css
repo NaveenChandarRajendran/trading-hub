@@ -162,3 +162,16 @@
 .ds .sb-oc-untraded { margin-left: auto; }
 .ds .sb-nomarket { color: var(--warn); font-size: var(--fs-xs); white-space: nowrap; }
 .ds .sb-oc-ltp.sb-oc-stale { color: var(--text-3); font-weight: 400; }
+
+/* option chain drawer (ChainDrawer.tsx): slides in from the left over the page; the payoff stays in view */
+.ds .sb-drawer { position: fixed; top: 0; left: 0; bottom: 0; z-index: 45; width: min(720px, 100vw); border-radius: 0 var(--r-lg) var(--r-lg) 0;
+  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); box-shadow: var(--shadow-pop);
+  transform: translateX(-102%); transition: transform .22s ease; visibility: hidden; }
+.ds .sb-drawer.open { transform: translateX(0); visibility: visible; }
+.ds .sb-drawer-head { display: flex; align-items: center; gap: var(--sp-3); }
+.ds .sb-drawer-actions { margin-left: auto; display: flex; gap: var(--sp-2); align-items: center; }
+.ds .sb-drawer-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
+.ds .sb-oc-rows { max-height: 360px; }
+.ds .sb-drawer .sb-oc-rows { max-height: calc(100vh - 210px); }
+.ds .sb-add-legs { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .ds .sb-drawer { transition: none; } }

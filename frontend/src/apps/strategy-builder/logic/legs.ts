@@ -102,14 +102,19 @@ export const duplicateLeg = (legs: BuilderLeg[], id: string): BuilderLeg[] => {
 export interface ChainPick { expiry: string; strike: number; type: OptionType; side: Side }
 
 /**
- * A B / S click on the option chain: one more lot on a ticked leg with the same expiry, strike, type and side, else a
- * new 1-lot leg. Returns the legs unchanged (and `full`) when a new leg would be the 9th.
+ * A B / S click on the option chain toggles (Naveen, 30-Oct): the same button again removes that leg (unselect);
+ * the other button on a strike the design holds flips that leg's side (lots kept); else a new 1-lot leg. Lots are
+ * changed in the legs table. Returns the legs unchanged (and `full`) when a new leg would be the 9th.
  */
-export function addFromChain(legs: BuilderLeg[], p: ChainPick): { legs: BuilderLeg[]; full: boolean } {
-  const same = legs.find((l) => l.include && l.expiry === p.expiry && l.strike === p.strike && l.type === p.type && l.side === p.side);
-  if (same) return { legs: legs.map((l) => (l === same ? { ...l, lots: Math.min(100, l.lots + 1) } : l)), full: false };
-  if (legs.length >= MAX_LEGS) return { legs, full: true };
-  return { legs: [...legs, newLeg(p.expiry, p.strike, { side: p.side, type: p.type })], full: false };
+export function addFromChain(legs: BuilderLeg[], p: ChainPick): { legs: BuilderLeg[]; full: boolean; did: 'added' | 'removed' | 'flipped' | 'none' } {
+  const here = (l: BuilderLeg) => l.expiry === p.expiry && l.strike === p.strike && l.type === p.type && !l.locked;
+  if (legs.some((l) => here(l) && l.side === p.side)) {
+    return { legs: legs.filter((l) => !(here(l) && l.side === p.side)), full: false, did: 'removed' };
+  }
+  const other = legs.find((l) => here(l) && l.side !== p.side);
+  if (other) return { legs: legs.map((l) => (l === other ? { ...l, side: p.side, priceOverride: null } : l)), full: false, did: 'flipped' };
+  if (legs.length >= MAX_LEGS) return { legs, full: true, did: 'none' };
+  return { legs: [...legs, newLeg(p.expiry, p.strike, { side: p.side, type: p.type })], full: false, did: 'added' };
 }
 
 /** What the design holds on one chain cell: "B 2", "S 1", "B 1 · S 1" (ticked legs), or ''. */

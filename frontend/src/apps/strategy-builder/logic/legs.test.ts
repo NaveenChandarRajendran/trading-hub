@@ -67,21 +67,30 @@ describe('legs and tabs', () => {
 describe('picking legs on the option chain', () => {
   const pick = { expiry: '2026-11-03', strike: 23000, type: 'CE' as const, side: 'S' as const };
 
-  it('a click adds a 1-lot leg; the same click again adds a lot to it', () => {
+  it('a click adds a 1-lot leg; the same click again removes it (unselect)', () => {
     let r = addFromChain([], pick);
     expect(r.legs.map((l) => [l.side, l.strike, l.type, l.lots])).toEqual([['S', 23000, 'CE', 1]]);
+    expect(r.did).toBe('added');
     r = addFromChain(r.legs, pick);
-    expect(r.legs.map((l) => l.lots)).toEqual([2]);
-    r = addFromChain(r.legs, { ...pick, side: 'B' }); // the other side is its own leg
-    expect(r.legs.map((l) => `${l.side}${l.lots}`)).toEqual(['S2', 'B1']);
+    expect([r.legs, r.did]).toEqual([[], 'removed']);
   });
 
-  it('an unticked leg is not added to; a 9th leg is refused', () => {
+  it('the other button on a held strike flips the leg (lots kept); other strikes are untouched', () => {
+    const held = [newLeg('2026-11-03', 23000, { side: 'S', type: 'CE', lots: 3, priceOverride: 12 }), newLeg('2026-11-03', 23100, { side: 'B', type: 'CE' })];
+    const r = addFromChain(held, { ...pick, side: 'B' });
+    expect(r.did).toBe('flipped');
+    expect(r.legs.map((l) => `${l.side}${l.strike}x${l.lots}:${l.priceOverride}`)).toEqual(['B23000x3:null', 'B23100x1:null']);
+    expect(addFromChain(held, { ...pick, type: 'PE' }).legs).toHaveLength(3); // the PE is another leg
+  });
+
+  it('an unticked leg is unselected too; a 9th leg is refused; held positions (locked) are never touched', () => {
     const off = { ...newLeg('2026-11-03', 23000, { side: 'S', type: 'CE' }), include: false };
-    expect(addFromChain([off], pick).legs).toHaveLength(2);
+    expect(addFromChain([off], pick).legs).toEqual([]);
     const full = Array.from({ length: MAX_LEGS }, (_, i) => newLeg('2026-11-03', 22000 + i * 100));
-    expect(addFromChain(full, pick)).toEqual({ legs: full, full: true });
-    expect(addFromChain(full, { ...pick, strike: 22000, side: 'B' }).legs[0].lots).toBe(2); // adding a lot still works
+    expect(addFromChain(full, pick)).toEqual({ legs: full, full: true, did: 'none' });
+    expect(addFromChain(full, { ...pick, strike: 22000, side: 'B' }).legs).toHaveLength(MAX_LEGS - 1); // unselecting still works
+    const locked = { ...newLeg('2026-11-03', 23000, { side: 'S', type: 'CE' }), locked: true };
+    expect(addFromChain([locked], pick).legs).toHaveLength(2);
   });
 
   it('what the design holds on a chain cell', () => {
