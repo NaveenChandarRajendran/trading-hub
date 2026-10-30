@@ -148,19 +148,19 @@ export default function OptionStrategyApp() {
                 <span>Average (5, 10, 15, 20, 25)</span>
                 <Pill value={calc.win.overallAverage} spot={chain.underlying} />
               </div>
-              {/* owner 30-Oct-2026: both readings side by side until the owner picks one for this page */}
-              <div className="final">
-                <span className={calc.verdict.points >= 0 ? 'pos' : 'neg'}>
-                  Father's sheet: final average {calc.verdict.points >= 0 ? '+' : ''}{f(calc.verdict.points, 2)} pts vs spot
-                </span>
-                <span className={`verdict ${calc.sheetVerdict}`}>{calc.sheetVerdict}</span>
-              </div>
+              {/* owner 30-Oct-2026: OI build-up leads; the father's final average stays below it */}
               <div className="final">
                 <span>
                   OI build-up: puts {calc.verdict.putShare == null ? '—' : `${f(calc.verdict.putShare, 0)}%`} of OI + change,
                   {calc.verdict.morePutsAdded ? ' more puts' : ' more calls'} added today (puts = support)
                 </span>
                 <span className={`verdict ${calc.verdict.verdict}`}>{calc.verdict.verdict}</span>
+              </div>
+                            <div className="final">
+                <span className={calc.verdict.points >= 0 ? 'pos' : 'neg'}>
+                  Father's sheet: final average {calc.verdict.points >= 0 ? '+' : ''}{f(calc.verdict.points, 2)} pts vs spot
+                </span>
+                <span className={`verdict ${calc.sheetVerdict}`}>{calc.sheetVerdict}</span>
               </div>
             </section>
           </div>
