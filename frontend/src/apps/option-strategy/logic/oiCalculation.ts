@@ -123,10 +123,12 @@ export function analyzeOptionChain(chain: OptionChain) {
   const summary = buildSummary(totals, chain.underlying);
   const win = buildWindowAverages(rows, chain.underlying);
   // owner 30-Oct-2026: the verdict is the OI build-up (puts = support); the sheet's average vs spot stays as "points"
-  const { points } = getVerdict(win.overallAverage, chain.underlying);
+  const sheet = getVerdict(win.overallAverage, chain.underlying); // the father's sheet: final average vs spot
+  const { points } = sheet;
   const b = buildUp(totals.putNet, totals.callNet, totals.putChgOi, totals.callChgOi);
   const verdict: Verdict = b?.verdict === 'Bullish' ? 'BULLISH' : b?.verdict === 'Bearish' ? 'BEARISH' : 'NEUTRAL';
-  return { rows, totals, summary, win, verdict: { verdict, points, putShare: b?.putShare ?? null, morePutsAdded: totals.putChgOi > totals.callChgOi } };
+  return { rows, totals, summary, win, verdict: { verdict, points, putShare: b?.putShare ?? null, morePutsAdded: totals.putChgOi > totals.callChgOi },
+    sheetVerdict: sheet.verdict };
 }
 
 export type ChainAnalysis = ReturnType<typeof analyzeOptionChain>;

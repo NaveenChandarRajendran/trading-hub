@@ -61,9 +61,11 @@ describe('strike windows', () => {
     expect(avg(4)).toBe(55744);
   });
 
-  // Excel shows 56,822 for 15 strikes (and 55,958.76 final). The app gives ~55,741 / ~55,742.59.
-  // Unresolved: confirm against the Excel formula in that row. Left as a known mismatch.
-  it.todo('15-strike window: Excel 56,822 vs app ~55,741');
+  // Excel shows 56,822 for 15 strikes (and 55,958.76 final). Resolved 30-Oct-2026 from the father's Book1.xlsx: H179 is
+  // =SUM(I74:I104)/31, a range shifted 11 rows (its own labels say K63 to K93). The app uses K63-K93: ~55,741.
+  it('15-strike window uses the strikes the sheet labels (K63-K93), not the shifted I74:I104', () => {
+    expect(Math.round(w.windows[2].average)).toBe(55741);
+  });
 
   it('verdict compares final average with spot', () => {
     expect(getVerdict(55958.76, 55844).verdict).toBe('BULLISH');
@@ -80,7 +82,7 @@ describe('analyzeOptionChain', () => {
     expect(verdict.verdict).toBe(totals.putNet * 9 >= totals.callNet * 11 && totals.putChgOi > totals.callChgOi ? 'BULLISH'
       : totals.callNet * 9 >= totals.putNet * 11 && totals.callChgOi > totals.putChgOi ? 'BEARISH' : 'NEUTRAL');
     expect(rest).toEqual({
-      rows, totals, summary: buildSummary(totals, chain.underlying), win,
+      rows, totals, summary: buildSummary(totals, chain.underlying), win, sheetVerdict: getVerdict(win.overallAverage, chain.underlying).verdict,
     });
   });
 });
