@@ -112,7 +112,7 @@ def strangle_expiry(expiries, today, days=61, lo=45, hi=80):
     return best[0] if best else None
 
 
-def strangle_strikes(spot, away_pct=3, step=100):
+def strangle_strikes(spot, away_pct=5, step=100):
     """(call strike, put strike) about away_pct above / below spot."""
     return round(spot * (1 + away_pct / 100) / step) * step, round(spot * (1 - away_pct / 100) / step) * step
 

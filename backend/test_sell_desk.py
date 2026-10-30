@@ -38,7 +38,8 @@ def test_strangle_expiry_and_strikes():
     exps = ["2026-11-03", "2026-11-10", "2026-11-24", "2026-12-29", "2027-03-30"]
     assert R.strangle_expiry(exps, WED.date()) == "2026-12-29"  # 55 days
     assert R.strangle_expiry(exps[:3], WED.date()) is None
-    assert R.strangle_strikes(22698.85) == (23400, 22000)
+    assert R.strangle_strikes(22698.85) == (23800, 21600)
+    assert R.strangle_strikes(22698.85, 3) == (23400, 22000)
     assert R.roll_due(100, 30) and not R.roll_due(100, 30.05) and not R.roll_due(100, None)
     assert R.leg_stop(100.03, 50) == 150.05 and R.leg_stop(80, 50) == 120.0
     assert R.is_expiry_day(["2026-11-03"], TUE.date()) and not R.is_expiry_day(["2026-11-10"], WED.date())
@@ -210,15 +211,15 @@ def test_strangle_rolls_and_stops_at_max_loss_and_carries_days(make, tmp_path):
     one_min = minutes(WED, [22700.0] * 21, 22700.0)
     cfg = {"sellStraddle": {"enabled": False}, "sellCalmCall": {"enabled": False}}
     desk, paper, ev = make(at(WED, 10, 0, 1), ["2026-11-10", exp], one_min, cfg)
-    ce, pe = sid("CE", exp, 23400), sid("PE", exp, 22000)
+    ce, pe = sid("CE", exp, 23800), sid("PE", exp, 21600)
     desk.on_tick(ce, bk(200.0), paper.now)
     desk.on_tick(pe, bk(250.0), paper.now)
     desk.step(paper.now)
-    assert {lg["strike"] for lg in desk.open_legs(R.STRANGLE)} == {23400, 22000}
+    assert {lg["strike"] for lg in desk.open_legs(R.STRANGLE)} == {23800, 21600}
     assert all(lg["stop"] is None for lg in desk.open_legs())  # no per-leg stop on the strangle
     # 15:05: the call has kept 70 % -> roll to a new 3 % call; the put stays
     desk.on_tick(ce, bk(59.0), at(WED, 15, 0))
-    new_ce = sid("CE", exp, 23400)  # spot unchanged -> same strike again
+    new_ce = sid("CE", exp, 23800)  # spot unchanged -> same strike again
     desk.step(at(WED, 15, 5, 1))
     closed = [lg for lg in desk.state["legs"].values() if lg["status"] == "closed"]
     assert [lg["exitReason"] for lg in closed] == ["Roll"]
@@ -256,7 +257,7 @@ def test_after_the_close_or_a_restart_the_page_shows_the_last_price(make, tmp_pa
     one_min = minutes(WED, [22700.0] * 21, 22700.0)
     cfg = {"sellStraddle": {"enabled": False}, "sellCalmCall": {"enabled": False}}
     desk, paper, _ev = make(at(WED, 10, 0, 1), ["2026-11-10", exp], one_min, cfg)
-    ce, pe = sid("CE", exp, 23400), sid("PE", exp, 22000)
+    ce, pe = sid("CE", exp, 23800), sid("PE", exp, 21600)
     desk.on_tick(ce, bk(200.0), paper.now)
     desk.on_tick(pe, bk(250.0), paper.now)
     desk.step(paper.now)
