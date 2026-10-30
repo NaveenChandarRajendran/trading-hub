@@ -109,8 +109,8 @@ export const api = {
   /** Cancels every pending order of the strategy (targets and stops too); positions stay open. */
   cancelAll: () => requestJson<{ orders: Order[]; funds: Funds }>(SCALPER_API, st('/api/scalper/cancel-all'), { method: 'POST' }),
   cancelOrder: (id: string) => requestJson<Order>(SCALPER_API, st(`/api/paper/orders/${encodeURIComponent(id)}`), { method: 'DELETE' }),
-  mtmLimit: (profit: number | null, loss: number | null) =>
-    requestJson<{ mtm: MtmLimit; funds: Funds }>(SCALPER_API, st('/api/scalper/mtm-limit'), { method: 'PUT', body: { profit, loss } }),
+  mtmLimit: (profit: number | null, loss: number | null, lock: number | null = null) =>
+    requestJson<{ mtm: MtmLimit; funds: Funds }>(SCALPER_API, st('/api/scalper/mtm-limit'), { method: 'PUT', body: { profit, loss, lock } }),
   trades: (date: string, signal?: AbortSignal) =>
     requestJson<{ rows: Trade[] }>(SCALPER_API, st(`/api/paper/trades?${q({ date })}`), { signal }),
   /** pct 25 / 50 / 75 sells that share of the open lots (rounded down, at least 1); none or 100 = everything. */

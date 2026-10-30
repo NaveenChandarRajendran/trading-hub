@@ -37,7 +37,9 @@ export interface Funds {
 export interface MtmLimit {
   profit: number | null;
   loss: number | null;
-  hit: { day: string; at: string; pnl: number; kind: 'profit' | 'loss' } | null;
+  lock?: number | null; // profit lock: armed once day MTM is above it, fires when MTM falls back to it
+  lockArmed?: boolean;
+  hit: { day: string; at: string; pnl: number; kind: 'profit' | 'loss' | 'lock' } | null;
   message: string;
 }
 

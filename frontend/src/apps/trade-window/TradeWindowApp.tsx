@@ -258,7 +258,7 @@ function TradeWindowPage({ into }: { into: TradingInto }) {
             </span>
           </label>
         </div>
-        <div className="tw-grid">
+        <div className="tw-grid tw-row2">
           <label className="field">Order type<select value="MARKET" disabled><option value="MARKET">Market</option></select></label>
           <label className="field">Market protection
             <select value={protection ?? 'off'} onChange={(e) => setProtection(e.target.value === 'off' ? null : Number(e.target.value))}>

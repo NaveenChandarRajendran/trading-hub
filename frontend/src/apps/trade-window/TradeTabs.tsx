@@ -65,7 +65,13 @@ function PositionsTab({ sc, enabled, say }: { sc: Scalper; enabled: boolean; say
         <span title="Today: booked − charges + open positions at the live price (what the MTM limit watches)">
           MTM <b className={`num ${toneOf(mtm)}`}>{signedRupees(mtm)}</b>
           {sc.funds?.mtm && (sc.funds.mtm.profit != null || sc.funds.mtm.loss != null) && (
-            <span className="muted"> · limit +{sc.funds.mtm.profit ?? '–'} / −{sc.funds.mtm.loss ?? '–'}</span>
+            <span className="muted"> · {[sc.funds.mtm.profit != null && `target +${sc.funds.mtm.profit}`,
+              sc.funds.mtm.loss != null && `loss −${sc.funds.mtm.loss}`].filter(Boolean).join(' · ')}</span>
+          )}
+          {sc.funds?.mtm?.lock != null && (
+            <span className={sc.funds.mtm.lockArmed ? 'up' : 'muted'} title={sc.funds.mtm.lockArmed ? 'Exit if day MTM falls back to it' : 'Arms once day MTM is above it'}>
+              {' '}· lock +{sc.funds.mtm.lock} {sc.funds.mtm.lockArmed ? '(armed)' : '(waiting)'}
+            </span>
           )}
         </span>
         <span className="tw-end"><Segmented label="Position view" options={VIEWS} value={view} onChange={setView} /></span>

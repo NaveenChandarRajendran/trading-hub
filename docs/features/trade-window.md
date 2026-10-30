@@ -35,6 +35,10 @@ placed the order.
   - day MTM = today's booked − charges + open positions at the live price;
   - at +profit or −loss: every pending order cancelled, every position sold at market, new BUYs refused for the rest
     of that day on every screen of that strategy (even if the limit is changed or MTM comes back);
+  - **profit lock** (`lock`, 30-Oct): "at +2,500 I set target 3,000 and lock 2,000: in profit either way". It arms
+    once day MTM has been above it that day (at once when it already is) and fires the same way when MTM falls back
+    to it; ≥ ₹0 and below the target. Target, loss, lock and each position's own stop / trailing stop are independent:
+    whichever is reached first acts first. `funds.mtm.lock` / `lockArmed`;
   - the limit stays set for the next days; stored per strategy in `th_user_prefs` (`mtm_limit:<id>`, `mtm_hit:<id>`),
     so a restart keeps both; `funds.mtm` shows it.
 

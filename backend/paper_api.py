@@ -39,7 +39,7 @@ from candles import CandleBuilder, VolumeBuilder
 from dhan_client import SCRIP as SPOT_IDS  # index security IDs on the feed (IDX_I): NIFTY 13, BANKNIFTY 25
 from dhan_feed import FULL, TICKER, to_book
 from holidays import NSE_HOLIDAYS
-from mtm_limit import breach, hit_text, loads, parse_limit
+from mtm_limit import arms, breach, hit_text, is_set, loads, parse_limit
 from paper_charges import RATES as CHARGE_RATES
 from paper_charges import rates_for
 from instruments import segment_of
@@ -264,8 +264,9 @@ class PaperService:
         f["unrealized"] = book.engine.unrealized()
         f["dayPnl"] = round(f["realized"] - f["charges"] + f["unrealized"], 2)
         hit = self._mtm_hit_today(book)
-        f["mtm"] = {"profit": (book.mtm_limit or {}).get("profit"), "loss": (book.mtm_limit or {}).get("loss"),
-                    "hit": hit, "message": hit_text(hit) if hit else ""}
+        lim = book.mtm_limit or {}
+        f["mtm"] = {"profit": lim.get("profit"), "loss": lim.get("loss"), "lock": lim.get("lock"),
+                    "lockArmed": self._lock_armed(book), "hit": hit, "message": hit_text(hit) if hit else ""}
         return f
 
     # ---------- day MTM limit (mtm_limit.py) ----------
@@ -273,10 +274,17 @@ class PaperService:
         h = book.mtm_hit
         return h if h and h.get("day") == (now or self.clock()).date().isoformat() else None
 
-    def set_mtm_limit(self, book, profit, loss):
-        limit = parse_limit(profit, loss)
+    def _lock_armed(self, book, now=None):
+        """The profit lock armed today (day MTM has been above it)."""
+        return (book.mtm_limit or {}).get("armedOn") == (now or self.clock()).date().isoformat()
+
+    def set_mtm_limit(self, book, profit, loss, lock=None):
+        limit = parse_limit(profit, loss, lock)
         with self.lock:
-            book.mtm_limit = limit if (limit["profit"] or limit["loss"]) else None
+            old = book.mtm_limit or {}
+            if limit["lock"] is not None and limit["lock"] == old.get("lock") and old.get("armedOn"):
+                limit["armedOn"] = old["armedOn"]  # same lock: stays armed; a new lock arms again from scratch
+            book.mtm_limit = limit if is_set(limit) else None
             self.store.set_user_pref(book.user_id, f"mtm_limit:{book.strategy_id}", json.dumps(book.mtm_limit))
             self._check_mtm(book, self.clock())
             self._send(book, "funds", self.funds(book))
@@ -288,7 +296,12 @@ class PaperService:
             return
         hit = self._mtm_hit_today(book, now)
         if hit is None:
-            kind = breach(self.funds(book)["dayPnl"], book.mtm_limit)
+            pnl = self.funds(book)["dayPnl"]
+            if not self._lock_armed(book, now) and arms(pnl, book.mtm_limit):  # day MTM above the lock: armed for today
+                book.mtm_limit = {**book.mtm_limit, "armedOn": now.date().isoformat()}
+                self.store.set_user_pref(book.user_id, f"mtm_limit:{book.strategy_id}", json.dumps(book.mtm_limit))
+                self._send(book, "funds", self.funds(book))
+            kind = breach(pnl, book.mtm_limit, self._lock_armed(book, now))
             if kind is None:
                 return
             hit = book.mtm_hit = {"day": now.date().isoformat(), "at": now.strftime("%H:%M:%S"),

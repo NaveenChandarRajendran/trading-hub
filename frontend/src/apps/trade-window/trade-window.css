@@ -9,7 +9,10 @@
 .ds .tw-lots { width: 56px; text-align: center; }
 .ds .tw-qty { width: 72px; }
 .ds .tw-points input[type="number"] { width: 80px; }
-.ds .tw-mtm input { width: 84px; }
+.ds .tw-mtm input { width: 76px; }
+/* row 2: four fields, the wider MTM limit (profit / loss / lock), One click + status */
+.ds .tw-grid.tw-row2 { grid-template-columns: repeat(4, minmax(140px, 1fr)) minmax(330px, 1.7fr) auto; }
+@media (max-width: 1300px) { .ds .tw-grid.tw-row2 { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); } .ds .tw-mtm-field { grid-column: span 2; } }
 .ds .tw-end { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); margin-left: auto; }
 .ds .tw-check { display: inline-flex; gap: var(--sp-1); align-items: center; font-size: var(--fs-sm); color: var(--text-2); }
 .ds .tw-status { display: inline-flex; gap: var(--sp-2); align-items: center; }

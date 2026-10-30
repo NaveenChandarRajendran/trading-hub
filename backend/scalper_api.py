@@ -11,7 +11,7 @@ capital routes below are kept for the page and do the same.
   POST /api/scalper/orders?strategy= {securityId, side, lots, sl?, target?, protection?}   MARKET order in one click;
        sl / target in points from the fill (OCO, BUY only), protection % refuses a fill beyond LTP ± % -> {order, attached}
   POST /api/scalper/cancel-all?strategy=          cancels every pending order (targets / stops too)
-  PUT  /api/scalper/mtm-limit?strategy= {profit?, loss?}   day MTM limit in ₹ (mtm_limit.py); funds.mtm shows it
+  PUT  /api/scalper/mtm-limit?strategy= {profit?, loss?, lock?}   day MTM limit / profit lock in ₹ (mtm_limit.py); funds.mtm
   POST /api/scalper/exit/{securityId}?strategy= {pct?}   at market: all, or 25 / 50 / 75 % of the open lots
                                                         (rounded down, at least 1 lot) | /api/scalper/exit-all?strategy=
   PUT  /api/scalper/trail/{securityId}?strategy= {distance, step?, after?}   trailing stop in points; distance null = off
@@ -48,6 +48,7 @@ class OrderBody(BaseModel):
 class MtmBody(BaseModel):
     profit: float | None = None  # ₹, None = off
     loss: float | None = None
+    lock: float | None = None  # profit lock ₹ (≥ 0, below the target): armed once MTM is above it, fires when it falls back
 
 
 class CapitalBody(BaseModel):
@@ -145,7 +146,7 @@ def register(app, svc, strategies):
     @app.put("/api/scalper/mtm-limit")
     def mtm_limit(body: MtmBody, request: Request, strategy: str = ""):
         b = book(request, strategy)
-        return {"mtm": run(paper.set_mtm_limit, b, body.profit, body.loss), "funds": paper.funds(b)}
+        return {"mtm": run(paper.set_mtm_limit, b, body.profit, body.loss, body.lock), "funds": paper.funds(b)}
 
     @app.post("/api/scalper/exit/{security_id}")
     def exit_one(security_id: int, request: Request, body: ExitBody | None = None, strategy: str = ""):
