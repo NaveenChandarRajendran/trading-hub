@@ -92,7 +92,8 @@ def _r(x, d=2):
 def agreement(oi, sb):
     if not oi or not sb:
         return None
-    return "Agree" if oi["verdict"] == sb["verdict"] else "Mixed"
+    a, b = oi.get("buildUp") or {}, sb.get("buildUp") or {}  # OI build-up, owner 30-Oct-2026 (same reading on every page)
+    return "Agree" if a.get("verdict") and a.get("verdict") == b.get("verdict") else "Mixed"
 
 
 class MarketSources:
@@ -899,7 +900,8 @@ def register(app, svc):
             "trendingOi": (st.get("toiAll") or [])[:5] if st else [],
             "oiViews": {"dhan": st.get("oi"), "sensibull": st.get("sb"), "agreement": agreement(st.get("oi"), st.get("sb")),
                         "trending": trending_view(st.get("toi")),
-                        "votes": votes(st.get("oi"), st.get("sb"), trending_view(st.get("toi")))} if st else None,
+                        "votes": votes((st.get("oi") or {}).get("buildUp"), (st.get("sb") or {}).get("buildUp"),
+                                       trending_view(st.get("toi")))} if st else None,
             "sr": st.get("sr") if st else None,
             "auto": svc.trader.status() if svc.trader else None,
             "alerts": svc.alerts[-10:],

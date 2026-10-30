@@ -81,7 +81,8 @@ export default function OiChangeLiveApp() {
           <Stat label="PCR (OI + chg)" value={f(calc.summary.pcr, 2)} />
           <Stat label="Final average (5–25)" value={f(calc.win.overallAverage, 2)}
             delta={`${signed(2)(points)} pts vs spot`} tone={toneVs(calc.win.overallAverage, spot)} />
-          <Stat label="Verdict" value={<span className={`ocl-verdict ${toneVs(calc.win.overallAverage, spot)}`}>{verdict}</span>} />
+          <Stat label="Verdict (OI build-up)" value={<span className={`ocl-verdict ${verdict === 'BULLISH' ? 'up' : verdict === 'BEARISH' ? 'down' : 'neutral'}`}>{verdict}</span>}
+            delta={calc.verdict.putShare == null ? undefined : `puts ${f(calc.verdict.putShare, 0)}% · puts = support`} />
         </div>
 
         <div className="split">
@@ -115,7 +116,7 @@ export default function OiChangeLiveApp() {
                 </tr>
               </tbody>
             </table>
-            <p className="card-foot">Average above spot = bullish, below = bearish. Verdict uses the final average.</p>
+            <p className="card-foot">Verdict = OI build-up: puts 55%+ of OI + change and more puts added today = Bullish (support); the mirror = Bearish; else Neutral. The final average vs spot is the course sheet's number.</p>
           </section>
         </div>
 

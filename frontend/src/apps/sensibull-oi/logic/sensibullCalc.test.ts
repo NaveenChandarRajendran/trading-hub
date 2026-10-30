@@ -117,6 +117,8 @@ describe('analyzeSnapshot', () => {
   it.each([
     ['oi', null], ['change', null], ['oi', [5, 15]], ['change', [99]],
   ] as [Metric, number[] | null][])('metric %s, picked %j', (metric, picked) => {
-    expect(analyzeSnapshot(parseSensibull(raw), metric, picked)).toEqual(inline(metric, picked));
+    const { buildUp: b, ...rest } = analyzeSnapshot(parseSensibull(raw), metric, picked);
+    expect(rest).toEqual(inline(metric, picked));
+    expect(['Bullish', 'Bearish', 'Neutral']).toContain(b?.verdict); // OI build-up of the widest chosen window
   });
 });

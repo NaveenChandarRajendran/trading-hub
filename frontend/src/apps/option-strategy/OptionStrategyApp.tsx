@@ -149,8 +149,10 @@ export default function OptionStrategyApp() {
                 <Pill value={calc.win.overallAverage} spot={chain.underlying} />
               </div>
               <div className="final">
-                <span className={calc.verdict.points >= 0 ? 'pos' : 'neg'}>
-                  {calc.verdict.points >= 0 ? '+' : ''}{f(calc.verdict.points, 2)} pts vs spot
+                <span>
+                  OI build-up: puts {calc.verdict.putShare == null ? '—' : `${f(calc.verdict.putShare, 0)}%`} of OI + change,
+                  {calc.verdict.morePutsAdded ? ' more puts' : ' more calls'} added today
+                  <br /><span className={calc.verdict.points >= 0 ? 'pos' : 'neg'}>Course average {calc.verdict.points >= 0 ? '+' : ''}{f(calc.verdict.points, 2)} pts vs spot</span>
                 </span>
                 <span className={`verdict ${calc.verdict.verdict}`}>{calc.verdict.verdict}</span>
               </div>

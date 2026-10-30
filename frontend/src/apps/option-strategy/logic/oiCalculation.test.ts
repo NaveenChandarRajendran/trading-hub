@@ -74,9 +74,13 @@ describe('strike windows', () => {
 describe('analyzeOptionChain', () => {
   it('returns exactly what the separate steps return (moved out of the component unchanged)', () => {
     const win = buildWindowAverages(rows, chain.underlying);
-    expect(analyzeOptionChain(chain)).toEqual({
+    const { verdict, ...rest } = analyzeOptionChain(chain);
+    expect(verdict.points).toBe(getVerdict(win.overallAverage, chain.underlying).points);
+    // owner 30-Oct-2026: the verdict is the OI build-up (puts = support), not the average vs spot
+    expect(verdict.verdict).toBe(totals.putNet * 9 >= totals.callNet * 11 && totals.putChgOi > totals.callChgOi ? 'BULLISH'
+      : totals.callNet * 9 >= totals.putNet * 11 && totals.callChgOi > totals.putChgOi ? 'BEARISH' : 'NEUTRAL');
+    expect(rest).toEqual({
       rows, totals, summary: buildSummary(totals, chain.underlying), win,
-      verdict: getVerdict(win.overallAverage, chain.underlying),
     });
   });
 });

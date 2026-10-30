@@ -2,6 +2,7 @@
 // Per-strike blocks, window summaries and anticipated levels, as in the father's Sensibull sheet.
 import type { SbSnapshot } from './sensibull';
 import { INTERVAL_BY_SYMBOL } from '../../option-strategy/logic/oiCalculation';
+import { buildUp } from '../../../shared/oiBuildUp';
 
 export type Metric = 'oi' | 'change';
 const LAKH = 100000;
@@ -108,7 +109,9 @@ export function analyzeSnapshot(snap: SbSnapshot, metric: Metric, picked: number
   const chosen = (picked ?? defaultSelection(sizes)).filter((n) => sizes.includes(n));
   const used = chosen.length ? chosen : defaultSelection(sizes);
   const interval = INTERVAL_BY_SYMBOL[snap.symbol] ?? blocks[0]?.interval ?? 100;
-  return { blocks, windows, used, range: maxRange(blocks, snap.atmStrike), ...buildAnticipated(windows.filter((w) => used.includes(w.n)), interval) };
+  const widest = windows.filter((w) => used.includes(w.n)).sort((x, y) => y.n - x.n)[0];
+  return { blocks, windows, used, range: maxRange(blocks, snap.atmStrike), ...buildAnticipated(windows.filter((w) => used.includes(w.n)), interval),
+    buildUp: widest ? buildUp(widest.put, widest.call) : null }; // owner 30-Oct-2026: same reading as every OI page
 }
 
 export type SnapshotAnalysis = ReturnType<typeof analyzeSnapshot>;

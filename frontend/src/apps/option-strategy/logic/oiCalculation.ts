@@ -1,5 +1,6 @@
 // src/apps/option-strategy/logic/oiCalculation.ts
 // Pure formulas for the "OI & OI CHANGE (CALCULATION)" sheet. No React in here.
+import { buildUp } from '../../../shared/oiBuildUp';
 import type { OptionChain } from './optionChain';
 
 export const INTERVAL_BY_SYMBOL: Record<string, number> = { BANKNIFTY: 100, NIFTY: 50 };
@@ -121,7 +122,11 @@ export function analyzeOptionChain(chain: OptionChain) {
   const { rows, totals } = buildMainTable(chain);
   const summary = buildSummary(totals, chain.underlying);
   const win = buildWindowAverages(rows, chain.underlying);
-  return { rows, totals, summary, win, verdict: getVerdict(win.overallAverage, chain.underlying) };
+  // owner 30-Oct-2026: the verdict is the OI build-up (puts = support); the sheet's average vs spot stays as "points"
+  const { points } = getVerdict(win.overallAverage, chain.underlying);
+  const b = buildUp(totals.putNet, totals.callNet, totals.putChgOi, totals.callChgOi);
+  const verdict: Verdict = b?.verdict === 'Bullish' ? 'BULLISH' : b?.verdict === 'Bearish' ? 'BEARISH' : 'NEUTRAL';
+  return { rows, totals, summary, win, verdict: { verdict, points, putShare: b?.putShare ?? null, morePutsAdded: totals.putChgOi > totals.callChgOi } };
 }
 
 export type ChainAnalysis = ReturnType<typeof analyzeOptionChain>;

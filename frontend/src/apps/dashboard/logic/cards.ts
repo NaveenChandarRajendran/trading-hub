@@ -83,7 +83,7 @@ export function sensibullCard(s: Summary['chain'] | undefined): CardModel {
   const snap = limitRange(toSbSnapshot(s!.data as ChainResponse), SB_RANGE);
   if (!snap.strikes.length) return { ...c, state: 'empty', message: 'No strikes for this expiry.' };
   const a = analyzeSnapshot(snap, 'change', null);
-  c.verdict = vsSpot(a.anticipated, snap.spot);
+  c.verdict = a.buildUp?.verdict ?? 'Neutral'; // OI build-up (owner 30-Oct-2026), same as every OI page
   c.figures = [
     { label: 'Anticipated', value: `${inr(2)(a.anticipated)} (${signed(2)(a.anticipated - snap.spot)})`, tone: tone(a.anticipated - snap.spot) },
     { label: 'Avg PCR', value: inr(2)(a.avgPcr) },

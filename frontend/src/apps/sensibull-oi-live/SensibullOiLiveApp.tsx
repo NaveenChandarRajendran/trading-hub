@@ -95,6 +95,8 @@ export default function SensibullOiLiveApp() {
           <Stat label="Support" value={<span className="sbl-sup">{f(calc.support)}</span>} delta="Anticipated − interval" />
           <Stat label="Resistance" value={<span className="sbl-res">{f(calc.resistance)}</span>} delta="Anticipated + interval" />
           <Stat label="Avg PCR (call ÷ put)" value={f(calc.avgPcr)} />
+          <Stat label="OI build-up" value={calc.buildUp?.verdict ?? '—'} tone={calc.buildUp?.verdict === 'Bullish' ? 'up' : calc.buildUp?.verdict === 'Bearish' ? 'down' : 'neutral'}
+            delta={calc.buildUp ? `puts ${f(calc.buildUp.putShare, 0)}% · puts = support` : undefined} />
         </div>
 
         <section className="card">
