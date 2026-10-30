@@ -265,7 +265,7 @@ export function OrderFlowCard({ f, symbol }: { f: FlowSummary | null | undefined
 const ACCOUNT_TITLE: Record<AccountKey, [string, string]> = {
   megabull: ['MEGABULL ACCOUNT', 'Strict rules: 4 Pillar Rules and SuperTrend Rules, Nifty + Bank Nifty (via MegaBull API)'],
   tradingHub: ['TREND ACCOUNT', 'App paper trading · ₹1 lakh · Trend Rules (Grade A / B)'],
-  dharani: ['POWER BREAKOUT ACCOUNT', 'App paper trading · ₹1 lakh · Power Breakout (3-min, SuperTrend exit)'],
+  dharani: ['POWER BREAKOUT ACCOUNT', 'App paper trading · ₹1 lakh · SuperTrend Breakout (3-min, SuperTrend exit)'],
 };
 
 /** Balance line for the app's own accounts: today's opening balance + today's realised P&L − charges. */
@@ -422,7 +422,7 @@ export function TodayTrades({ auto, shadow }: { auto: AutoStatus | null; shadow:
     <section className="card">
       <div className="card-head">
         <h3 className="card-title">Today&apos;s paper trades · all accounts</h3>
-        <span className="db-muted">Day P&amp;L: <b className={tone(mb + th + dh)}>{signed(2)(mb + th + dh)}</b> (MegaBull {signed(2)(mb)} · Trend {signed(2)(th)} · Power Breakout {signed(2)(dh)})</span>
+        <span className="db-muted">Day P&amp;L: <b className={tone(mb + th + dh)}>{signed(2)(mb + th + dh)}</b> (MegaBull {signed(2)(mb)} · Trend {signed(2)(th)} · SuperTrend Breakout {signed(2)(dh)})</span>
       </div>
       {!rows.length ? <p className="db-muted">No paper trades today.</p> : (
         <div className="db-scroll">

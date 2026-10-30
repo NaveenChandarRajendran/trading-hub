@@ -118,3 +118,26 @@ export function payoffCurve(legs: BLeg[], lot: number, lo: number, hi: number, n
   for (const b of summarize(legs, lot).breakevens) if (b > lo && b < hi) xs.add(b);
   return [...xs].sort((a, b) => a - b).map((s) => ({ s, v: payoffAt(legs, lot, s) }));
 }
+
+/** A saved test strategy (backend builder_store.py): legs and the prices they were taken at. PAPER notes only. */
+export interface SavedLeg { side: 'CE' | 'PE'; strike: number; short: boolean; lots: number; price: number; exitPrice?: number | null }
+export interface Saved {
+  id: string; name: string; group: string; symbol: 'NIFTY' | 'BANKNIFTY'; expiry: string; lot: number; spot?: number | null;
+  legs: SavedLeg[]; created: string; closed: string | null; pnl: number | null; note?: string;
+}
+
+/** Rupees now: sold legs gain when the price falls. now(leg) = the leg's price now (null = unknown, then the total is null). */
+export function savedPnl(s: Pick<Saved, 'legs' | 'lot'>, now: (l: SavedLeg) => number | null | undefined): number | null {
+  let total = 0;
+  for (const l of s.legs) {
+    const p = now(l);
+    if (p == null) return null;
+    const q = l.lots * s.lot;
+    total += l.short ? (l.price - p) * q : (p - l.price) * q;
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/** Money received (+) or paid (−) when it was taken. */
+export const savedNet = (s: Pick<Saved, 'legs' | 'lot'>) =>
+  Math.round(s.legs.reduce((a, l) => a + (l.short ? 1 : -1) * l.price * l.lots * s.lot, 0) * 100) / 100;

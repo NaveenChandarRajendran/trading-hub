@@ -47,7 +47,7 @@ def test_stop_fill_updates_the_stop_order_and_manual_is_not_recorded():
     j.record(t, "exit Stop", NOW)
     o = j.orders("2026-10-26")
     assert [(x["side"], x["status"], x["price"]) for x in o] == [("BUY", "FILLED", 339.5), ("SELL", "FILLED", 223.0)]
-    assert o[0]["strategy"] == "Power Breakout" and o[0]["account"] == "App · Power Breakout"  # was Dharani Rules (renamed 29-Oct-2026)
+    assert o[0]["strategy"] == "SuperTrend Breakout" and o[0]["account"] == "App · SuperTrend Breakout"  # was Dharani Rules (renamed 29-Oct-2026)
     # the filled stop shows its fill time; the time it was placed is kept as placedAt
     assert (o[1]["time"], o[1]["placedAt"]) == ("11:00:00", NOW.strftime("%H:%M:%S"))
     j.record(trade(id="m1", account="manual", slot="manual"), "bracket", NOW)
@@ -79,7 +79,7 @@ def test_excel_history_and_manual_round_trips():
 def test_rows_saved_as_dharani_read_back_as_power_breakout():
     import journal
     old = {"id": "x", "strategy": "Dharani Rules", "account": "App · Dharani"}
-    assert journal.renamed(old) == {"id": "x", "strategy": "Power Breakout", "account": "App · Power Breakout"}
+    assert journal.renamed(old) == {"id": "x", "strategy": "SuperTrend Breakout", "account": "App · SuperTrend Breakout"}
     assert journal.renamed({"strategy": "Manual", "account": "App · Manual"}) == {"strategy": "Manual", "account": "App · Manual"}
 
 

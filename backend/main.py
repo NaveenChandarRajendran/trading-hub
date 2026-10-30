@@ -318,6 +318,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     import journal as journal_mod
     jr = journal_mod.Journal("data")
     journal_mod.register(app, jr, paper)
+    import builder_store  # the strategy builder's saved test strategies (owner 30-Oct-2026), PAPER notes only
+    builder_store.register(app, builder_store.BuilderStore("data", clock=tracker.clock))
     app.state.journal = jr
     if signal_config is not None:
         signals = build_signals(signal_config, tracker, app.state.candles, get_expiries, lot_size, trending_oi_body, paper,
@@ -388,7 +390,7 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
         paper.fill_listeners.append(notify.manual_fill_listener(phone, paper, trader, rows_today))
     svc_ref["svc"] = svc
     svc.selling = None
-    if paper and cfg.get("selling", {}).get("enabled", False):  # Rs 3 lakh option SELLING paper book (owner 28-Oct-2026)
+    if paper and cfg.get("selling", {}).get("enabled", False):  # Rs 10 lakh option SELLING paper book (owner 28-Oct-2026)
         import sell_desk
 
         def on_sell(trade, event):

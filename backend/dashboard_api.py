@@ -279,7 +279,7 @@ def register(app, deps: DashboardDeps):
     def candles(symbol: str = "NIFTY", interval: int = 5, date: str = "", warm: int = 0):
         """Today and the session before as candles; warm = that many earlier sessions more, sent apart ("warm") so the
         chart's long indicators (EMA 200 on 5-minute candles, Rebound Call) start full on the first shown candle.
-        warm=2 shares the signal watcher's 4-session cache (Power Breakout), warm=10 the Rebound Call's 12-session one, so
+        warm=2 shares the signal watcher's 4-session cache (SuperTrend Breakout), warm=10 the Rebound Call's 12-session one, so
         neither costs an extra Dhan call."""
         symbol = symbol.upper()
         if symbol not in SCRIP:

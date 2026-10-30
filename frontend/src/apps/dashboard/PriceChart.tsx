@@ -158,7 +158,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
   box?: { high: number; low: number } | null; // Box Pullback's opening box: two solid lines
-  ruleLines?: RuleLine[]; // levels the selected rule checks (Power Breakout: pivot R1 / S1), solid, so they are not taken for OI levels
+  ruleLines?: RuleLine[]; // levels the selected rule checks (SuperTrend Breakout: pivot R1 / S1), solid, so they are not taken for OI levels
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
@@ -511,7 +511,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
       s.createPriceLine({ price: price as number, color, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: title as string }));
   }, [boxHigh, boxLow, mode]);
 
-  // the selected rule's own levels (Power Breakout: "Close above R1" uses the Traditional pivot R1, not an OI strike)
+  // the selected rule's own levels (SuperTrend Breakout: "Close above R1" uses the Traditional pivot R1, not an OI strike)
   const ruleKey = ruleLines.map((l) => `${l.title}:${l.price}`).join('|');
   useEffect(() => {
     const s = series.current;

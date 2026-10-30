@@ -231,7 +231,7 @@ export default function PaperJournalApp() {
                   ))}
                   {g.rows.length > 1 && (
                     <tr className="pj-subtotal">
-                      <td>{g.name === 'Option Sell' ? 'Selling book (₹3L) total' : `${g.name} total`}</td><td className="txt" /><td className="num">{g.t.trades}</td>
+                      <td>{g.name === 'Option Sell' ? 'Selling book (₹10L) total' : `${g.name} total`}</td><td className="txt" /><td className="num">{g.t.trades}</td>
                       <td>{g.t.winRate == null ? '–' : g.t.winRate.toFixed(1)}</td><td><NetCell net={g.t.trades ? g.t.net : null} run={g.run} /></td>
                       <td className="up">{signedRupees(g.t.avgWin)}</td><td className="down">{signedRupees(g.t.avgLoss)}</td><td>{inr(2)(g.t.charges)}</td>
                     </tr>

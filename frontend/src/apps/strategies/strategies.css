@@ -103,3 +103,79 @@ a.sg-section-name:hover { color: var(--accent); }
 .sb .sb-dot.down { fill: var(--down); }
 .sb .sb-tip { position: absolute; top: 4px; transform: translateX(-50%); background: var(--surface, #fff); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 8px; font-size: var(--fs-xs); white-space: nowrap; pointer-events: none; box-shadow: 0 2px 6px rgb(0 0 0 / 0.12); }
+
+/* Owner 30-Oct-2026: one heading style everywhere. Section headings = .td-title (large, bold); card headings inside a
+   section (Trending OI, Order flow, OI views, the chart's index) = the same colour and weight, one step smaller. */
+.sg .card-title, .td .card-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.sg .td-title, .td .td-title { color: var(--text); font-weight: 700; }
+
+/* money row (top of each strategy page, Total Capital page) */
+.sg-money { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.sg-fig { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); min-width: 0; }
+.sg-fig-big { font-size: 22px; font-weight: 700; line-height: 1.25; }
+.sg-fig .td-big, .sg-fig .num { overflow-wrap: anywhere; }
+.sg-fig.gain { background: var(--up-soft); border-color: color-mix(in srgb, var(--up) 35%, transparent); }
+.sg-fig.loss { background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 35%, transparent); }
+
+/* card extras */
+.sg-line.sg-cap { color: var(--text-2); }
+.sg-card .sg-cap:first-of-type { margin-top: 2px; }
+.sg-more-btn { align-self: flex-start; border: 0; background: none; padding: 2px 0 0; cursor: pointer; font: inherit; font-size: var(--fs-xs); font-weight: 600; color: var(--accent); text-decoration: underline; }
+.sg-more-btn:hover { color: var(--text); }
+.sg-rules { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-md); color: var(--text-2); line-height: 1.5; }
+
+/* fold-out sections (OI and order flow, Momentum stock lists) */
+.sg-fold > summary { list-style: none; display: flex; align-items: baseline; gap: var(--sp-3); cursor: pointer; flex-wrap: wrap; }
+.sg-fold > summary::-webkit-details-marker { display: none; }
+.sg-fold > summary .td-title::before { content: '▸'; display: inline-block; width: 1em; color: var(--text-3); transition: transform 120ms; }
+.sg-fold[open] > summary .td-title::before { transform: rotate(90deg); }
+.sg-fold[open] > summary { margin-bottom: var(--sp-3); }
+
+/* Total Capital page */
+.cap-table td.num, .cap-table th { white-space: nowrap; }
+.cap-table tr.cap-sec td { font-weight: 700; background: var(--surface-2); }
+.cap-table tr.cap-total td { font-weight: 700; border-top: 2px solid var(--border-strong); }
+.cap-bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .55; vertical-align: middle; margin-right: 6px; }
+.cap-split { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: var(--sp-2) 0 var(--sp-1); }
+.cap-split i { display: block; height: 100%; }
+.cap-legend { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); color: var(--text-2); }
+.cap-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+/* Momentum stock tiles (like Index components) */
+.mo-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.mo-tile { --i: 0; border-radius: 8px; padding: 8px 10px; min-height: 64px; display: flex; flex-direction: column; justify-content: space-between; background: var(--surface-2); border: 1px solid var(--border); }
+.mo-tile.gain { background: color-mix(in srgb, var(--up) calc(12% + var(--i) * 55%), var(--surface-2)); }
+.mo-tile.loss { background: color-mix(in srgb, var(--down) calc(12% + var(--i) * 55%), var(--surface-2)); }
+.mo-tile .top, .mo-tile .bot { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.mo-tile .sym { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-tile .wt { font-size: 11px; opacity: .7; }
+.mo-tile .bot { font-weight: 600; font-size: 13px; }
+
+/* builder: option chain + saved test strategies (owner 30-Oct-2026) */
+.sb .sb-chainwrap { margin: 4px 0 14px; }
+.sb .sb-chainwrap > summary { cursor: pointer; margin-bottom: 8px; }
+.sb .sb-chain { max-height: 520px; overflow: auto; }
+.sb .sb-chain table { font-size: var(--fs-sm); }
+.sb .sb-chain th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.sb .sb-chain .sb-k { text-align: center; background: var(--surface-2); }
+.sb .sb-chain tr.sb-atm td { border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+.sb .sb-chain .sb-itm { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.sb .sb-oi { position: relative; }
+.sb .sb-oi span { position: relative; }
+.sb .sb-oibar { position: absolute; top: 25%; bottom: 25%; right: 0; opacity: .22; border-radius: 2px; }
+.sb .sb-oibar.ce { background: var(--down); }
+.sb .sb-oibar.pe { background: var(--up); }
+.sb .sb-bs { display: inline-flex; gap: 3px; }
+.sb .sb-bs button { border: 1px solid var(--border); border-radius: 4px; padding: 0 7px; font: inherit; font-size: var(--fs-xs); font-weight: 700; cursor: pointer; background: var(--surface); }
+.sb .sb-bs .sb-b { color: var(--accent); }
+.sb .sb-bs .sb-s { color: var(--warn); }
+.sb .sb-bs button:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
+.sb .sb-bs button:disabled { opacity: .35; cursor: default; }
+.sb .sb-save { margin-top: 12px; }
+.sb .sb-save .sb-name, .sb .sb-edit input { width: 180px; }
+.sb .sb-edit { display: inline-flex; flex-direction: column; gap: 4px; }
+.sb .sb-saved-head { margin-top: 18px; }
+.sb .sb-saved { display: flex; flex-direction: column; gap: 14px; }
+.sb .sb-legtext { display: flex; flex-direction: column; font-size: var(--fs-sm); white-space: nowrap; }
+.sb .sb-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.cap-table tr.cap-sub td:first-child { padding-left: 28px; }

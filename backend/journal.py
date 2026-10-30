@@ -4,7 +4,7 @@ broker's order book and trade book with history, for all strategies in one place
 today's orders, so the app records each order it sends there itself. PAPER ONLY: this module only records.
 
 What is recorded
-  Auto strategies (4 Pillar Rules, SuperTrend Rules on MegaBull; Power Breakout (was Dharani Rules), Trend Rules on the app's accounts):
+  Auto strategies (4 Pillar Rules, SuperTrend Rules on MegaBull; SuperTrend Breakout (was Dharani Rules), Trend Rules on the app's accounts):
   the auto trader (autopaper.AutoTrader) reports each step through on_order(trade, event): "entry" (BUY filled),
   "stop placed" (SELL stop open), "exit <reason>" (stop filled, or stop cancelled + SELL at market). Each step becomes
   an order row; the trade itself is kept with its latest state.
@@ -26,24 +26,26 @@ import holidays
 
 log = logging.getLogger("journal")
 
-STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "Power Breakout",
+STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "SuperTrend Breakout",
             "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "orbPullback": "Box Pullback 15/5", "orbPullback5": "Box Pullback 5/1", "sellStraddle": "Expiry Straddle (sell)",
             "sellCalmCall": "Calm-day Call Sell", "sellStrangle": "2-month Strangle (sell)",
             "sellStraddle940": "Expiry Straddle 9:40 (sell)", "sellStraddle1126": "Expiry Straddle 11:26 (sell)",
             "sellStraddle1224": "Expiry Straddle 12:24 (sell)"}
-ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Power Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1",
+ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · SuperTrend Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1",
            "selling": "App · Selling", "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Power Breakout", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "SuperTrend Breakout", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
               "Calm-day Call Sell", "2-month Strangle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
               "Expiry Straddle 12:24 (sell)", "Manual"]
 
 
-# Owner 29-Oct-2026: "Dharani Rules" is shown as "Power Breakout" (rule id dharaniV2 unchanged). Rows saved before the
+# Owner 29-Oct-2026: "Dharani Rules" is shown as "SuperTrend Breakout" (rule id dharaniV2 unchanged). Rows saved before the
 # rename (day files, Excel import) are renamed when read, so the history stays one strategy.
-RENAMED = {"Dharani Rules": "Power Breakout", "App · Dharani": "App · Power Breakout"}
+RENAMED = {"Dharani Rules": "SuperTrend Breakout", "App · Dharani": "App · SuperTrend Breakout",
+           # owner 30-Oct-2026: "Power Breakout" renamed again to "SuperTrend Breakout"
+           "Power Breakout": "SuperTrend Breakout", "App · Power Breakout": "App · SuperTrend Breakout"}
 # The phone messages list the live rules grouped like the app's Trading Strategies menu (owner 29-Oct-2026).
 PHONE_GROUPS = [
-    ("Option Buy", ["Power Breakout", "Rebound Call"]),
+    ("Option Buy", ["SuperTrend Breakout", "Rebound Call"]),
     ("Option Sell", ["Expiry Straddle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
                      "Expiry Straddle 12:24 (sell)", "Calm-day Call Sell", "2-month Strangle (sell)"]),
     ("Scalping", ["Box Pullback 15/5"]),  # 5/1 dropped by the owner 30-Oct-2026

@@ -14,27 +14,27 @@ export type Who = string; // journal strategy name
 
 /** Plain names for the account chips and the "Who" column; MegaBull rules run on MegaBull, the rest in this app. */
 export const WHO: Record<Who, { name: string; where: string }> = {
-  Manual: { name: 'My trades', where: 'Manual' },
+  Manual: { name: 'Manual trades', where: 'Manual (practice)' },
   'Rebound Call': { name: 'Rebound Call', where: 'App account' }, // BankNifty Rebound Call, paper from 28-Oct-2026
   // opening box + pullback (YouTube), paper from 29-Oct-2026: 15-min box + 5-min close, and 5-min box + 1-min close
   'Box Pullback 15/5': { name: 'Box Pullback 15/5', where: 'App account' },
   'Box Pullback 5/1': { name: 'Box Pullback 5/1', where: 'App account' },
-  'Power Breakout': { name: 'Power Breakout', where: 'App account' },
+  'SuperTrend Breakout': { name: 'SuperTrend Breakout', where: 'App account' },
   'Trend Rules': { name: 'Trend Rules', where: 'App account' },
   '4 Pillar Rules': { name: '4 Pillar Rules', where: 'MegaBull' },
   'SuperTrend Rules': { name: 'SuperTrend Rules', where: 'MegaBull' },
-  // the Rs 3 lakh option SELLING paper book (owner approved 28-Oct-2026), backend sell_desk.py
-  'Expiry Straddle (sell)': { name: 'Expiry Straddle', where: 'App · Selling ₹3L' },
-  'Calm-day Call Sell': { name: 'Calm-day Call Sell', where: 'App · Selling ₹3L' },
-  '2-month Strangle (sell)': { name: '2-month Strangle', where: 'App · Selling ₹3L' },
+  // the Rs 10 lakh option SELLING paper book (owner approved 28-Oct-2026), backend sell_desk.py
+  'Expiry Straddle (sell)': { name: 'Expiry Straddle', where: 'App · Selling ₹10L' },
+  'Calm-day Call Sell': { name: 'Calm-day Call Sell', where: 'App · Selling ₹10L' },
+  '2-month Strangle (sell)': { name: '2-month Strangle', where: 'App · Selling ₹10L' },
   // timed expiry straddles from a Salem trader's podcast (owner 28-Oct-2026)
-  'Expiry Straddle 9:40 (sell)': { name: 'Expiry Straddle 9:40', where: 'App · Selling ₹3L' },
-  'Expiry Straddle 11:26 (sell)': { name: 'Expiry Straddle 11:26', where: 'App · Selling ₹3L' },
-  'Expiry Straddle 12:24 (sell)': { name: 'Expiry Straddle 12:24', where: 'App · Selling ₹3L' },
+  'Expiry Straddle 9:40 (sell)': { name: 'Expiry Straddle 9:40', where: 'App · Selling ₹10L' },
+  'Expiry Straddle 11:26 (sell)': { name: 'Expiry Straddle 11:26', where: 'App · Selling ₹10L' },
+  'Expiry Straddle 12:24 (sell)': { name: 'Expiry Straddle 12:24', where: 'App · Selling ₹10L' },
 };
 export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
   'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
-export const WHO_ORDER: Who[] = ['Manual', 'Power Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
+export const WHO_ORDER: Who[] = ['Manual', 'SuperTrend Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {

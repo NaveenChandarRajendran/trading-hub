@@ -13,16 +13,17 @@ import { ChartPanel, INDEX_NAME } from '../dashboard/ChartPanel';
 import { OiViewsCard, OrderFlowCard, SrCard, TrendingOiCard } from '../dashboard/SignalPanels';
 import { useDashboard } from '../dashboard/useDashboard';
 import { useToggles } from '../dashboard/DashboardApp';
-import { capitalByBook, forIndex, summarize } from '../today/logic/today';
+import { forIndex, summarize } from '../today/logic/today';
 import { ClosedTable, Money, OpenTable } from '../today/TradeTables';
 import { useToday } from '../today/useToday';
 import { inSection, sectionOf, type SectionId } from './catalog';
 import { StrategyCards } from './StrategyCards';
+import { MoneyStrip } from './MoneyStrip';
+import { useSinceStart } from './hooks';
+import { sectionMoney } from './logic/capital';
 import '../today/today.css';
 import '../dashboard/dashboard.css';
 import './strategies.css';
-
-const lakhs = (v: number) => (v >= 100000 ? `₹${(v / 100000).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L` : `₹${inr(0)(v)}`);
 
 function useMinute() {
   const [now, setNow] = useState(() => new Date());
@@ -51,19 +52,22 @@ export function IndexCard({ symbol, c, vix }: { symbol: string; c: ContextRow | 
   );
 }
 
-function OiBlock({ symbol, sig }: { symbol: string; sig: SignalsState | null }) {
+/** One index's OI views and order flow, folded away until opened (owner 30-Oct-2026: "keep the page simple"). */
+export function OiBlock({ symbol, sig }: { symbol: string; sig: SignalsState | null }) {
   return (
-    <div className="db-context-index">
-      <h3 className="card-title">{INDEX_NAME[symbol]} · OI and order flow</h3>
-      <TrendingOiCard rows={sig?.trendingOi ?? []} />
-      <div className="db-two">
-        <OiViewsCard views={sig?.oiViews ?? null} sr={sig?.sr ?? null} />
-        <div className="db-stack">
-          <SrCard sr={sig?.sr ?? null} components="" />
-          <OrderFlowCard f={sig?.orderFlow} symbol={symbol} />
+    <details className="card sg-fold">
+      <summary><h3 className="td-title">{INDEX_NAME[symbol]} · OI and order flow</h3><span className="td-label">click to open or close</span></summary>
+      <div className="db-context-index">
+        <TrendingOiCard rows={sig?.trendingOi ?? []} />
+        <div className="db-two">
+          <OiViewsCard views={sig?.oiViews ?? null} sr={sig?.sr ?? null} />
+          <div className="db-stack">
+            <SrCard sr={sig?.sr ?? null} components="" />
+            <OrderFlowCard f={sig?.orderFlow} symbol={symbol} />
+          </div>
         </div>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -93,32 +97,29 @@ export default function StrategyPage({ section }: { section: SectionId }) {
   const mine = rows.filter((r) => whos.includes(r.who));
   const shown = forIndex(mine, 'both');
   const sum = summarize(mine);
-  const cap = capitalByBook(mine);
+  const since = useSinceStart();
+  const money = sectionMoney(section, since.closed, rows, undefined).total;
   const vix = data.context.NIFTY?.vix ?? data.context.BANKNIFTY?.vix ?? null;
   const left = minutesToExit(now);
   const isSell = section === 'optionSell';
 
   return (
     <div className="ds td db sg">
-      {/* 1. market + this section at a glance */}
-      <section className="card sg-strip">
-        {indices.map((x, i) => <IndexCard key={x} symbol={x} c={data.context[x as 'NIFTY' | 'BANKNIFTY']} vix={i === indices.length - 1 ? vix : undefined} />)}
-        <div className={`sg-index sg-pnl ${sum.total > 0 ? 'gain' : sum.total < 0 ? 'loss' : ''}`}>
-          <span className="td-label">{info.name} P&amp;L today</span>
-          <Money v={sum.total} big />
-          <span className="td-label">{sum.open} live · {sum.closed} closed · <span className="up">{sum.won} won</span> · <span className="down">{sum.lost} lost</span></span>
+      {/* 1. this section's money, then the market */}
+      <section className="card">
+        <div className="card-head">
+          <h3 className="td-title">{info.name} at a glance</h3>
+          <span className="td-label">Paper trading · each strategy has its own capital · <Link to="/capital">All strategies: Total Capital &amp; P&amp;L →</Link></span>
         </div>
-        <div className="sg-index">
-          <span className="td-label">Capital in use</span>
-          <span className="sg-index-price num">{cap.total ? lakhs(cap.total) : '₹0'}</span>
-          <span className="td-label">{cap.books.length ? cap.books.map((b) => `${b.name} ${lakhs(b.used)} of ${lakhs(b.size)}${isSell ? ' (est.)' : ''}`).join(' · ') : 'nothing open'}</span>
-        </div>
-        <div className="sg-strip-end">
-          {auto && <Link to="/today" className={`pill ${auto.auto ? 'up' : 'neutral'}`} title="Turn it on or off on Today">Auto paper trading {auto.auto ? 'ON' : 'OFF'}</Link>}
-          {data.marketOpen && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
-          {isSell && selling.data?.capital != null && (
-            <span className="td-label">Selling book {lakhs(selling.data.capital)} · since start <Money v={(selling.data.realized ?? 0) + (selling.data.unrealized ?? 0)} /></span>
-          )}
+        <MoneyStrip m={money} title={info.name} loaded={since.loaded}
+          today={{ pnl: sum.total, sub: <>{sum.open} live · {sum.closed} closed · <span className="up">{sum.won} won</span> · <span className="down">{sum.lost} lost</span></> }} />
+        <div className="sg-strip">
+          {indices.map((x, i) => <IndexCard key={x} symbol={x} c={data.context[x as 'NIFTY' | 'BANKNIFTY']} vix={i === indices.length - 1 ? vix : undefined} />)}
+          <div className="sg-strip-end">
+            {auto && <Link to="/today" className={`pill ${auto.auto ? 'up' : 'neutral'}`} title="Turn it on or off on Today">Auto paper trading {auto.auto ? 'ON' : 'OFF'}</Link>}
+            {data.marketOpen && left > 0 && <Pill tone={left <= 30 ? 'warn' : 'neutral'}>Exit by 3:15 · {left} min left</Pill>}
+            {isSell && <span className="td-label">Nifty options only · margin in use is an estimate</span>}
+          </div>
         </div>
       </section>
 
@@ -130,14 +131,14 @@ export default function StrategyPage({ section }: { section: SectionId }) {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">{info.name} strategies</h3>
-          <span className="td-label">{list.length} on paper · click a card for its live checklist</span>
+          <span className="td-label">{list.length} on paper · click a card for its {isSell ? 'rules' : 'live checklist'}</span>
         </div>
-        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} />
+        <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} history={since.closed} />
       </section>
 
       {/* 3. chart */}
       <div className="db-section-head">
-        <h3 className="card-title">Chart{picked ? ` · ${picked.name}` : ` · ${INDEX_NAME.NIFTY}`}</h3>
+        <h3 className="td-title">Chart{picked ? ` · ${picked.name}` : ` · ${INDEX_NAME.NIFTY}`}</h3>
         {ruled.length > 1 && (
           <span className="db-head-end sg-pick" role="group" aria-label="Strategy on the chart">
             {ruled.map((s) => (
@@ -182,10 +183,8 @@ export default function StrategyPage({ section }: { section: SectionId }) {
       {/* 5. Option Sell only: the strategy builder (try ideas on the live chain; never places orders) */}
       {isSell && <StrategyBuilder />}
 
-      {/* 6. OI views and order flow for this section's indices */}
-      <section className="card db-context-body">
-        {indices.map((x) => <OiBlock key={x} symbol={x} sig={signals[x]} />)}
-      </section>
+      {/* 6. OI views and order flow for this section's indices, folded (Option Sell: Nifty only, the selling rules trade Nifty) */}
+      {indices.map((x) => <OiBlock key={x} symbol={x} sig={signals[x]} />)}
     </div>
   );
 }

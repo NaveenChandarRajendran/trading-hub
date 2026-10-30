@@ -1,5 +1,5 @@
 """
-sell_rules.py - the three option SELLING rules of the app's Rs 3 lakh "Selling" paper book (owner approved 28-Oct-2026).
+sell_rules.py - the three option SELLING rules of the app's Rs 10 lakh "Selling" paper book (owner approved 28-Oct-2026).
 docs/strategies/option-selling.md is the written rule; this file must match it. PAPER ONLY. Pure functions: no I/O, no
 clock; sell_desk.py runs them.
 
@@ -37,7 +37,7 @@ NAMES = {STRADDLE: "Expiry Straddle (sell)", CALM: "Calm-day Call Sell", STRANGL
 SYMBOL = "NIFTY"
 
 DEFAULTS = {
-    "enabled": True, "capital": 300000, "lots": 1,
+    "enabled": True, "capital": 1000000, "lots": 1,
     STRADDLE: {"enabled": True, "entry": "09:20", "stopPct": 50, "trailToCost": True},
     CALM: {"enabled": True, "entry": "10:15", "maxWidth": 1.34, "bars": 20, "stopPct": 50},
     STRANGLE: {"enabled": True, "entry": "10:00", "check": "15:05", "awayPct": 5, "days": 61, "minDays": 45, "maxDays": 80,

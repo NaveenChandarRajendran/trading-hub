@@ -188,10 +188,11 @@ class SignalService:
         v2, v2_problems = self._v2(symbol, now, max_age)
         if state:
             results["dharaniV2"] = dharani_v2_rule(v2) if v2 else None
+            prev = (self.last.get(symbol) or {}).get("results") or {}
             if symbol in self.rebound_symbols():  # evaluated by the watcher only (run_rebound): keep its last result
-                results[RB] = ((self.last.get(symbol) or {}).get("results") or {}).get(RB)
+                results[RB] = prev.get(RB) or self._reading(symbol, now, RB)
             for ob in self.orb_rules():  # evaluated every minute by run_orb: keep its last result
-                results[ob] = ((self.last.get(symbol) or {}).get("results") or {}).get(ob)
+                results[ob] = prev.get(ob) or self._reading(symbol, now, ob)
         rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
                "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
@@ -199,6 +200,25 @@ class SignalService:
                     or (state and self.last[symbol]["state"] and state["signalTime"] != self.last[symbol]["state"]["signalTime"]):
                 self.last[symbol] = rec
         return rec
+
+    def _reading(self, symbol, now, rule):
+        """The checklist of a watcher-run rule (Rebound Call, Box Pullback) when the watcher has no result yet, e.g. after a
+        restart or after the close (owner 30-Oct-2026: the Rebound card said "No reading yet"). Reading only: never trades."""
+        try:
+            if rule == RB:
+                st, _ = build_state_rebound(symbol, now, self.src)
+                if not st:
+                    return None
+                st["tradedToday"] = self._rebound_day.get(symbol) == now.date()
+                return rebound_rule(st)
+            st, _ = build_state_orb(symbol, now, self.src, rule=rule)
+            if not st:
+                return None
+            st["tradedToday"] = self._orb_day.get((rule, symbol)) == now.date()
+            return orb_rule(st)
+        except Exception:
+            log.exception("%s reading", rule)
+            return None
 
     def v2_symbols(self):
         c = self.cfg.get("dharaniV2", {})
@@ -697,7 +717,7 @@ class SignalService:
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
-                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "Power Breakout (app paper, Rs 1 lakh)"),
+                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "SuperTrend Breakout (app paper, Rs 1 lakh)"),
                           (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)

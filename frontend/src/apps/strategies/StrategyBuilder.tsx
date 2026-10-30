@@ -1,12 +1,14 @@
 // Strategy builder on the Option Sell page (owner 28-Oct-2026: "like Sensibull's"). Pick ready-made or own legs on
 // the live Dhan chain (GET /api/option-chain) and see the payoff at expiry, max profit / loss, breakevens, chance of
 // profit and a rough margin. PAPER ONLY: it only works things out, it never places an order.
-import { useEffect, useMemo, useState, type PointerEvent } from 'react';
+// Owner 30-Oct-2026: pick legs straight from an option chain, and save a strategy under a name and a sub name to track its P&L.
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { fetchDhanExpiries, fetchOptionChain, type ChainResponse } from '../../shared/dhan/api';
 import { Alert, EmptyState, Pill, Segmented, Stat } from '../../shared/ui';
 import { longDate, price, toneOf } from '../paper-trade/format';
 import { daysToExpiry, atmIv } from '../paper-trade/logic/greeks';
-import { builderMargin, chanceOfProfit, greeksTotal, payoffCurve, summarize, type BLeg } from './logic/builder';
+import { builderMargin, chanceOfProfit, greeksTotal, payoffCurve, summarize, type BLeg, type Saved } from './logic/builder';
+import { ChainPicker, SavedStrategies, useSaved } from './BuilderParts';
 
 type Idx = 'NIFTY' | 'BANKNIFTY';
 const INDEXES = [{ value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
@@ -44,12 +46,23 @@ export default function StrategyBuilder() {
   const [expiry, setExpiry] = useState('');
   const [legs, setLegs] = useState<BLeg[]>([]);
   const [add, setAdd] = useState<{ side: 'S' | 'B'; type: 'CE' | 'PE'; strike: number | ''; lots: number }>({ side: 'S', type: 'CE', strike: '', lots: 1 });
+  const saved = useSaved();
+  const [saveAs, setSaveAs] = useState({ name: '', group: 'My learning' });
+  const [savedMsg, setSavedMsg] = useState('');
+  const pending = useRef<{ expiry: string; legs: BLeg[] } | null>(null); // "Show in builder" on another index
 
   useEffect(() => {
     let live = true;
     setExpiries([]);
     setLegs([]);
-    fetchDhanExpiries(symbol).then((e) => { if (live) { setExpiries(e); setExpiry(e[0] ?? ''); } }, () => live && setExpiries([]));
+    fetchDhanExpiries(symbol).then((e) => {
+      if (!live) return;
+      const p = pending.current;
+      pending.current = null;
+      setExpiries(p && !e.includes(p.expiry) ? [p.expiry, ...e] : e);
+      setExpiry(p?.expiry ?? e[0] ?? '');
+      if (p) setLegs(p.legs);
+    }, () => live && setExpiries([]));
     return () => { live = false; };
   }, [symbol]);
   const { chain, error } = useChain(symbol, expiry);
@@ -92,6 +105,27 @@ export default function StrategyBuilder() {
   const restrike = (l: BLeg, strike: number) => {
     const d = legOf(l.side, strike);
     patch(l.id, { strike, price: d?.last_price ?? l.price, iv: d?.implied_volatility ?? null, delta: d?.greeks?.delta ?? null, theta: d?.greeks?.theta ?? null });
+  };
+
+  const pick = (side: 'CE' | 'PE', strike: number, short: boolean) => setLegs((ls) => [...ls, make(side, strike, short, Math.max(1, add.lots))]);
+  const load = (x: Saved) => {
+    const ls = x.legs.map((l): BLeg => ({ id: `l${++seq}`, side: l.side, strike: l.strike, short: l.short, lots: l.lots, price: l.price, iv: null, delta: null, theta: null }));
+    if (x.symbol === symbol) {
+      if (!expiries.includes(x.expiry)) setExpiries((e) => [x.expiry, ...e]);
+      setExpiry(x.expiry);
+      setLegs(ls);
+    } else {
+      pending.current = { expiry: x.expiry, legs: ls };
+      setSymbol(x.symbol);
+    }
+    document.querySelector('.sb')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const save = async () => {
+    const name = saveAs.name.trim() || `Test ${(saved.rows?.length ?? 0) + 1}`;
+    const ok = await saved.add({ name, group: saveAs.group.trim() || 'My learning', symbol, expiry, lot, spot,
+      legs: legs.map((l) => ({ side: l.side, strike: l.strike, short: l.short, lots: l.lots, price: l.price })) });
+    setSavedMsg(ok ? `Saved "${name}". Its P&L is in "My test strategies" below.` : '');
+    if (ok) setSaveAs({ ...saveAs, name: '' });
   };
 
   const sum = useMemo(() => summarize(legs, lot), [legs, lot]);
@@ -138,6 +172,11 @@ export default function StrategyBuilder() {
         {legs.length > 0 && <button type="button" className="btn ghost" onClick={() => setLegs([])}>Clear all</button>}
       </div>
 
+      <details className="sb-chainwrap" open>
+        <summary><b>Option chain</b> <span className="td-label">premium, OI and change in OI · click B (buy) or S (sell) to add a leg · lots from the box above</span></summary>
+        <ChainPicker rows={rows} atm={atm} spot={spot} onPick={pick} />
+      </details>
+
       {!legs.length ? <EmptyState>Pick a ready-made strategy or add a leg to see its payoff.</EmptyState> : (
         <>
           <div className="td-scroll">
@@ -172,8 +211,20 @@ export default function StrategyBuilder() {
           <Payoff legs={legs} lot={lot} spot={spot} breakevens={sum.breakevens} />
           <p className="td-foot">Payoff on expiry day. Chance of profit assumes the index moves like the ATM IV says. Margin is a rough
             estimate: check Dhan&apos;s margin calculator before trading real money.</p>
+          <div className="sb-add sb-save">
+            <label className="field">Name<input className="sb-name" placeholder={`Test ${(saved.rows?.length ?? 0) + 1}`} value={saveAs.name} onChange={(e) => setSaveAs({ ...saveAs, name: e.target.value })} /></label>
+            <label className="field">Sub name (portfolio)<input className="sb-name" list="sb-groups" value={saveAs.group} onChange={(e) => setSaveAs({ ...saveAs, group: e.target.value })} /></label>
+            <button type="button" className="btn primary" disabled={!ok} onClick={() => void save()}>Save as test strategy</button>
+            {savedMsg && <span className="td-label up">{savedMsg}</span>}
+          </div>
         </>
       )}
+
+      <div className="card-head sb-saved-head">
+        <h3 className="td-title">My test strategies</h3>
+        <span className="td-label">Saved from the builder at the prices shown · P&amp;L now from the live chain · rename any time</span>
+      </div>
+      <SavedStrategies api={saved} onLoad={load} />
     </section>
   );
 }

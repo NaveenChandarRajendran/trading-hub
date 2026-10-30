@@ -301,7 +301,7 @@ def test_megabull_rule_and_dharani_trade_on_separate_accounts(tmp_path):
     assert pos["superTrend"] and pos["dharaniV2"] and not pos["fourPillar"] and not pos.get("tradingHub")
     assert t.on_signal(d, STATE) == "Position already open on this index"
     st = t.status()
-    assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "Power Breakout"
+    assert st["accounts"]["dharani"]["funds"] == {"available": 100000.0} and st["accounts"]["dharani"]["name"] == "SuperTrend Breakout"
 
 
 def test_dharani_entry_has_no_target_picks_strike_by_premium_and_exits_on_supertrend(tmp_path):

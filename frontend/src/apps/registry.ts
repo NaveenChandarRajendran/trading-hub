@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live';
+export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live' | 'money';
 
 /** Sidebar sections, in display order. A section without a label has no header (always open).
  * Owner 27-Oct-2026 ("very confusing layout"): the pages used every day on top, the market data tools folded away
@@ -12,6 +12,7 @@ export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[
   { id: 'tools', label: 'Trade and review' },
   { id: 'live', label: 'Live market data', closedByDefault: true },
   { id: 'manual', label: 'Paste tools', closedByDefault: true },
+  { id: 'money', label: 'My capital' }, // owner 30-Oct-2026: at the bottom, under Paste tools
 ];
 
 export interface AppEntry {
@@ -42,7 +43,7 @@ export const apps: AppEntry[] = [
     group: 'strategies',
     name: 'Option Buy',
     path: '/strategies/option-buy',
-    hint: 'Power Breakout and Rebound Call: live checklists, chart, trades and OI',
+    hint: 'SuperTrend Breakout and Rebound Call: live checklists, chart, trades and OI',
     icon: '▲',
     component: lazy(() => import('./strategies/OptionBuyApp')),
   },
@@ -51,7 +52,7 @@ export const apps: AppEntry[] = [
     group: 'strategies',
     name: 'Option Sell',
     path: '/strategies/option-sell',
-    hint: 'The ₹3 lakh Nifty selling book: straddles, calm-day call, 2-month strangle',
+    hint: 'The ₹10 lakh Nifty selling book: straddles, calm-day call, 2-month strangle',
     icon: '▼',
     component: lazy(() => import('./strategies/OptionSellApp')),
   },
@@ -110,6 +111,16 @@ export const apps: AppEntry[] = [
     hint: 'How each rule did on past data',
     icon: '↺',
     component: lazy(() => import('./backtest/BacktestApp')),
+  },
+  {
+    // owner 30-Oct-2026: every strategy's capital, net P&L since start, brokerage and taxes, on one page
+    id: 'capital',
+    group: 'money',
+    name: 'Total Capital & P&L',
+    path: '/capital',
+    hint: 'How much each strategy has, what it uses and what it has made since paper trading started',
+    icon: '₹',
+    component: lazy(() => import('./capital/CapitalApp')),
   },
   {
     id: 'option-strategy',

@@ -125,7 +125,7 @@ def test_hourly_update_matches_the_owners_sample():
         "🟢 Dharani Rules: won +₹902 (Target, BANKNIFTY 54500 PUT)",
         "🔵 Trend Rules: in trade NIFTY 22800 CALL, −₹286 now",
         "⚪ Rebound Call: no setup this hour",
-        "👤 My trades: 2 open, +₹612 now",
+        "👤 Manual trades: 2 open, +₹612 now",
     ]
 
 
@@ -196,7 +196,7 @@ def test_market_block_reads_like_the_dashboard():
 
 def test_phone_lists_live_rules_by_section_and_every_strangle_leg():
     # owner 29-Oct-2026: no watch-only rules; group like the app; a strangle shows both legs
-    groups = [("Option Buy", ["Power Breakout", "Rebound Call"]), ("Option Sell", ["2-month Strangle (sell)"])]
+    groups = [("Option Buy", ["SuperTrend Breakout", "Rebound Call"]), ("Option Sell", ["2-month Strangle (sell)"])]
     rows = [
         {"id": "s1", "strategy": "2-month Strangle (sell)", "status": "open", "instrument": "NIFTY 29 DEC 23400 CALL"},
         {"id": "s2", "strategy": "2-month Strangle (sell)", "status": "open", "instrument": "NIFTY 29 DEC 22100 PUT"},
@@ -205,12 +205,12 @@ def test_phone_lists_live_rules_by_section_and_every_strangle_leg():
     text = notify.hourly_text("13:15", rows, groups, live={"s1": 500, "s2": -200}, hide={"Trend Rules", "4 Pillar Rules"})
     lines = text.split("\n")
     assert lines[1:] == [
-        "— Option Buy —", "⚪ Power Breakout: no setup this hour", "⚪ Rebound Call: no setup this hour",
+        "— Option Buy —", "⚪ SuperTrend Breakout: no setup this hour", "⚪ Rebound Call: no setup this hour",
         "— Option Sell —", "🔵 2-month Strangle (sell): in trade NIFTY 29 DEC 23400 CALL + 22100 PUT, +₹300 now",
-        "👤 My trades: none",
+        "👤 Manual trades: none",
     ]
-    assert "Trend" not in text
-    assert notify.open_text("29 Oct", groups, {"Rebound Call"}).split("\n")[1] == "Watching: Power Breakout, 2-month Strangle (sell)"
+    assert "Trend Rules" not in text
+    assert notify.open_text("29 Oct", groups, {"Rebound Call"}).split("\n")[1] == "Watching: SuperTrend Breakout, 2-month Strangle (sell)"
 
 
 def test_stop_and_target_on_a_manual_trade_goes_to_the_phone(tmp_path):

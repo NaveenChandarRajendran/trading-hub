@@ -10,7 +10,7 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['', 'Trading Strategies', 'Trade and review', 'Live market data', 'Paste tools']); // '' = top, no header
+    expect(g.map((x) => x.label)).toEqual(['', 'Trading Strategies', 'Trade and review', 'Live market data', 'Paste tools', 'My capital']); // '' = top, no header
     // owner design brief 29-Oct-2026: Today (landing page), then the four strategy pages, then the trading tools
     expect(g[0].apps.map((a) => a.name)).toEqual(['Today']);
     expect(apps[0].id).toBe('today');
@@ -18,6 +18,7 @@ describe('sidebar groups', () => {
     expect(g[2].apps.map((a) => a.name)).toEqual(['Buy / Sell', 'Trade History', 'Order Flow', 'Backtest']);
     expect(g[3].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'dashboard']);
     expect(g[4].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
+    expect(g[5].apps.map((a) => a.id)).toEqual(['capital']); // owner 30-Oct-2026: at the bottom, under Paste tools
   });
 
   it('keeps the old page addresses', () => {

@@ -1,5 +1,5 @@
 """
-sell_desk.py - the app's Rs 3 lakh "Selling" paper book (owner approved 28-Oct-2026): runs the three option SELLING
+sell_desk.py - the app's Rs 10 lakh "Selling" paper book (owner approved 28-Oct-2026): runs the three option SELLING
 rules of sell_rules.py (docs/strategies/option-selling.md). PAPER ONLY: nothing here can reach a real order endpoint.
 
 Why its own book: the paper engine (paper_engine.py) is long-only and intraday (a SELL may only close a buy; 15:15

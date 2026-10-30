@@ -41,7 +41,7 @@ MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): 
 RB, RBK = "reboundCall", "rebound"  # Rebound Call rule (sig_rebound.py) and its own Rs 1 lakh book (owner, 27-Oct-2026)
 OB, OBK = "orbPullback", "orb"  # Box Pullback 15/5 (sig_orb.py) and its own Rs 1 lakh book (owner, 29-Oct-2026)
 OB5, OBK5 = "orbPullback5", "orb5"  # Box Pullback 5/1, its own Rs 1 lakh book (owner, 29-Oct-2026)
-ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "Power Breakout", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
+ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "SuperTrend Breakout", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
                  OBK5: "Box Pullback 5/1 book",
                  MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,

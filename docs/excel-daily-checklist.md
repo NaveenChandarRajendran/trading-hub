@@ -9,9 +9,9 @@ Each trading day D (skip weekends and NSE holidays, `holidays.py`):
 1. **Trade sheets**: one row per trade on D, or one row with `N/A` when there was no trade (Holiday rows say `Holiday`).
    - `Option Buy - 4 Pillar Rules` (date in B, invested W, net AJ)
    - `Option Buy - SuperTrend Rules` (date in B, invested V, net AI)
-   - `Option Buy - Power Breakout` (was `Option Buy - Dharani Rules`, renamed 29-Oct-2026; date in B, invested V, net AI)
+   - `Option Buy - SuperTrend Breakout` (was `Option Buy - Dharani Rules`, renamed 29-Oct-2026; date in B, invested V, net AI)
    - `Option Buying - Trading Hub` (the app's paper trades: Trend while it traded, and the owner's manual Buy / Sell trades; date in B)
-   - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; Power Breakout's columns; date in B)
+   - `Option Buy - Rebound Call` (BankNifty Rebound Call book from 28-Oct-2026; SuperTrend Breakout's columns; date in B)
    - `Option Buy - Box Pullback 15-5` (from 2-Nov-2026; same columns; both indices). The 5-1 tab was removed: owner dropped 5/1 on 30-Oct-2026.
    - `Option Selling - Megabull` (selling, owner's own entries, expiry days only; date in B)
    - `Option Sell - Selling Book` (the app's Rs 3 L paper selling book from its first live day; one row per leg

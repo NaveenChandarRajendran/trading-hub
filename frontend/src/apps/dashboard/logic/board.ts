@@ -7,7 +7,7 @@ export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHu
 export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
-  { key: 'dharaniV2', name: 'Power Breakout', account: 'App · ₹1 lakh · 3-min' },
+  { key: 'dharaniV2', name: 'SuperTrend Breakout', account: 'App · ₹1 lakh · 3-min' },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
   { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
@@ -99,7 +99,7 @@ export function putShare(v: OiView | null | undefined): number | null {
 export type ChartStrategy = 'all' | StrategyKey;
 export interface ChartPreset { interval: number | null; indicators: IndicatorToggles; emaPeriod: number; bb: { period: number; mult: number }; note: string;
   rsiGuides?: { price: number; side: 'put' | 'call'; title: string }[];
-  warm?: number } // earlier sessions the chart loads so its indicators equal the rule's (default 2 = 4 sessions, Power Breakout) // the rule's own RSI levels (default: Trend zones 30-45 / 55-70)
+  warm?: number } // earlier sessions the chart loads so its indicators equal the rule's (default 2 = 4 sessions, SuperTrend Breakout) // the rule's own RSI levels (default: Trend zones 30-45 / 55-70)
 const OFF: IndicatorToggles = { rsi: false, ema: false, volume: false, supertrend: false, bollinger: false, vwap: false, delta: false };
 export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
   all: { interval: null, indicators: DEFAULT_INDICATORS, emaPeriod: 20, bb: { period: 20, mult: 2 }, note: 'Just the price. Pick a strategy above to add its indicators, OI levels and trades.' },
@@ -120,7 +120,7 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
     note: 'The 5-minute box (09:15-09:19 high / low) is the two solid lines; the break and the pullback are on the strategy box.' },
 };
 
-/** The Rs 3 lakh option SELLING book (owner 28-Oct-2026, sell_desk.py): NIFTY only, its own state at /api/selling/state. */
+/** The Rs 10 lakh option SELLING book (owner 28-Oct-2026, sell_desk.py): NIFTY only, its own state at /api/selling/state. */
 export interface SellLeg {
   id: string; slot: string; rule?: string; side: 'CE' | 'PE'; qty: number; entryPrice: number; netPnl?: number | null;
   instrument: { name: string; securityId?: number }; ltp?: number | null; pnl?: number | null;
@@ -134,12 +134,12 @@ export interface SellingState {
   cycle?: { pnl?: number; [k: string]: unknown } | null;
 }
 export const SELL_BOARD: { key: string; name: string; account: string; idle: string }[] = [
-  { key: 'sellStraddle', name: 'Expiry Straddle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:20 on Nifty expiry days' },
-  { key: 'sellCalmCall', name: 'Calm-day Call Sell', account: 'Selling · ₹3 lakh · Nifty only', idle: 'checks at 10:15 (calm days only)' },
-  { key: 'sellStrangle', name: '2-month Strangle (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'enters at 10:00 when none is open' },
-  { key: 'sellStraddle940', name: 'Expiry Straddle 9:40 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 09:40 on Nifty expiry days' },
-  { key: 'sellStraddle1126', name: 'Expiry Straddle 11:26 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 11:26 on Nifty expiry days' },
-  { key: 'sellStraddle1224', name: 'Expiry Straddle 12:24 (sell)', account: 'Selling · ₹3 lakh · Nifty only', idle: 'sells 12:24 on Nifty expiry days' },
+  { key: 'sellStraddle', name: 'Expiry Straddle (sell)', account: 'Selling · ₹10 lakh · Nifty only', idle: 'sells 09:20 on Nifty expiry days' },
+  { key: 'sellCalmCall', name: 'Calm-day Call Sell', account: 'Selling · ₹10 lakh · Nifty only', idle: 'checks at 10:15 (calm days only)' },
+  { key: 'sellStrangle', name: '2-month Strangle (sell)', account: 'Selling · ₹10 lakh · Nifty only', idle: 'enters at 10:00 when none is open' },
+  { key: 'sellStraddle940', name: 'Expiry Straddle 9:40 (sell)', account: 'Selling · ₹10 lakh · Nifty only', idle: 'sells 09:40 on Nifty expiry days' },
+  { key: 'sellStraddle1126', name: 'Expiry Straddle 11:26 (sell)', account: 'Selling · ₹10 lakh · Nifty only', idle: 'sells 11:26 on Nifty expiry days' },
+  { key: 'sellStraddle1224', name: 'Expiry Straddle 12:24 (sell)', account: 'Selling · ₹10 lakh · Nifty only', idle: 'sells 12:24 on Nifty expiry days' },
 ];
 
 /** One selling rule's box: sold legs and their P&L now, else today's result or note, else when it acts. */

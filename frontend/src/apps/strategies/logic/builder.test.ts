@@ -1,6 +1,6 @@
 // Hand-checked cases: Nifty lot 65.
 import { describe, expect, it } from 'vitest';
-import { builderMargin, chanceOfProfit, payoffAt, payoffCurve, summarize, type BLeg } from './builder';
+import { builderMargin, chanceOfProfit, payoffAt, payoffCurve, savedNet, savedPnl, summarize, type BLeg } from './builder';
 
 const leg = (side: 'CE' | 'PE', strike: number, short: boolean, price: number, lots = 1): BLeg => ({ id: `${side}${strike}${short}`, side, strike, short, lots, price });
 
@@ -48,5 +48,21 @@ describe('strategy builder maths', () => {
     const c = payoffCurve([leg('CE', 22725, true, 100)], 65, 22000, 23500, 10);
     expect(c.some((p) => p.s === 22725)).toBe(true);
     expect(c[0].v).toBe(6500);
+  });
+});
+
+describe('saved test strategies', () => {
+  const s = { lot: 65, legs: [
+    { side: 'CE' as const, strike: 24000, short: true, lots: 1, price: 120 },
+    { side: 'PE' as const, strike: 23500, short: false, lots: 2, price: 40 },
+  ] };
+  it('P&L now: sold leg gains as it falls, bought leg as it rises', () => {
+    expect(savedPnl(s, (l) => (l.side === 'CE' ? 100 : 50))).toBe(20 * 65 + 10 * 130);
+  });
+  it('unknown price gives no total', () => {
+    expect(savedPnl(s, (l) => (l.side === 'CE' ? 100 : null))).toBeNull();
+  });
+  it('net received', () => {
+    expect(savedNet(s)).toBe(120 * 65 - 40 * 130);
   });
 });

@@ -1,9 +1,34 @@
 # Current state
 
-_Last updated: 2026-10-30 (Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top of the Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
+
+## Uniform pages and capital per strategy (owner 30-Oct-2026 evening, one install with the Sat 31 Oct release)
+- **Rename**: "Power Breakout" is now **SuperTrend Breakout** everywhere (app, phone, journal `RENAMED` maps old rows;
+  id `dharaniV2` unchanged). The Excel heading/tab must follow at the next Excel update.
+- **Capital per strategy** (display and return only; every trade is still 1 lot): SuperTrend Breakout 1.5 L, Rebound
+  Call 50 k, Expiry Straddle 6 L, 2-month Strangle 2.5 L, Calm-day Call Sell 1.5 L, Momentum 5 L + 5 L, Box Pullback 1 L
+  = 23 L. Source: `strategies/catalog.ts` (`capital`, `MOMENTUM_BOOKS`). Selling book `capital` 3 L -> 10 L in
+  `autopaper.json` (only the shown equity uses it).
+- **The four timed expiry straddles are one strategy** ("Expiry Straddle", entries 9:20 / 9:40 / 11:26 / 12:24) in the
+  app: one catalog entry with `whos` / `sellKeys`. The backend still runs four slots with their own stops.
+- **Money row** (`MoneyStrip`) on top of Option Buy / Sell / Momentum / Scalping and the new **Total Capital & P&L** page
+  (`/capital`, sidebar "My capital" at the bottom): capital, in use, net since START (journal closed trades after
+  charges + open now), today's P&L, brokerage (Rs 20 x 2 per closed trade, capped at its charges), taxes = charges -
+  brokerage. Logic `strategies/logic/capital.ts`; history `useSinceStart` (GET /api/journal/trades from 2026-10-20).
+- **Cards**: one shell (`CardShell`) for rule, Momentum and Manual cards; capital + since-start lines on each. On Today
+  the card opens its page and "See checklist / See rules" opens the details; on the strategy pages the card opens them.
+- **Rebound / Box Pullback "No reading yet" after a restart or the close**: `SignalService._reading` builds the
+  checklist once (read only, never trades) when the watcher has no result yet.
+- **Headings**: one style (`.td-title` sections, `.card-title` cards at fs-md, text colour). OI + order flow per index
+  is a closed fold-out (`OiBlock`, `details.sg-fold`) on every strategy page; Option Sell shows Nifty only.
+- **Momentum page**: names "With Nifty switch" / "Without switch"; each book's stocks fold out as a heatmap or a table
+  like Index components.
+- **Strategy builder**: option chain picker (B / S per strike, OI, OI change, IV) and saved test strategies with a
+  name and a sub name (portfolio), P&L now from the live chain, Rename / Close / Delete (`builder_store.py`,
+  `data/builder_saved.json`, GET/POST/PUT/DELETE `/api/builder/saved`). PAPER notes only, never orders.
 
 ## Changes of 30-Oct-2026 (owner OK each)
-- **Power Breakout** = the rule called Dharani v2 in code (`sig_dharani_v2.py`). Call Bollinger (15,3) -> (20,2.5) (owner
+- **SuperTrend Breakout** = the rule called Dharani v2 in code (`sig_dharani_v2.py`). Call Bollinger (15,3) -> (20,2.5) (owner
   "Yes" 30-Oct). The result carries `pivotR1`; the checklist says "Close above pivot R1" and the chart draws that same
   line ("Pivot R1"); OI strike lines are titled "OI R1/S1". RSI guide lines come from the board preset.
 - **One OI verdict everywhere** (owner 30-Oct: "keep this fixed every where"): `sig_oi.build_up` / `shared/oiBuildUp.ts`.
@@ -27,7 +52,7 @@ month-end ranking after 15:50, fills at the next open from 09:35, catch-up of mi
 autopaper.json `momentum.enabled`, first day `momentum.start` (2026-10-30, first buys 2 Nov). Tests:
 `backend/test_momentum.py`, `frontend/src/apps/today/logic/momentum.test.ts`.
 
-## Option Selling book, Rs 3 L PAPER (owner 28-Oct-2026)
+## Option Selling book, Rs 10 L PAPER (owner 28-Oct-2026; Rs 3 L until 30-Oct-2026)
 Rules: `docs/strategies/option-selling.md`. `sell_rules.py` (pure rules) + `sell_desk.py` (`SellDesk`): its own state
 file `data/books/selling/state.json`, a 1-second loop thread for entries / time exits / the 15:05 strangle check, and
 `PaperService.tick_listeners` for live books (stops, buy-backs). The buying PaperEngine is untouched (long-only,

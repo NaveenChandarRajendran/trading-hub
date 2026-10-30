@@ -150,7 +150,7 @@ def test_expiry_straddle_sells_both_legs_and_trails_to_cost(make):
     assert p["exitReason"] == "Time exit 15:14" and p["exitPrice"] == 40.25
     assert ev[-1][1] == "exit Time exit 15:14" and ev[-1][0]["netPnl"] > 0
     s = desk.status()
-    assert s["open"] == [] and s["realized"] == round(c["netPnl"] + p["netPnl"], 2) and s["capital"] == 300000
+    assert s["open"] == [] and s["realized"] == round(c["netPnl"] + p["netPnl"], 2) and s["capital"] == 1000000
 
 
 def test_timed_expiry_straddles_wide_stop_no_trail(make):

@@ -326,7 +326,7 @@ export default function BacktestApp() {
               Showing the latest 300; the CSV has all. One lot at today&apos;s size ({Object.entries(res.lots).map(([k, v]) => `${k === 'NIFTY' ? 'Nifty' : 'Bank Nifty'} ${v}`).join(', ')}) in every year.
               Costs: Dhan&apos;s charges at today&apos;s rates on both orders{mode === 'all' ? `, plus ${res.slippagePct}% slippage per order` : ''}.
               Left out because past data does not have them: PCR (4 Pillar), the OI-wall room filter, OI R1 / S1 as triggers, and futures
-              (the Power Breakout put reads the index). VWAP uses the index&apos;s average price. Trend Rules (≈) is approximate: Trending OI is rebuilt
+              (the SuperTrend Breakout put reads the index). VWAP uses the index&apos;s average price. Trend Rules (≈) is approximate: Trending OI is rebuilt
               from past option OI of ATM ± 10 and counted from 09:15. Details: docs/backtest.md.
             </p>
           </section>

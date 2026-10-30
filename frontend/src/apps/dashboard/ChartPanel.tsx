@@ -47,7 +47,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
   const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
   const ctx = sig?.context.find((c) => c?.symbol === d.symbol) ?? null;
   const pivot = d.isDaily ? null : d.day ? (d.prevSession ? pivots(d.prevSession.high, d.prevSession.low, d.prevSession.close).P : null) : ctx?.pivot ?? null;
-  // Power Breakout's call checks the close against this R1 (the rule's own number, so chart and checklist agree)
+  // SuperTrend Breakout's call checks the close against this R1 (the rule's own number, so chart and checklist agree)
   const r1 = !d.day && !d.isDaily && strategy === 'dharaniV2' ? sig?.rules.dharaniV2?.pivotR1 ?? null : null;
   const ruleLines = useMemo(() => (r1 != null ? [{ price: r1, title: 'Pivot R1' }] : []), [r1]);
   // the plain chart is price only: OI levels, pivot and trade marks come with a strategy (owner 27-Oct-2026)

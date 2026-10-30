@@ -193,7 +193,7 @@ def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=
         held = [r for r in still_open if r["strategy"] == name]
         if name == "Manual":
             if not mine and not held:
-                lines.append("👤 My trades: none")
+                lines.append("👤 Manual trades: none")
                 continue
             bits = []
             if held:
@@ -201,7 +201,7 @@ def hourly_text(at, rows, order, market=None, near=None, live=None, manual_live=
             if mine:
                 net, won, _ = _won_lost(mine)
                 bits.append(f"booked {rupees(net)} ({len(mine)} closed, {won} won)")
-            lines.append("👤 My trades: " + "; ".join(bits))
+            lines.append("👤 Manual trades: " + "; ".join(bits))
             continue
         booked = ""
         if mine:

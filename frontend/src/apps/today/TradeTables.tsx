@@ -64,7 +64,7 @@ function StopCell({ r }: { r: TodayRow }) {
 
 function TargetCell({ r }: { r: TodayRow }) {
   if (r.indexTarget != null) return <span className="td-level"><span className="num">Index {inr(2)(r.indexTarget)}</span><span className="td-pct">2× the box</span></span>;
-  const none = r.manual ? 'Not set' : r.who === 'Power Breakout' ? 'SuperTrend exit' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
+  const none = r.manual ? 'Not set' : r.who === 'SuperTrend Breakout' ? 'SuperTrend exit' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
   return <Level v={r.target} entry={r.entryPrice} none={none} />;
 }
 
