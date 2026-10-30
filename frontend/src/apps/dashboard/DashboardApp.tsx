@@ -167,7 +167,7 @@ export default function DashboardApp() {
   useEffect(() => setStrategyInterval(null), [strategy]);
   const presetInterval = strategy === 'all' ? null : strategyInterval ?? CHART_PRESETS[strategy].interval;
   const dN = useDashboard(useOptionIds(sN, 'NIFTY', true), { symbol: 'NIFTY', interval: presetInterval });
-  const dB = useDashboard(useOptionIds(sB, 'BANKNIFTY', true), { symbol: 'BANKNIFTY', interval: presetInterval });
+  const dB = useDashboard(useOptionIds(sB, 'BANKNIFTY', true), { symbol: 'BANKNIFTY', interval: presetInterval, warm: CHART_PRESETS[strategy].warm });
   // the interval and date pickers move both charts together
   const both = {
     setInterval: (v: number) => {

@@ -35,7 +35,7 @@ const stocksOf = (symbol: string) => ((constituents as Record<string, { symbol: 
 /** optionIds: option security IDs whose live premium the page shows (the paper trade card).
  * opts.symbol fixes the index (split view: one chart per index); opts.interval overrides the chosen interval while a
  * strategy's chart is shown (its own candle size). */
-export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; interval?: number | null } = {}) {
+export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; interval?: number | null; warm?: number } = {}) {
   const [pickedSymbol, setSymbolState] = useState(() => (read('symbol') === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'));
   const symbol = opts.symbol ?? pickedSymbol;
   const [pickedInterval, setIntervalState] = useState(() => {
@@ -44,6 +44,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
   });
   // date dropdown: '' = today (live); otherwise an earlier trading day. Range: days shown on the daily chart.
   const interval = opts.interval ?? pickedInterval;
+  const warmSessions = opts.warm ?? 2; // earlier sessions for the indicators: as many as the picked rule's own history
   const [day, setDayState] = useState('');
   const [rangeDays, setRangeState] = useState(() => {
     const v = Number(read('range'));
@@ -158,7 +159,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
         setPrevSession(null);
       } else {
         // owner 29-Oct-2026: EMA 200 (Rebound Call) was missing; two earlier sessions warm it up (same cache as the watcher)
-        const r = await fetchCandles(symbol, 1, signal, day, 2);
+        const r = await fetchCandles(symbol, 1, signal, day, warmSessions);
         putMinutes(r.candles);
         setWarmMinutes(r.warm ?? []);
         setVolumeInfo(r.meta.volume);
@@ -169,7 +170,7 @@ export function useDashboard(optionIds: number[] = [], opts: { symbol?: string; 
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setCandlesError(e);
     }
-  }, [symbol, day, isDaily, rangeDays]);
+  }, [symbol, day, isDaily, rangeDays, warmSessions]);
 
   useEffect(() => {
     const ac = new AbortController();

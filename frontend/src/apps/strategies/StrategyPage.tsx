@@ -85,7 +85,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
   useEffect(() => setInterval_(null), [strategy]);
   const iv = strategy === 'all' ? interval : interval ?? CHART_PRESETS[strategy].interval;
   const dN = useDashboard([], { symbol: 'NIFTY', interval: iv });
-  const dB = useDashboard([], { symbol: 'BANKNIFTY', interval: iv });
+  const dB = useDashboard([], { symbol: 'BANKNIFTY', interval: iv, warm: CHART_PRESETS[strategy].warm });
   const dash = { NIFTY: { ...dN, setInterval: (v: number) => setInterval_(v) }, BANKNIFTY: { ...dB, setInterval: (v: number) => setInterval_(v) } };
   const signals: Record<string, SignalsState | null> = { NIFTY: sigN.data, BANKNIFTY: sigB.data };
 

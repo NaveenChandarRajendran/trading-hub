@@ -60,7 +60,13 @@ const thinLine = { lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible
 interface Pt { time: number; value: number }
 interface ColorPt extends Pt { color: string }
 
-export interface ChartParams { emaPeriod: number; bbPeriod: number; bbMult: number }
+/** RSI pane guide lines: the selected rule's own RSI levels (owner 30-Oct-2026: every number on the chart must be the rule's). */
+export interface RsiGuide { price: number; side: 'put' | 'call'; title: string }
+export const DEFAULT_RSI_GUIDES: RsiGuide[] = [
+  { price: RSI_ZONES.put[0], side: 'put', title: '' }, { price: RSI_ZONES.put[1], side: 'put', title: 'Put zone' },
+  { price: RSI_ZONES.call[0], side: 'call', title: 'Call zone' }, { price: RSI_ZONES.call[1], side: 'call', title: '' },
+];
+export interface ChartParams { emaPeriod: number; bbPeriod: number; bbMult: number; rsiGuides?: RsiGuide[] }
 export const DEFAULT_PARAMS: ChartParams = { emaPeriod: EMA_PERIOD, bbPeriod: BB_PERIOD, bbMult: BB_MULT };
 /** A trade's buy / sell point on the chart (owner 26-Oct-2026). time: epoch seconds of the fill. */
 export interface TradeMark { time: number; kind: 'buy' | 'sell'; text: string }
@@ -184,6 +190,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
   warmRef.current = warm;
   const lineSeries = useRef<Partial<Record<LineKey, ISeriesApi<'Line'>>>>({});
   const rsiGuides = useRef<IPriceLine[]>([]);
+  const guideSpecs = useRef<RsiGuide[]>([]);
   const volSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
   const deltaSeries = useRef<ISeriesApi<'Line'> | null>(null);
   const shown = useRef<{ bars: Candle[]; key: string }>({ bars: [], key: '' });
@@ -320,10 +327,8 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
       }, 1);
       const guide = (price: number, color: string, title: string) =>
         s.createPriceLine({ price, color: withAlpha(color, 0.8), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title });
-      rsiGuides.current = [
-        guide(RSI_ZONES.put[0], token('--down'), ''), guide(RSI_ZONES.put[1], token('--down'), 'Put zone'),
-        guide(RSI_ZONES.call[0], token('--up'), 'Call zone'), guide(RSI_ZONES.call[1], token('--up'), ''),
-      ];
+      guideSpecs.current = paramsRef.current.rsiGuides ?? DEFAULT_RSI_GUIDES;
+      rsiGuides.current = guideSpecs.current.map((g) => guide(g.price, token(g.side === 'put' ? '--down' : '--up'), g.title));
       c.panes()[1]?.setHeight(RSI_PANE_PX);
       lineSeries.current.rsi = s;
       fillIndicators();
@@ -334,6 +339,17 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
       if (c.panes().length > 1) c.removePane(1);
     }
   }, [indicators.rsi]);
+
+  // another strategy picked while RSI is shown: its own guide lines
+  const guidesKey = (params.rsiGuides ?? DEFAULT_RSI_GUIDES).map((g) => `${g.price}${g.title}`).join('|');
+  useEffect(() => {
+    const s = lineSeries.current.rsi;
+    if (!s) return;
+    for (const g of rsiGuides.current) s.removePriceLine(g);
+    guideSpecs.current = paramsRef.current.rsiGuides ?? DEFAULT_RSI_GUIDES;
+    rsiGuides.current = guideSpecs.current.map((g) => s.createPriceLine({ price: g.price, color: withAlpha(token(g.side === 'put' ? '--down' : '--up'), 0.8),
+      lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: g.title }));
+  }, [guidesKey]);
 
   useEffect(() => toggleLine('ema', indicators.ema, { color: emaColor(), title: `EMA ${paramsRef.current.emaPeriod}` }), [indicators.ema]);
   // another strategy's EMA / Bollinger settings: retitle and redraw
@@ -403,7 +419,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
       pivotLine.current?.applyOptions({ color: token('--warn') });
       const ls = lineSeries.current;
       ls.rsi?.applyOptions({ color: token('--accent') });
-      rsiGuides.current.forEach((g, k) => g.applyOptions({ color: withAlpha(token(k < 2 ? '--down' : '--up'), 0.8) }));
+      rsiGuides.current.forEach((g, k) => g.applyOptions({ color: withAlpha(token(guideSpecs.current[k]?.side === 'put' ? '--down' : '--up'), 0.8) }));
       ls.ema?.applyOptions({ color: emaColor() });
       deltaSeries.current?.applyOptions({ color: token('--accent') });
       ls.vwap?.applyOptions({ color: token('--series-vwap') });

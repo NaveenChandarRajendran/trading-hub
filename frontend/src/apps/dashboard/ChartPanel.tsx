@@ -42,7 +42,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
 
   const preset = CHART_PRESETS[strategy];
   const shown = strategy === 'all' ? indicators : preset.indicators;
-  const params = { emaPeriod: preset.emaPeriod, bbPeriod: preset.bb.period, bbMult: preset.bb.mult };
+  const params = { emaPeriod: preset.emaPeriod, bbPeriod: preset.bb.period, bbMult: preset.bb.mult, rsiGuides: preset.rsiGuides };
   const levelsChain = d.levelsBasis?.chain ?? null;
   const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
   const ctx = sig?.context.find((c) => c?.symbol === d.symbol) ?? null;

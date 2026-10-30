@@ -279,7 +279,8 @@ def register(app, deps: DashboardDeps):
     def candles(symbol: str = "NIFTY", interval: int = 5, date: str = "", warm: int = 0):
         """Today and the session before as candles; warm = that many earlier sessions more, sent apart ("warm") so the
         chart's long indicators (EMA 200 on 5-minute candles, Rebound Call) start full on the first shown candle.
-        warm=2 shares the signal watcher's 4-session cache, so it costs no extra Dhan call."""
+        warm=2 shares the signal watcher's 4-session cache (Power Breakout), warm=10 the Rebound Call's 12-session one, so
+        neither costs an extra Dhan call."""
         symbol = symbol.upper()
         if symbol not in SCRIP:
             raise HTTPException(400, f"symbol must be one of {list(SCRIP)}")
@@ -294,7 +295,7 @@ def register(app, deps: DashboardDeps):
             if day > tracker.clock().date():
                 raise HTTPException(400, "date can't be in the future")
         try:
-            warm = max(0, min(warm, 4))
+            warm = max(0, min(warm, 10))  # 10 = the Rebound Call watcher's 12-session cache (EMA 200 as the rule has it)
             fetched, sessions, one_min, fut, volume_error, last_error = candles_svc.get(symbol, day=day, n=2 + warm)
         except TokenExpired as e:
             raise HTTPException(401, f"{e} Send a new one with POST /api/token.")

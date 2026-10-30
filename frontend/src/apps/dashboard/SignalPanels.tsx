@@ -302,7 +302,7 @@ function OpenTrade({ t, ltp, now, busy, onExit }: { t: AutoTrade; ltp: number | 
         <div><dt>Invested</dt><dd className="num">₹{n0(t.invested ?? t.entryPrice * t.qty)}</dd></div>
         <div><dt>Highest / lowest</dt><dd className="num">{n2(t.high)} / {n2(t.low)}</dd></div>
         <div><dt>Time in trade</dt><dd className="num">{minutesSince(t.entryTime, now)} min</dd></div>
-        <div><dt>Exit by</dt><dd>3:15 PM</dd></div>
+        <div><dt>Exit by</dt><dd>3:14 PM</dd></div>
       </dl>
       <button className="btn" disabled={busy} onClick={onExit}>Exit position</button>
     </>

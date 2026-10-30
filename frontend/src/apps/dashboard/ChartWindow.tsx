@@ -16,7 +16,7 @@ export default function ChartWindow() {
   const strategy: ChartStrategy = asked && asked in CHART_PRESETS ? asked : 'all';
   const sig = useSignals(symbol);
   const [picked, setPicked] = useState<number | null>(null); // a strategy's own candle size until another is picked
-  const dash = useDashboard([], { symbol, interval: strategy === 'all' ? null : picked ?? CHART_PRESETS[strategy].interval });
+  const dash = useDashboard([], { symbol, interval: strategy === 'all' ? null : picked ?? CHART_PRESETS[strategy].interval, warm: CHART_PRESETS[strategy].warm });
   const d = strategy === 'all' ? dash : { ...dash, setInterval: setPicked };
   const toggles = useToggles();
   useEffect(() => {

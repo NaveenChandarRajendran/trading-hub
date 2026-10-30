@@ -44,7 +44,7 @@ export const STRATEGIES: StrategyInfo[] = [
   {
     who: 'Power Breakout', name: 'Power Breakout', section: 'optionBuy', ruleKey: 'dharaniV2', book: 'dharani', indices: ['NIFTY', 'BANKNIFTY'],
     how: '3-minute candles: buys a call or put when SuperTrend, RSI, pivot, Bollinger and Williams %R all line up.',
-    exits: 'Exits when SuperTrend turns · −10% safety stop · 3:15 PM time exit',
+    exits: 'Exits when SuperTrend turns · −10% safety stop · 3:14 PM time exit',
   },
   {
     who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['BANKNIFTY'],
