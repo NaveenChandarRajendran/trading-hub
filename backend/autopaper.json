@@ -18,7 +18,7 @@
     "sellStraddle940": {"enabled": true, "entry": "09:40", "stopPct": 80, "trailToCost": false},
     "sellStraddle1126": {"enabled": true, "entry": "11:26", "stopPct": 80, "trailToCost": false},
     "sellStraddle1224": {"enabled": true, "entry": "12:24", "stopPct": 70, "trailToCost": false},
-    "sellStrangle": {"enabled": true, "entry": "10:00", "check": "15:05", "awayPct": 3, "days": 61, "minDays": 45, "maxDays": 80, "rollAtPct": 70, "maxLoss": 60000},
+    "sellStrangle": {"enabled": true, "entry": "10:00", "check": "15:05", "awayPct": 5, "days": 61, "minDays": 45, "maxDays": 80, "rollAtPct": 70, "maxLoss": 60000},
     "timeExit": "15:14",
     "_note": "Rs 3 lakh option SELLING paper book (docs/strategies/option-selling.md, sell_desk.py), NIFTY only, owner approved 28-Oct-2026. PAPER ONLY. Set a rule's enabled to false to stop it."},
   "momentum": {"enabled": true, "capital": 500000, "start": "2026-10-30",

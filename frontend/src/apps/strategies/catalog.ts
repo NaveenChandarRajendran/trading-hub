@@ -78,7 +78,7 @@ export const STRATEGIES: StrategyInfo[] = [
   },
   {
     who: '2-month Strangle (sell)', name: '2-month Strangle', section: 'optionSell', sellKey: 'sellStrangle', book: 'selling', indices: ['NIFTY'],
-    how: 'Sells a call and a put about 3% away, about 2 months out. Held overnight.',
+    how: 'Sells a call and a put about 5% away, about 2 months out. Held overnight.',
     exits: 'Rolls a leg at 70% profit · stops at ₹60,000 loss',
   },
   {

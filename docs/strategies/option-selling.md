@@ -28,11 +28,11 @@ market depth (sell into the bids, buy back from the asks); charges are the norma
 - Found by the scalping search; positive in every year 2021-26.
 
 ## 3. Two-month Strangle (sellStrangle)
-- Positional (held overnight). With no strangle open, 10:00: sell the call about 3 % above spot and the put about
-  3 % below spot (rounded to 100) of the expiry closest to 61 days away (45-80 days allowed).
+- Positional (held overnight). With no strangle open, 10:00: sell the call about 5 % above spot and the put about
+  5 % below spot (rounded to 100) of the expiry closest to 61 days away (45-80 days allowed).
 - Every day at 15:05:
   - Roll: a leg whose price is <= 30 % of its sell price (kept 70 % of the premium) is bought back and a new leg of
-    the same type is sold 3 % from today's spot, same expiry.
+    the same type is sold 5 % from today's spot, same expiry.
   - Stop: if the strangle's total (booked legs + open legs at their price, after charges) is a loss of Rs 60,000 or
     more, buy everything back.
 - On the expiry day everything is bought back at 15:14. After that, or after the Rs 60k stop, the next strangle

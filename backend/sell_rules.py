@@ -11,10 +11,10 @@ clock; sell_desk.py runs them.
    is the day's last), when the 09:15-10:14 candle closes, Bollinger width = 4 x population SD / mean of the last 20
    candle closes x 100 (across sessions). If width <= 1.34, sell the ATM call of the nearest expiry at 10:15, stop at
    +50 %, buy back at 15:14. (Found by the scalping search, research/scalping-search/; positive every year 2021-26.)
-3. Two-month Strangle (sellStrangle): NIFTY, positional. With no strangle open, at 10:00 sell the call ~3 % above and
-   the put ~3 % below spot (rounded to 100) of the expiry closest to 61 calendar days away (45-80 allowed). Once a day
+3. Two-month Strangle (sellStrangle): NIFTY, positional. With no strangle open, at 10:00 sell the call ~5 % above and
+   the put ~5 % below spot (rounded to 100) of the expiry closest to 61 calendar days away (45-80 allowed). Once a day
    at 15:05: a leg that has kept 70 % of its premium (price <= 30 % of its sell price) is bought back and a new leg of
-   the same type is sold 3 % from spot, same expiry ("roll"); if the strangle's total (booked rolls + open legs, after
+   the same type is sold 5 % from spot (3 % until 30-Oct-2026; owner OK to 5 % that day), same expiry ("roll"); if the strangle's total (booked rolls + open legs, after
    charges) is a loss of Rs 60,000 or more, everything is bought back. On expiry day everything buys back at 15:14.
    5-year estimate (Black-Scholes on India VIX, research/long-strangle/roll.py): about +8.9 k per 2-month cycle,
    worst cycle about -73 k.
@@ -40,7 +40,7 @@ DEFAULTS = {
     "enabled": True, "capital": 300000, "lots": 1,
     STRADDLE: {"enabled": True, "entry": "09:20", "stopPct": 50, "trailToCost": True},
     CALM: {"enabled": True, "entry": "10:15", "maxWidth": 1.34, "bars": 20, "stopPct": 50},
-    STRANGLE: {"enabled": True, "entry": "10:00", "check": "15:05", "awayPct": 3, "days": 61, "minDays": 45, "maxDays": 80,
+    STRANGLE: {"enabled": True, "entry": "10:00", "check": "15:05", "awayPct": 5, "days": 61, "minDays": 45, "maxDays": 80,
                "rollAtPct": 70, "maxLoss": 60000},
     S940: {"enabled": True, "entry": "09:40", "stopPct": 80, "trailToCost": False},
     S1126: {"enabled": True, "entry": "11:26", "stopPct": 80, "trailToCost": False},
