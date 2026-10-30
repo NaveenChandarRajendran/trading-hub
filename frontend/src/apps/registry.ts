@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live';
+export type AppGroup = 'home' | 'strategies' | 'tools' | 'manual' | 'live' | 'money';
 
 /** Sidebar sections, in display order. A section without a label has no header (always open).
  * Owner 27-Oct-2026 ("very confusing layout"): the pages used every day on top, the market data tools folded away
@@ -12,6 +12,7 @@ export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[
   { id: 'tools', label: 'Trade and review' },
   { id: 'live', label: 'Live market data', closedByDefault: true },
   { id: 'manual', label: 'Paste tools', closedByDefault: true },
+  { id: 'money', label: 'My capital', closedByDefault: true }, // owner 31-Oct-2026: last and folded, not the first thing others see
 ];
 
 export interface AppEntry {
@@ -39,9 +40,9 @@ export const apps: AppEntry[] = [
   },
   {
     // owner 30-Oct-2026: every strategy's capital, net P&L since start, brokerage and taxes, on one page;
-    // 31-Oct: right under Today (at the bottom it could not be folded and got lost)
+    // 31-Oct: at the very bottom in its own folded section (owner: "i dont want everyone to see that first")
     id: 'capital',
-    group: 'home',
+    group: 'money',
     name: 'Total Capital & P&L',
     path: '/capital',
     hint: 'Your paper money: how much each strategy has and has made',

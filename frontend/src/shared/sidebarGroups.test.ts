@@ -10,9 +10,10 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['', 'Trading Strategies', 'Trade and review', 'Live market data', 'Paste tools']); // '' = top, no header
+    expect(g.map((x) => x.label)).toEqual(['', 'Trading Strategies', 'Trade and review', 'Live market data', 'Paste tools', 'My capital']); // '' = top, no header
     // owner design brief 29-Oct-2026: Today (landing page), then the four strategy pages, then the trading tools
-    expect(g[0].apps.map((a) => a.name)).toEqual(['Today', 'Total Capital & P&L']); // capital page under Today (owner 31-Oct-2026)
+    expect(g[0].apps.map((a) => a.name)).toEqual(['Today']);
+    expect(g[5].apps.map((a) => a.name)).toEqual(['Total Capital & P&L']); // last, folded (owner 31-Oct-2026)
     expect(apps[0].id).toBe('today');
     expect(g[1].apps.map((a) => a.name)).toEqual(['Option Buy', 'Option Sell', 'Momentum', 'Scalping']);
     expect(g[2].apps.map((a) => a.name)).toEqual(['Buy / Sell', 'Trade History', 'Full Chart', 'Order Flow', 'Backtest']);
