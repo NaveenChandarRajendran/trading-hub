@@ -69,7 +69,7 @@ export const apps: AppEntry[] = [
     group: 'strategies',
     name: 'Scalping',
     path: '/strategies/scalping',
-    hint: 'Box Pullback 15/5 and 5/1 (paper, for learning: they lost money in tests)',
+    hint: 'Box Pullback 15/5 (paper, for learning: they lost money in tests)',
     icon: '⚡',
     component: lazy(() => import('./strategies/ScalpingApp')),
   },

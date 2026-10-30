@@ -33,7 +33,7 @@ STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "d
             "sellStraddle1224": "Expiry Straddle 12:24 (sell)"}
 ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · Power Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1",
            "selling": "App · Selling", "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Power Breakout", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Box Pullback 5/1", "Expiry Straddle (sell)",
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "Power Breakout", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
               "Calm-day Call Sell", "2-month Strangle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
               "Expiry Straddle 12:24 (sell)", "Manual"]
 
@@ -46,7 +46,7 @@ PHONE_GROUPS = [
     ("Option Buy", ["Power Breakout", "Rebound Call"]),
     ("Option Sell", ["Expiry Straddle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
                      "Expiry Straddle 12:24 (sell)", "Calm-day Call Sell", "2-month Strangle (sell)"]),
-    ("Scalping", ["Box Pullback 15/5", "Box Pullback 5/1"]),
+    ("Scalping", ["Box Pullback 15/5"]),  # 5/1 dropped by the owner 30-Oct-2026
 ]
 
 

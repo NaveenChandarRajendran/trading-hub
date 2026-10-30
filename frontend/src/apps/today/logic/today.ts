@@ -34,7 +34,7 @@ export const WHO: Record<Who, { name: string; where: string }> = {
 };
 export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
   'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
-export const WHO_ORDER: Who[] = ['Manual', 'Power Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', 'Box Pullback 5/1', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
+export const WHO_ORDER: Who[] = ['Manual', 'Power Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING];
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {

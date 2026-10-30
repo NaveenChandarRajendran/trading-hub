@@ -11,7 +11,6 @@ export const BOARD: { key: StrategyKey; name: string; account: string; only?: st
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
   { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
-  { key: 'orbPullback5', name: 'Box Pullback 5/1', account: 'App · ₹1 lakh · 5-min box, 1-min close' },
 ];
 
 export type CellKind = 'trade' | 'go' | 'near' | 'wait' | 'none';

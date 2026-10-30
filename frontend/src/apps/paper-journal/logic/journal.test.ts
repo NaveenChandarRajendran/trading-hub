@@ -43,7 +43,7 @@ describe('paper journal logic', () => {
 
   it('lists every strategy the backend journals, selling legs included', () => {
     expect(STRATEGIES).toContain('2-month Strangle (sell)');
-    expect(STRATEGIES).toContain('Box Pullback 5/1');
+    expect(STRATEGIES).not.toContain('Box Pullback 5/1'); // dropped by the owner 30-Oct-2026
     expect(STRATEGIES.every((s) => ACCOUNT_OF[s])).toBe(true);
     expect(chipName('Calm-day Call Sell')).toBe('Calm-day Call Sell');
     expect(chipName('Expiry Straddle 9:40 (sell)')).toBe('Expiry Straddle 9:40');

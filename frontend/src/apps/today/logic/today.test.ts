@@ -42,7 +42,7 @@ describe('today', () => {
     const s = summarize(buildRows([manualOpen, ruleClosed, ruleOpen], auto, pos, { 52175: 55.1 }));
     expect([s.total, s.booked, s.running, s.open, s.closed, s.won, s.lost]).toEqual([961.75, 900, 61.75, 2, 1, 1, 0]);
     expect(s.byWho.map((w) => [w.who, w.pnl, w.trades, w.status])).toEqual([
-      ['Manual', 347.75, 1, 'in-trade'], ['Power Breakout', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'], ['Box Pullback 15/5', 0, 0, 'none'], ['Box Pullback 5/1', 0, 0, 'none'],
+      ['Manual', 347.75, 1, 'in-trade'], ['Power Breakout', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'], ['Box Pullback 15/5', 0, 0, 'none'],
       ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'], ['Expiry Straddle (sell)', 0, 0, 'none'],
       ['Calm-day Call Sell', 0, 0, 'none'], ['2-month Strangle (sell)', 0, 0, 'none'], ['Expiry Straddle 9:40 (sell)', 0, 0, 'none'],
       ['Expiry Straddle 11:26 (sell)', 0, 0, 'none'], ['Expiry Straddle 12:24 (sell)', 0, 0, 'none'],

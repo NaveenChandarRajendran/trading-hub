@@ -12,7 +12,7 @@ export const STRATEGY_GROUPS = [
     items: ['Expiry Straddle (sell)', 'Expiry Straddle 9:40 (sell)', 'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)',
       'Calm-day Call Sell', '2-month Strangle (sell)'],
   },
-  { name: 'Scalping', items: ['Box Pullback 15/5', 'Box Pullback 5/1'] },
+  { name: 'Scalping', items: ['Box Pullback 15/5'] },
   { name: 'Watch-only (history)', items: ['4 Pillar Rules', 'SuperTrend Rules', 'Trend Rules'] },
   { name: 'Mine', items: ['Manual'] },
 ] as const;
@@ -20,7 +20,7 @@ export const STRATEGIES = STRATEGY_GROUPS.flatMap((g) => g.items);
 export type Strategy = (typeof STRATEGIES)[number];
 export const ACCOUNT_OF: Record<Strategy, string> = {
   '4 Pillar Rules': 'MegaBull', 'SuperTrend Rules': 'MegaBull', 'Power Breakout': 'App · Power Breakout', 'Trend Rules': 'App · Trend',
-  'Rebound Call': 'App · Rebound Call', 'Box Pullback 15/5': 'App · Box Pullback 15/5', 'Box Pullback 5/1': 'App · Box Pullback 5/1',
+  'Rebound Call': 'App · Rebound Call', 'Box Pullback 15/5': 'App · Box Pullback 15/5',
   'Expiry Straddle (sell)': 'App · Selling', 'Expiry Straddle 9:40 (sell)': 'App · Selling', 'Expiry Straddle 11:26 (sell)': 'App · Selling',
   'Expiry Straddle 12:24 (sell)': 'App · Selling', 'Calm-day Call Sell': 'App · Selling', '2-month Strangle (sell)': 'App · Selling',
   Manual: 'App · Manual',

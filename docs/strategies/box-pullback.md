@@ -1,5 +1,7 @@
 # Box Pullback 15/5 (orbPullback) and 5/1 (orbPullback5) - PAPER
 
+**30-Oct-2026: the 5/1 version is OFF** (owner: 1-min candles too noisy, a 5-min close would have avoided the losing trade). Code kept; `autopaper.json` "orbPullback5" enabled false; hidden from the app, phone and Excel.
+
 Owner asked for paper trading on 29-Oct-2026 ("why should we ignore it"), from a YouTube video he shared on 28-Oct.
 Code: `backend/sig_orb.py` (rule, pure), wired in `sig_service.run_orb` (every minute) and `autopaper.py` (own Rs 1 lakh
 books "orb" and "orb5", journal names "Box Pullback 15/5" and "Box Pullback 5/1"). Settings: `autopaper.json` "orbPullback" and "orbPullback5". The 5/1 version was added the same day ("we need to see all

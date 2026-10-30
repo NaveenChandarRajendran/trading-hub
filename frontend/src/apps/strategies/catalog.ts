@@ -38,7 +38,6 @@ export const BOOKS: BookInfo[] = [
   { key: 'rebound', name: 'Rebound Call', size: 100000 },
   { key: 'selling', name: 'Selling', size: 300000 },
   { key: 'orb', name: 'Box Pullback 15/5', size: 100000 },
-  { key: 'orb5', name: 'Box Pullback 5/1', size: 100000 },
 ];
 
 export const STRATEGIES: StrategyInfo[] = [
@@ -85,11 +84,6 @@ export const STRATEGIES: StrategyInfo[] = [
   {
     who: 'Box Pullback 15/5', name: 'Box Pullback 15/5', section: 'scalping', ruleKey: 'orbPullback', book: 'orb', indices: ['NIFTY', 'BANKNIFTY'],
     how: '9:15-9:30 box; after a 5-minute close outside it, buys ATM on the pullback to the box edge.',
-    exits: 'Stop −10% · target +20% · 3:14 PM time exit',
-  },
-  {
-    who: 'Box Pullback 5/1', name: 'Box Pullback 5/1', section: 'scalping', ruleKey: 'orbPullback5', book: 'orb5', indices: ['NIFTY', 'BANKNIFTY'],
-    how: '9:15-9:20 box; after a 1-minute close outside it, buys ATM on the pullback to the box edge.',
     exits: 'Stop −10% · target +20% · 3:14 PM time exit',
   },
 ];
