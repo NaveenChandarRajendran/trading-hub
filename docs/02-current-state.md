@@ -1,6 +1,19 @@
 # Current state
 
-_Last updated: 2026-10-28 (Momentum 20 stock books; paper Option Selling book + timed expiry straddles; Trend, 4 Pillar, SuperTrend watch-only on `Diwakar_OptionBuy_Backtest`)_
+_Last updated: 2026-10-30 (Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
+
+## Changes of 30-Oct-2026 (owner OK each)
+- **Power Breakout** = the rule called Dharani v2 in code (`sig_dharani_v2.py`). Call Bollinger (15,3) -> (20,2.5) (owner
+  "Yes" 30-Oct). The result carries `pivotR1`; the checklist says "Close above pivot R1" and the chart draws that same
+  line ("Pivot R1"); OI strike lines are titled "OI R1/S1". RSI guide lines come from the board preset.
+- **One OI verdict everywhere** (owner 30-Oct: "keep this fixed every where"): `sig_oi.build_up` / `shared/oiBuildUp.ts`.
+  lean = (puts - calls) / (|puts| + |calls|); Bullish if lean >= 0.10 and more puts than calls added today (puts =
+  support), Bearish the mirror, else Neutral. Used by phone, votes, Charts & Signals, Option Strategy, OI change and
+  Sensibull pages. The father's sheet average ("course sheet method") is shown below it, for reference only.
+- **Order flow card**: 5-min table like Trending OI (`flow_summary.rows`, newest on top, live row marked).
+- **Manual trades** send a phone entry message (`notify.manual_fill_listener`, `PaperService.fill_listeners`).
+- **Box Pullback 5/1 removed** everywhere (app, phone, journal, Excel tab). Only 15/5 trades from Mon 2 Nov.
+- Rebound Call: no entries after the 14:30 candle, time exit 15:14 (shown on the open-trade card).
 
 ## Momentum 20 stock books, 2 x Rs 5 L PAPER (owner 28-Oct-2026)
 Rules: `docs/strategies/momentum-20.md`. `momentum.py` (pure screener, a port of the research backtest; same top 40 on
@@ -25,7 +38,7 @@ Timed expiry straddles 09:40 / 11:26 / 12:24 (owner 28-Oct-2026): slots `sellStr
 ## Box Pullback 15/5, Rs 1 L PAPER (owner 29-Oct-2026; 5/1 version switched off 30-Oct-2026: 1-min candles too noisy)
 Rules: `docs/strategies/box-pullback.md` (opening box, close outside, buy the pullback; premium stop -10 % / target +20 %).
 `sig_orb.py` + `SignalService.run_orb` (the watcher now also wakes every minute while it is enabled); exits are the
-normal autopaper stop order / target. Books "orb" (15/5) and "orb5" (5/1); `sig_orb.VARIANTS`. Backtest lost money; paper for learning only.
+normal autopaper stop order / target. Book "orb" (15/5); the "orb5" book is gone (autopaper.json `orbPullback5` off). Backtest lost money; paper for learning only.
 
 ## Trend, 4 Pillar and SuperTrend are watch-only (owner 28-Oct-2026)
 autopaper.json `watchOnly: ["tradingHub", "fourPillar", "superTrend"]`: `AutoTrader.on_signal` returns
