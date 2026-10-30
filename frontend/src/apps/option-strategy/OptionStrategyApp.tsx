@@ -156,7 +156,7 @@ export default function OptionStrategyApp() {
                 </span>
                 <span className={`verdict ${calc.verdict.verdict}`}>{calc.verdict.verdict}</span>
               </div>
-                            <div className="final">
+              <div className="final">
                 <span className={calc.verdict.points >= 0 ? 'pos' : 'neg'}>
                   Father's sheet: final average {calc.verdict.points >= 0 ? '+' : ''}{f(calc.verdict.points, 2)} pts vs spot
                 </span>
