@@ -334,6 +334,15 @@ export default function StrategyBuilderApp() {
           {waiting.length > 0 && <p className="muted sb-small">{waiting.length} leg(s) have no price yet: they are left out until one arrives (or type one).</p>}
           {priced.missingIv.length > 0 && <p className="muted sb-small">IV missing for {priced.missingIv.length} leg(s): the target-date curve values them at intrinsic.</p>}
         </section>
+        {/* the numbers sit under the legs (left), the chart and its sliders on the right: the two columns stay level */}
+        {!noMarket && summary && market.spot != null && (
+          <section className="card sb-left sb-summary-card">
+            <div className="card-head"><span className="card-title">Summary</span>
+              <span className="muted sb-small">{hours === 0 ? 'at expiry · Greeks now' : `Greeks at ${whenLabel(targetMs)}`}</span></div>
+            <SummaryPanel s={summary} legs={priced.legs} spot={market.spot} whatIf={whatIf} multiplier={tab.multiplier}
+              margin={marginCell} />
+          </section>
+        )}
         </div>
         <section className="card sb-right">
           <div className="card-head">
@@ -359,8 +368,6 @@ export default function StrategyBuilderApp() {
                   <span className="muted sb-small">{hasIv ? 'what if volatility moves' : 'no IV from the chain: expiry line only'}</span>
                 </label>
               </div>
-              <SummaryPanel s={summary} legs={priced.legs} spot={market.spot} whatIf={whatIf} multiplier={tab.multiplier}
-                margin={marginCell} />
             </>
           )}
         </section>

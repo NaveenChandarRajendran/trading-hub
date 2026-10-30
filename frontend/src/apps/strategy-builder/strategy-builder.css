@@ -175,3 +175,4 @@
 .ds .sb-drawer .sb-oc-rows { max-height: calc(100vh - 210px); }
 .ds .sb-add-legs { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) { .ds .sb-drawer { transition: none; } }
+.ds .sb-summary-card .sb-summary { border-top: 0; padding-top: 0; } /* in its own card under the legs */
