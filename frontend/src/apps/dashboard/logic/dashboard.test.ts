@@ -45,12 +45,12 @@ describe('level lines', () => {
     const host = fakeHost();
     const lines = new LevelLines(host);
     lines.update(lv([23000, 23100, 23200], [22700, 22600, 22500]), colors);
-    expect(host.created.map((c) => c.spec.title)).toEqual(['R1', 'R2', 'R3', 'S1', 'S2', 'S3']);
+    expect(host.created.map((c) => c.spec.title)).toEqual(['OI R1', 'OI R2', 'OI R3', 'OI S1', 'OI S2', 'OI S3']);
 
     lines.update(lv([22950, 23000, 23100], [22800, 22700, 22600]), colors); // levels changed on refresh
     expect(host.created).toHaveLength(6); // nothing recreated
-    expect(host.created[0].applied.at(-1)).toMatchObject({ price: 22950, title: 'R1', lineVisible: true });
-    expect(host.created[3].applied.at(-1)).toMatchObject({ price: 22800, title: 'S1' });
+    expect(host.created[0].applied.at(-1)).toMatchObject({ price: 22950, title: 'OI R1', lineVisible: true });
+    expect(host.created[3].applied.at(-1)).toMatchObject({ price: 22800, title: 'OI S1' });
   });
 
   it('hides a missing level (keeps the line, keeps its last price) and shows it again later', () => {
@@ -58,7 +58,7 @@ describe('level lines', () => {
     const lines = new LevelLines(host);
     lines.update(lv([23000, 23100, 23200], [22700, 22600, 22500]), colors);
     lines.update(lv([23000], [22700, 22600, 22500]), colors);
-    expect(host.created[1].applied.at(-1)).toMatchObject({ lineVisible: false, axisLabelVisible: false, price: 23100, title: 'R2' });
+    expect(host.created[1].applied.at(-1)).toMatchObject({ lineVisible: false, axisLabelVisible: false, price: 23100, title: 'OI R2' });
     lines.update(lv([23000, 23050, 23200], [22700, 22600, 22500]), colors);
     expect(host.created[1].applied.at(-1)).toMatchObject({ lineVisible: true, price: 23050 });
     expect(lines.count).toBe(6);

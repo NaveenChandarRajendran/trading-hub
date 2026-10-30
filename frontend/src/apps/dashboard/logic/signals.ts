@@ -20,6 +20,7 @@ export interface RuleResult {
   name: string; // "TREND RULES" | "4 PILLAR RULES" | "SUPERTREND RULES" | "DHARANI RULES"
   setup?: string; // "4 Pillar Rules" | "SuperTrend Rules" | "Dharani Rules" (older trades: "4 Pillar", "SuperTrend Nifty")
   box?: { high: number; low: number } | null; // Box Pullback: the opening box (drawn on the chart)
+  pivotR1?: number | null; // Power Breakout: the R1 its call checks (index, Traditional pivot, previous day), drawn on the chart
   score?: number; // Dharani v2: how many of its conditions are true (call 5, put 8)
   total?: number;
   account: string;

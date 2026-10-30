@@ -47,6 +47,9 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
   const sr = useMemo(() => (levelsChain ? srLevels(levelsChain, SR_RANGE) : null), [levelsChain]);
   const ctx = sig?.context.find((c) => c?.symbol === d.symbol) ?? null;
   const pivot = d.isDaily ? null : d.day ? (d.prevSession ? pivots(d.prevSession.high, d.prevSession.low, d.prevSession.close).P : null) : ctx?.pivot ?? null;
+  // Power Breakout's call checks the close against this R1 (the rule's own number, so chart and checklist agree)
+  const r1 = !d.day && !d.isDaily && strategy === 'dharaniV2' ? sig?.rules.dharaniV2?.pivotR1 ?? null : null;
+  const ruleLines = useMemo(() => (r1 != null ? [{ price: r1, title: 'Pivot R1' }] : []), [r1]);
   // the plain chart is price only: OI levels, pivot and trade marks come with a strategy (owner 27-Oct-2026)
   const plain = strategy === 'all';
   const marks = useMemo(() => (d.live && !plain ? tradeMarks(sig?.auto, strategy, d.symbol) : []), [d.live, plain, sig?.auto, strategy, d.symbol]);
@@ -96,7 +99,7 @@ export function ChartPanel({ d, sig, strategy, indicators, maximizable = true, p
       {!d.bars.length ? (
         <EmptyState>{d.candlesError != null ? 'Candles are not available right now.' : 'Loading candles…'}</EmptyState>
       ) : (
-        <PriceChart bars={d.bars} warm={d.warmBars} box={!d.day && (strategy === 'orbPullback' || strategy === 'orbPullback5') ? sig?.rules[strategy]?.box ?? null : null} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
+        <PriceChart bars={d.bars} warm={d.warmBars} box={!d.day && (strategy === 'orbPullback' || strategy === 'orbPullback5') ? sig?.rules[strategy]?.box ?? null : null} ruleLines={ruleLines} levels={d.live && !plain ? sr?.levels ?? null : null} pivot={plain ? null : pivot}
           resetKey={`${d.symbol}-${d.interval}-${d.day}-${d.rangeDays}-${strategy}`} viewKey={`${d.symbol}.${strategy}.${d.interval}`} zoomKey={d.isDaily ? undefined : d.symbol}
           indicators={shown} params={params} marks={marks}
           volumeLabel={d.volumeInfo ? `Vol ${d.volumeInfo.name}` : 'Vol'} delta={d.flow} />

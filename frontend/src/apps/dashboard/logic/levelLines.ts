@@ -46,7 +46,7 @@ export function lineSpec(key: LevelKey, level: Level | undefined, colors: LevelC
     lineStyle: DASHED, // all OI levels dashed (owner's brief, 23-Oct-2026); R1 / S1 stay thicker
     lineVisible: !!level,
     axisLabelVisible: !!level,
-    title: key, // just "R1"; the price scale shows the strike
+    title: `OI ${key}`, // owner 30-Oct-2026: "R1" alone was taken for the pivot R1 the Power Breakout rule checks
   };
 }
 

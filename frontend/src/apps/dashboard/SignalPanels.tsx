@@ -2,6 +2,7 @@
 // section, the paper trade card and the snapshot log bar. Display only: every number and tick comes from the backend's
 // evaluation, which is what the signal watcher trades on.
 import { putShare, votesText } from './logic/board';
+import { pivots } from './logic/indicators';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { inr, signed } from '../../shared/grid';
@@ -28,17 +29,18 @@ export function DayLevels({ rows }: { rows: (ContextRow | null)[] }) {
       <div className="db-scroll">
         <table className="t">
           <thead>
-            <tr><th>Index</th><th>Previous high</th><th>Previous close</th><th>Previous low</th><th>Pivot (auto)</th><th>Today high</th><th>Today low</th><th>India VIX</th><th>PCR</th></tr>
+            <tr><th>Index</th><th>Previous high</th><th>Previous close</th><th>Previous low</th><th>Pivot (auto)</th><th>Pivot R1</th><th>Today high</th><th>Today low</th><th>India VIX</th><th>PCR</th></tr>
           </thead>
           <tbody>
             {rows.map((r, k) => r ? (
               <tr key={r.symbol}>
                 <td>{NAMES[r.symbol] ?? r.symbol}</td>
                 <td className="num">{n2(r.prevHigh)}</td><td className="num">{n2(r.prevClose)}</td><td className="num">{n2(r.prevLow)}</td>
-                <td className="num">{n2(r.pivot)}</td><td className="num">{n2(r.todayHigh)}</td><td className="num">{n2(r.todayLow)}</td>
+                <td className="num">{n2(r.pivot)}</td>
+                <td className="num">{r.prevHigh != null && r.prevLow != null && r.prevClose != null ? n2(pivots(r.prevHigh, r.prevLow, r.prevClose).R1) : '—'}</td><td className="num">{n2(r.todayHigh)}</td><td className="num">{n2(r.todayLow)}</td>
                 <td className="num">{n2(r.vix)}</td><td className="num">{n2(r.pcr)}</td>
               </tr>
-            ) : <tr key={k}><td colSpan={9} className="db-muted">Not available yet.</td></tr>)}
+            ) : <tr key={k}><td colSpan={10} className="db-muted">Not available yet.</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -172,11 +174,11 @@ export function OiViewsCard({ views, sr }: { views: SignalsState['oiViews']; sr:
 
 export function SrCard({ sr, components }: { sr: SrView | null; components: string }) {
   if (!sr) return <section className="card"><div className="card-head"><h3 className="card-title">OI support &amp; resistance</h3></div><p className="db-muted">Not available yet.</p></section>;
-  const rows = [...[...sr.levels.R].reverse().map((l, k, a) => ({ name: `R${a.length - k}`, ...l, side: 'R' as const })),
-    ...sr.levels.S.map((l, k) => ({ name: `S${k + 1}`, ...l, side: 'S' as const }))];
+  const rows = [...[...sr.levels.R].reverse().map((l, k, a) => ({ name: `OI R${a.length - k}`, ...l, side: 'R' as const })),
+    ...sr.levels.S.map((l, k) => ({ name: `OI S${k + 1}`, ...l, side: 'S' as const }))];
   return (
     <section className="card">
-      <div className="card-head"><h3 className="card-title">OI support &amp; resistance</h3><Pill tone="neutral">Spot {n2(sr.spot)}</Pill></div>
+      <div className="card-head"><h3 className="card-title">OI support &amp; resistance (strikes)</h3><Pill tone="neutral">Spot {n2(sr.spot)}</Pill></div>
       <table className="t">
         <thead><tr><th>Level</th><th>Strike</th><th>OI (contracts)</th><th>Distance from spot</th></tr></thead>
         <tbody>

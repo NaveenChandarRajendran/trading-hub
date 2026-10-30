@@ -143,12 +143,16 @@ function shownIndicators(warm: Candle[], bars: Candle[], p: ChartParams): Data {
 const NO_BARS: Candle[] = [];
 type LineKey = 'rsi' | 'ema' | 'vwap' | 'st' | 'bbBasis' | 'bbUpper' | 'bbLower';
 
-export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox = null, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, zoomKey, marks = [] }: {
+export interface RuleLine { price: number; title: string }
+const NO_LINES: RuleLine[] = [];
+
+export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox = null, ruleLines = NO_LINES, resetKey, indicators, volumeLabel, delta = [], params = DEFAULT_PARAMS, viewKey, zoomKey, marks = [] }: {
   bars: Candle[]; // whole series; when only the last bar changed (live), just that bar is redrawn
   warm?: Candle[]; // earlier candles, not drawn: the indicators start from them
   levels: Record<Side, Level[]> | null;
   pivot: number | null; // day pivot (Traditional, previous session), dashed
   box?: { high: number; low: number } | null; // Box Pullback's opening box: two solid lines
+  ruleLines?: RuleLine[]; // levels the selected rule checks (Power Breakout: pivot R1 / S1), solid, so they are not taken for OI levels
   resetKey: string; // symbol + interval: redraw and fit the whole range when it changes
   indicators: IndicatorToggles;
   volumeLabel: string; // e.g. "Vol NIFTY OCT FUT"
@@ -171,6 +175,9 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
   const boxLines = useRef<IPriceLine[]>([]);
   const boxRef = useRef(openBox);
   boxRef.current = openBox;
+  const rulePriceLines = useRef<IPriceLine[]>([]);
+  const ruleRef = useRef(ruleLines);
+  ruleRef.current = ruleLines;
   const fitted = useRef('');
   const all = useRef<Candle[]>([]); // history + live candles, for the indicators
   const warmRef = useRef(warm);
@@ -248,7 +255,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
         const { minValue: lo, maxValue: hi } = r.priceRange;
         const pad = Math.max((hi - lo) * 0.5, ((hi + lo) / 2) * 0.003);
         const b = boxRef.current;
-        const prices = [...levelPrices(levelsRef.current, pivotRef.current).filter((p) => p >= lo - pad && p <= hi + pad), ...(b ? [b.high, b.low] : [])];
+        const prices = [...[...levelPrices(levelsRef.current, pivotRef.current), ...ruleRef.current.map((l) => l.price)].filter((p) => p >= lo - pad && p <= hi + pad), ...(b ? [b.high, b.low] : [])];
         if (!prices.length) return r;
         return { ...r, priceRange: { minValue: Math.min(lo, ...prices), maxValue: Math.max(hi, ...prices) } };
       },
@@ -280,6 +287,7 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
       c.remove();
       chart.current = series.current = lines.current = volSeries.current = pivotLine.current = deltaSeries.current = null;
       boxLines.current = [];
+      rulePriceLines.current = [];
       lineSeries.current = {};
       shown.current = { bars: [], key: '' };
       rsiGuides.current = [];
@@ -486,6 +494,16 @@ export function PriceChart({ bars, warm = NO_BARS, levels, pivot, box: openBox =
     boxLines.current = [[boxHigh, 'Box high'], [boxLow, 'Box low']].map(([price, title]) =>
       s.createPriceLine({ price: price as number, color, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: title as string }));
   }, [boxHigh, boxLow, mode]);
+
+  // the selected rule's own levels (Power Breakout: "Close above R1" uses the Traditional pivot R1, not an OI strike)
+  const ruleKey = ruleLines.map((l) => `${l.title}:${l.price}`).join('|');
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    for (const l of rulePriceLines.current) s.removePriceLine(l);
+    rulePriceLines.current = ruleRef.current.map((l) =>
+      s.createPriceLine({ price: l.price, color: token(l.title.includes('R') ? '--down' : '--up'), lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: l.title }));
+  }, [ruleKey, mode]);
 
   return (
     <div className="chart-wrap">

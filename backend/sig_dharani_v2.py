@@ -108,7 +108,7 @@ def call_checks(state):
         _cmp("supertrend", "SuperTrend (10, 2)", ind["st_line"], ind["st_line"] is not None and c > ind["st_line"],
              f"Close {c:,.2f} {'above' if ind['st_line'] is not None and c > ind['st_line'] else 'below'} {_f(ind['st_line'])}"),
         _cmp("rsi", "RSI 14 above 70", ind["rsi"], ind["rsi"] is not None and ind["rsi"] > CALL["rsi"][1], f"{_f(ind['rsi'], 1)}"),
-        _cmp("pivot", "Close above R1", r1, r1 is not None and c > r1, f"R1 {_f(r1)}"),
+        _cmp("pivot", "Close above pivot R1", r1, r1 is not None and c > r1, f"Pivot R1 {_f(r1)} (previous day; not the OI R1)"),
         _cmp("bollinger", "Close above upper Bollinger (15, 3)", ind["bb_upper"], ind["bb_upper"] is not None and c > ind["bb_upper"],
              f"Upper {_f(ind['bb_upper'])}"),
         _cmp("williams", "Williams %R 14 above -30", ind["wr"], ind["wr"] is not None and ind["wr"] > CALL["wr"][1], f"{_f(ind['wr'], 1)}"),
@@ -132,7 +132,7 @@ def put_checks(state):
         _cmp("rsi", "RSI 20 below 30", ind["rsi"], ind["rsi"] is not None and ind["rsi"] < PUT["rsi"][1], f"{_f(ind['rsi'], 1)}"),
         _cmp("cci", "CCI 20 below -200", ind["cci"], ind["cci"] is not None and ind["cci"] < PUT["cci"][1], f"{_f(ind['cci'], 0)}"),
         _cmp("williams", "Williams %R 14 below -85", ind["wr"], ind["wr"] is not None and ind["wr"] < PUT["wr"][1], f"{_f(ind['wr'], 1)}"),
-        _cmp("pivot", "Close below CPR S1", s1, s1 is not None and c < s1, f"S1 {_f(s1)}"),
+        _cmp("pivot", "Close below CPR S1", s1, s1 is not None and c < s1, f"Futures pivot S1 {_f(s1)} (previous day)"),
         _cmp("cprNarrow", "CPR is narrow", w, w is not None and w < PUT["cprNarrowPct"], f"Width {_f(w, 3)}% (narrow below {PUT['cprNarrowPct']}%)"),
         _cmp("bollinger", "Close below lower Bollinger (20, 2)", ind["bb_lower"], ind["bb_lower"] is not None and c < ind["bb_lower"],
              f"Lower {_f(ind['bb_lower'])}"),
@@ -164,6 +164,8 @@ def dharani_v2_rule(state):
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
         "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True,
         "premiumNear": state.get("premiumNear") or PREMIUM_NEAR.get(state["symbol"], 250),
+        # the call's "Close above R1" level (index, Traditional pivot of the previous session), drawn on the chart
+        "pivotR1": round((state.get("piv") or {}).get("R1"), 2) if (state.get("piv") or {}).get("R1") is not None else None,
     }
 
 
