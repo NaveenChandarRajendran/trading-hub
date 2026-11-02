@@ -32,7 +32,7 @@ def states(r):
 
 def test_call_needs_all_five():
     r = dharani_v2_rule(state())
-    assert r["side"] == "CE" and r["go"] and (r["score"], r["total"]) == (5, 5) and r["noTarget"]
+    assert r["side"] == "CE" and r["go"] and (r["score"], r["total"]) == (5, 5) and not r.get("noTarget")
     s = state()
     s["idx"]["ind"]["wr"] = -35  # Williams %R must be above -30
     r = dharani_v2_rule(s)

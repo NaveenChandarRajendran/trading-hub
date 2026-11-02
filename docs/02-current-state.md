@@ -2,6 +2,13 @@
 
 _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top of the Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
 
+## SuperTrend Breakout +20 % target (owner 2-Nov-2026, live from Tue 3 Nov)
+- Exit is now +20 % target or the SuperTrend close, whichever first (stop -10 % unchanged). After a target exit the
+  post-exit shadow records where the SuperTrend exit would have come; trade log columns
+  `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit`, `target_vs_hold`. Excel (Power Breakout /
+  SuperTrend Breakout tab) must carry these three for the 15 Nov review. Watch list: owner's 6-lot scale-out
+  (2 lots at +20 %, 2 at +50 %, 2 ride SuperTrend) awaits a backtest; not built.
+
 ## Uniform pages and capital per strategy (owner 30-Oct-2026 evening, one install with the Sat 31 Oct release)
 - **Rename**: "Power Breakout" is now **SuperTrend Breakout** everywhere (app, phone, journal `RENAMED` maps old rows;
   id `dharaniV2` unchanged). The Excel heading/tab must follow at the next Excel update.

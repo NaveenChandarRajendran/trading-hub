@@ -33,8 +33,12 @@ Order flow is not part of this setup.
   PE, the strike whose last premium is nearest **₹250 on NIFTY** (his "Premium near 250") and **₹500 on BANKNIFTY**
   (monthly expiries only, so options cost more; owner 25-Oct-2026). Setting: `autopaper.json` dharaniV2.premiumNear.
 - Entry window: signal candles closing 09:18 to 15:00 (the teacher trades from 09:15).
-- **Exit when a 3-minute candle closes back through SuperTrend** (call: index closes below the line; put: futures close
-  above it). No fixed target. Safety stop: SL-M at fill × 0.90 (−10%). Hard exit 15:15 (the teacher's
+- **Target +20 % of the fill** (owner 2-Nov-2026, from Tue 3 Nov; `autopaper.json` dharani.targetPct), **or earlier
+  when a 3-minute candle closes back through SuperTrend** (call: index closes below the line; put: futures close
+  above it). After a target exit the app keeps watching the option (record only) and the trade log gets
+  `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit` and `target_vs_hold` ("20% target was right" or
+  "Holding was better (+x% more)"; 15:15 premium if SuperTrend never flipped). Owner's 6-lot scale-out idea
+  (2 at +20 %, 2 at +50 %, 2 ride SuperTrend) is to be backtested first. Safety stop: SL-M at fill × 0.90 (−10%). Hard exit 15:15 (the teacher's
   ends 15:28).
 - One open position per index at a time; a new entry is allowed after an exit when all conditions are true again.
   Daily limits are the Dharani account's own (6 trades, ₹10,000 loss; the teacher allows 10).

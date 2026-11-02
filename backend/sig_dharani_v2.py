@@ -12,7 +12,9 @@ CALL ("L1 08 FINAL CE"), index candles:
 PUT ("L1 10 PE ALT"), the index's near-month FUTURES candles (the teacher's "Fields: Future"):
     close < SuperTrend (10, 2)   close < EMA 200   RSI (20) < 30   CCI (20) < -200   Williams %R (14) < -85
     close < CPR S1 (futures' previous day)   CPR is narrow (width < 0.2 %)   close < lower Bollinger (20, 2)
-Exit: a candle closing back through the SuperTrend line (call: below it, put: above it), on the same data as the entry.
+Exit: target +20 % of the fill (owner 2-Nov-2026: from 3-Nov; dharani.targetPct in autopaper.json), or earlier a candle
+closing back through the SuperTrend line (call: below it, put: above it), on the same data as the entry. After a target
+exit the app keeps watching the option and notes where the SuperTrend exit would have come (record only).
 Pure functions; build_state_v2 wires them to the backend's caches (no Dhan calls of its own apart from those caches).
 """
 from datetime import datetime
@@ -163,7 +165,7 @@ def dharani_v2_rule(state):
         "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "SuperTrend Breakout", "account": "SuperTrend Breakout (app paper)",
         "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
-        "score": score[side], "total": total[side], "interval": INTERVAL, "noTarget": True,
+        "score": score[side], "total": total[side], "interval": INTERVAL,
         "premiumNear": state.get("premiumNear") or PREMIUM_NEAR.get(state["symbol"], 250),
         # the call's "Close above R1" level (index, Traditional pivot of the previous session), drawn on the chart
         "pivotR1": round((state.get("piv") or {}).get("R1"), 2) if (state.get("piv") or {}).get("R1") is not None else None,

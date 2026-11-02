@@ -71,6 +71,8 @@ TRADE_LOG_FIELDS = [
     # shadow after the exit (record only, filled at the end of the day)
     "highest_premium_after_exit", "time_of_high_after_exit", "lowest_premium_after_exit", "premium_at_1515",
     "spot_at_1515", "trend_still_held_at_1515", "missed_profit_pct_of_entry",
+    # SuperTrend Breakout after a target exit (owner 2-Nov-2026): where the SuperTrend exit would have come
+    "supertrend_exit_time_after_exit", "premium_at_supertrend_exit", "target_vs_hold",
 ]
 SHADOW_SKIP_FIELDS = [
     "date", "index", "candle_time", "setup", "rule", "filters_missed", "why_skipped", "instrument", "reference_premium",
@@ -504,7 +506,7 @@ class AutoTrader:
             entry_id, fill, qty = acc.buy(inst, lots)  # never retried: a second BUY could double the position
             self.state["unknown"].pop(account, None)
             stop = floor_tick(fill * (1 - cfg["stopPct"] / 100))
-            # Dharani v2 has no fixed target: it exits when price closes back through SuperTrend (dharani_v2_exit)
+            # noTarget: no fixed target (none today). Dharani v2 has the dharani targetPct since 3-Nov-2026 (owner 2-Nov-2026)
             target = None if result.get("noTarget") else ceil_tick(fill * (1 + cfg["targetPct"] / 100))
             trade = {
                 "id": f"{slot}-{symbol}-{self.clock():%H%M%S}", "account": account, "slot": slot, "symbol": symbol, "rule": result["name"],
@@ -571,6 +573,7 @@ class AutoTrader:
             self.state["shadows"].append({
                 "kind": "exit", "tradeId": trade["id"], "symbol": trade["symbol"], "side": trade["side"], "dhanId": dhan_id,
                 "high": None, "highTime": None, "low": None, "at1515": None, "spot1515": None, "trendHeld": None,
+                "slot": slot_of(trade), "exitReason": trade.get("exitReason"), "stExitTime": None, "stExitPremium": None,
                 "until": SHADOW_EXIT_UNTIL, "done": False,
             })
             self._save()
@@ -759,6 +762,15 @@ class AutoTrader:
                 why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
+        # after a target / stop / time exit: note where the SuperTrend exit would have come (record only, no order)
+        for sh in self.state.get("shadows", []):
+            if sh["kind"] == "exit" and sh.get("slot") == D2 and sh["symbol"] == symbol and not sh["done"] \
+                    and sh.get("exitReason") != "Signal" and sh.get("stExitTime") is None and dharani_v2_exit(state, sh["side"]):
+                p = self._premium(sh["dhanId"])
+                if p:
+                    with self.lock:
+                        sh["stExitTime"], sh["stExitPremium"] = self.clock().strftime("%H:%M"), p
+                        self._save()
 
     def _exit(self, trade, reason, note=""):
         acc = self.accounts[trade["account"]]
@@ -962,7 +974,21 @@ class AutoTrader:
             "highest_premium_after_exit": sh.get("high"), "time_of_high_after_exit": sh.get("highTime"),
             "lowest_premium_after_exit": sh.get("low"), "premium_at_1515": sh.get("at1515"), "spot_at_1515": sh.get("spot1515"),
             "trend_still_held_at_1515": sh.get("trendHeld"), "missed_profit_pct_of_entry": missed,
+            "supertrend_exit_time_after_exit": sh.get("stExitTime"), "premium_at_supertrend_exit": sh.get("stExitPremium"),
+            "target_vs_hold": self._target_vs_hold(t, sh),
         }
+
+    @staticmethod
+    def _target_vs_hold(t, sh):
+        """SuperTrend Breakout target exits only: was +20 % right, or would holding to the SuperTrend exit have paid more?"""
+        if slot_of(t) != D2 or t.get("exitReason") != "Target" or t.get("exitPrice") is None:
+            return None
+        hold = sh.get("stExitPremium") if sh.get("stExitTime") else sh.get("at1515")
+        if hold is None:
+            return "Unclear"
+        if hold > t["exitPrice"]:
+            return f"Holding was better (+{(hold - t['exitPrice']) / t['entryPrice'] * 100:.1f}% more)"
+        return "20% target was right"
 
     def _write_log(self, t):
         self._append_csv(os.path.join(self.cfg["logDir"], "trade_log.csv"), TRADE_LOG_FIELDS, [self._log_row(t)])

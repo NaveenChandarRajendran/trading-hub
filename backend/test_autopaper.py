@@ -418,3 +418,44 @@ def test_bracket_rejects_a_stop_above_the_buy_price(tmp_path):
         t.bracket(7, stop_price=170, target_price=200)
     with pytest.raises(AccountError, match="target must be above"):
         t.bracket(7, stop_price=150, target_price=160)
+
+
+def test_supertrend_breakout_takes_the_20pct_target_then_notes_where_the_supertrend_exit_came(tmp_path):
+    """Owner 2-Nov-2026: +20 % target from 3-Nov; after it, record whether holding to the SuperTrend exit paid more."""
+    th, dh = FakeAccount(), FakeDharaniBook()  # post-exit premiums are read from the Trading Hub paper feed
+    cfg = {**CFG, "logDir": str(tmp_path), "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20},
+           "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000}}
+    t = AutoTrader(cfg, [th, dh], clock=Clock(), alert=lambda k, m: None, state_path=os.path.join(str(tmp_path), "state.json"))
+    t.set_auto(True)
+
+    class Chain:
+        def chain(self, symbol, expiry):
+            return {"rows": [{"strike": 25200, "ce": {"last_price": 250}}]}
+    t.chain_source = Chain()
+    d = {**GO, "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "SuperTrend Breakout", "symbol": "NIFTY", "side": "CE",
+         "premiumNear": 250}
+    st = {"spot": 25012.0, "idx": {"bar": {"close": 25150}, "ind": {"st_line": 25050, "rsi": 74}}, "fut": None}
+    assert t.on_signal(d, st) == "Entry sent"
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    assert tr["target"] == 120.0
+    dh.ltp_value = 121.0
+    t.tick()
+    for _ in range(100):
+        if tr["status"] == "closed":
+            break
+        time.sleep(0.05)
+    assert tr["exitReason"] == "Target"
+    wait_idle(t)
+    sent = list(dh.sent)
+    dh.ltp_value = th.ltp_value = 140.0
+    t.on_candle_v2("NIFTY", st)  # SuperTrend still holds: nothing noted
+    st["idx"]["bar"]["close"] = 25040  # closed below the line: the SuperTrend exit would have come here
+    t.on_candle_v2("NIFTY", st)
+    assert dh.sent == sent  # record only
+    t.clock.set("15:31")
+    t.tick()
+    t.finish_day()
+    r = list(csv.DictReader(open(os.path.join(str(tmp_path), "trade_log.csv"))))[0]
+    assert r["premium_at_supertrend_exit"] == "140.0" and r["supertrend_exit_time_after_exit"]
+    assert r["target_vs_hold"] == "Holding was better (+19.0% more)"

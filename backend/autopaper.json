@@ -6,7 +6,7 @@
   "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
   "tradingHub": {"enabled": true, "lots": 1, "stopPct": 15, "targetPct": 20, "_note": "Trend rule: the app's own Rs 1 lakh paper account (strategy book 'trend')."},
   "megabull": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
-  "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20, "_note": "The app's own Rs 1 lakh paper account for the Dharani rule (strategy book). stopPct = safety stop; the rule exits on SuperTrend, targetPct is not used."},
+  "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20, "_note": "The app's own Rs 1 lakh paper account for the Dharani rule (strategy book). stopPct = safety stop; exit at targetPct (+20 %, owner 2-Nov-2026) or the SuperTrend close, whichever comes first."},
   "manual": {"lots": 1, "stopPct": 15, "targetPct": 20},
   "orbPullback": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "_note": "Box Pullback 15/5 (docs/strategies/box-pullback.md): NIFTY + BANKNIFTY, 15-min box, 5-min close outside, buy ATM on the pullback; stop -10 %, target +20 % (owner 29-Oct-2026), else 15:14. Own Rs 1 lakh 'orb' paper account (owner 29-Oct-2026)."},
   "orbPullback5": {"enabled": false, "lots": 1, "stopPct": 10, "targetPct": 20, "_note": "OFF (owner 30-Oct-2026: 1-min candles too noisy, 15/5 only). Box Pullback 5/1: same as orbPullback with a 5-min box (09:15-09:19) and a 1-min close outside. Own Rs 1 lakh 'orb5' paper account (owner 29-Oct-2026)."},
