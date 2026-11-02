@@ -551,3 +551,21 @@ def test_supertrend_ladder_stop_before_the_first_step_closes_all_6_lots(tmp_path
     lb.ltp_value = 90.0
     t.tick()
     assert tr["status"] == "closed" and tr["exitReason"] == "Stop" and tr["grossPnl"] == -1800.0
+
+
+def test_box_pullback_entry_context_goes_to_the_trade_log(tmp_path):
+    """Owner 2-Nov-2026: record whether Trending OI / order flow agreed with a Box Pullback entry (never blocks)."""
+    t, acc, _ = make(tmp_path)
+    t.set_auto(True)
+    go = {**GO, "context": {"oi": "Bullish", "oiAgrees": "N", "flowAgrees": "Y"}}
+    assert t.on_signal(go, STATE) == "Entry sent"
+    wait_idle(t)
+    acc.ltp_value = 121.0
+    t.tick()
+    for _ in range(100):
+        if os.path.exists(os.path.join(str(tmp_path), "trade_log.csv")):
+            break
+        time.sleep(0.05)
+    wait_idle(t)
+    r = list(csv.DictReader(open(os.path.join(str(tmp_path), "trade_log.csv"))))[0]
+    assert (r["trending_oi_at_entry"], r["oi_agrees"], r["order_flow_agrees"]) == ("Bullish", "N", "Y")

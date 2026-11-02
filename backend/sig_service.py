@@ -265,9 +265,29 @@ class SignalService:
                 if r["grade"] and not st["tradedToday"]:
                     self._orb_day[(ob, symbol)] = today  # the day's signal, taken or not
                     if self.trader and r["go"]:
+                        r["context"] = self.entry_context(symbol, r["side"])  # record only (owner 2-Nov-2026)
                         why = self.trader.on_signal(r, st)
                         if why != "Entry sent" and not st["positions"].get(ob):
                             self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+
+    def entry_context(self, symbol, side):
+        """Did Trending OI and the estimated order flow agree with this entry? Record only: never blocks a trade
+        (owner 2-Nov-2026, Box Pullback; reviewed on 15 Nov before it may become a checklist rule)."""
+        out = {"oi": None, "oiAgrees": None, "flowAgrees": None}
+        try:
+            with self.lock:
+                rec = self.last.get(symbol) or {}
+            tv = trending_view((rec.get("state") or {}).get("toi"))
+            if tv:
+                want = "Bullish" if side == "CE" else "Bearish"
+                out["oi"] = tv["verdict"]
+                out["oiAgrees"] = "Y" if tv["verdict"] == want else "N"
+            fs = self.flow_summary(symbol, side)
+            if fs and fs.get("agrees") is not None:
+                out["flowAgrees"] = "Y" if fs["agrees"] else "N"
+        except Exception:
+            log.exception("entry context")
+        return out
 
     def rebound_symbols(self):
         c = self.cfg.get(RB, {})  # owner 2-Nov-2026: NIFTY too (config reboundCall.symbols); BANKNIFTY only before

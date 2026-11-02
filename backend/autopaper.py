@@ -80,6 +80,8 @@ TRADE_LOG_FIELDS = [
     "spot_at_1515", "trend_still_held_at_1515", "missed_profit_pct_of_entry",
     # SuperTrend Breakout after a target exit (owner 2-Nov-2026): where the SuperTrend exit would have come
     "supertrend_exit_time_after_exit", "premium_at_supertrend_exit", "target_vs_hold",
+    # Box Pullback (owner 2-Nov-2026, record only): did Trending OI / order flow agree with the entry?
+    "trending_oi_at_entry", "oi_agrees", "order_flow_agrees",
 ]
 SHADOW_SKIP_FIELDS = [
     "date", "index", "candle_time", "setup", "rule", "filters_missed", "why_skipped", "instrument", "reference_premium",
@@ -537,6 +539,7 @@ class AutoTrader:
                 "deltaStatus": "not checked", "tags": result.get("tags", []),
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
                 "checkStates": {c["id"]: c["state"] for c in result["checks"]},
+                "context": result.get("context"),
             }
             if result.get("ladder"):  # sell steps: [{atPct, sellLots, stopToPct}], the rest rides the SuperTrend exit
                 trade["ladder"] = {"steps": cfg.get("steps", []), "next": 0, "lotsTotal": lots, "qtyTotal": qty,
@@ -1067,6 +1070,8 @@ class AutoTrader:
             "trend_still_held_at_1515": sh.get("trendHeld"), "missed_profit_pct_of_entry": missed,
             "supertrend_exit_time_after_exit": sh.get("stExitTime"), "premium_at_supertrend_exit": sh.get("stExitPremium"),
             "target_vs_hold": self._target_vs_hold(t, sh),
+            "trending_oi_at_entry": (t.get("context") or {}).get("oi"), "oi_agrees": (t.get("context") or {}).get("oiAgrees"),
+            "order_flow_agrees": (t.get("context") or {}).get("flowAgrees"),
         }
 
     @staticmethod
