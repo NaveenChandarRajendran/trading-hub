@@ -39,6 +39,7 @@ export interface BookInfo { key: string; name: string; size: number }
 /** Paper books and the capital set aside for each (owner 30-Oct-2026; backend strategy_books.py, autopaper.json). */
 export const BOOKS: BookInfo[] = [
   { key: 'dharani', name: 'SuperTrend Breakout', size: 150000 },
+  { key: 'ladder', name: 'SuperTrend Ladder', size: 150000 },
   { key: 'rebound', name: 'Rebound Call', size: 50000 },
   { key: 'selling', name: 'Selling', size: 1000000 },
   { key: 'orb', name: 'Box Pullback 15/5', size: 100000 },
@@ -46,14 +47,20 @@ export const BOOKS: BookInfo[] = [
 
 export const STRATEGIES: StrategyInfo[] = [
   {
-    who: 'SuperTrend Breakout', name: 'SuperTrend Breakout', section: 'optionBuy', ruleKey: 'dharaniV2', book: 'dharani', indices: ['NIFTY', 'BANKNIFTY'],
-    how: '3-minute candles: buys a call or put when SuperTrend, RSI, pivot, Bollinger and Williams %R all line up.',
-    exits: 'Exits when SuperTrend turns · −10% safety stop · 3:14 PM time exit',
+    who: 'SuperTrend Breakout', name: 'SuperTrend Breakout', section: 'optionBuy', ruleKey: 'dharaniV2', book: 'dharani', indices: ['NIFTY'],
+    how: 'Nifty 3-minute candles: buys 1 lot of a call or put when SuperTrend, RSI, pivot, Bollinger and Williams %R all line up.',
+    exits: 'Target +20% · stop −10% · or earlier when SuperTrend turns · 3:14 PM time exit',
     capital: 150000,
   },
   {
-    who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['BANKNIFTY'],
-    how: 'Bank Nifty 5-minute: after a deep fall below EMA 200, buys a call when price bounces back near VWAP.',
+    who: 'SuperTrend Ladder', name: 'SuperTrend Ladder', section: 'optionBuy', ruleKey: 'dharaniV2', book: 'ladder', indices: ['NIFTY'],
+    how: 'Same Nifty signal as SuperTrend Breakout, but buys 6 lots and sells them in three steps to ride big trends.',
+    exits: 'Sell 2 lots at +20% (stop moves to +20%) · 2 at +50% (stop moves to +50%) · last 2 when SuperTrend turns · −10% stop until the first sale',
+    capital: 150000,
+  },
+  {
+    who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['NIFTY', 'BANKNIFTY'],
+    how: '5-minute candles: after a deep fall below EMA 200, buys a call when price bounces back near VWAP. Nifty is new (tested on Bank Nifty only).',
     exits: 'Stop −25% · target +50% · 3:14 PM time exit',
     capital: 50000,
   },
@@ -113,6 +120,9 @@ export const strategyByWho = (who: string) => STRATEGIES.find((s) => whosOfInfo(
 export const sectionCapital = (id: SectionId) =>
   id === 'momentum' ? MOMENTUM_BOOKS.reduce((a, b) => a + b.capital, 0) : inSection(id).reduce((a, s) => a + s.capital, 0);
 export const TOTAL_CAPITAL = SECTIONS.reduce((a, s) => a + sectionCapital(s.id), 0);
+/** Kept aside for future tests (owner 2-Nov-2026: ₹25 lakh in all). */
+export const SPARE_CAPITAL = 50000;
+export const PLAN_CAPITAL = TOTAL_CAPITAL + SPARE_CAPITAL;
 export const bookOf = (key: string) => BOOKS.find((b) => b.key === key);
 /** Journal names of one section's strategies (its trades on Today / Trade History). */
 export const whosOf = (id: SectionId) => inSection(id).flatMap(whosOfInfo);

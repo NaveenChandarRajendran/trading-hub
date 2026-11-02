@@ -2,12 +2,20 @@
 
 _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top of the Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
 
-## SuperTrend Breakout +20 % target (owner 2-Nov-2026, live from Tue 3 Nov)
-- Exit is now +20 % target or the SuperTrend close, whichever first (stop -10 % unchanged). After a target exit the
-  post-exit shadow records where the SuperTrend exit would have come; trade log columns
-  `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit`, `target_vs_hold`. Excel (Power Breakout /
-  SuperTrend Breakout tab) must carry these three for the 15 Nov review. Watch list: owner's 6-lot scale-out
-  (2 lots at +20 %, 2 at +50 %, 2 ride SuperTrend) awaits a backtest; not built.
+## Owner's 2-Nov-2026 changes (live from Tue 3 Nov)
+- **SuperTrend Breakout: NIFTY only** (`dharaniV2.symbols`), 1 lot, stop -10 %, **target +20 %** or earlier SuperTrend
+  close. After a target exit the post-exit shadow records where the SuperTrend exit would have come; trade log columns
+  `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit`, `target_vs_hold` -> Excel SuperTrend Breakout tab.
+  (29 Oct exit test: SuperTrend exit +2.33 L vs -10/+20 +1.25 L; owner chose the target anyway, to test it live.)
+- **SuperTrend Ladder** (new, slot `stLadder`, book `ladder` Rs 1.5 L, NIFTY only): same GO as SuperTrend Breakout,
+  6 lots; sell 2 at +20 % (stop for the rest -> +20 %), 2 at +50 % (stop -> +50 %), last 2 on the SuperTrend exit;
+  -10 % stop until the first sale. `autopaper._ladder_step`; trade keeps `ladder.partials`, closes with the average
+  sell price over all 6 lots. Config `autopaper.json` stLadder.
+- **Rebound Call on NIFTY too** (`reboundCall.symbols`); untested on NIFTY (owner's call, learn from paper).
+- Capital: Option Buy 3.5 L (Breakout 1.5 L, Ladder 1.5 L, Rebound 50 k), spare 50 k for future tests: Rs 25 L in all
+  (`catalog.ts` SPARE_CAPITAL / PLAN_CAPITAL).
+- Sidebar: Full Chart, Charts & Signals, Order Flow moved to "Live market data"; "Trade and review" = Buy / Sell,
+  Trade History, Backtest.
 
 ## Uniform pages and capital per strategy (owner 30-Oct-2026 evening, one install with the Sat 31 Oct release)
 - **Rename**: "Power Breakout" is now **SuperTrend Breakout** everywhere (app, phone, journal `RENAMED` maps old rows;

@@ -105,7 +105,7 @@ export interface Instrument {
 export interface AutoTrade {
   id: string;
   account: AccountKey | 'manual';
-  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'reboundCall' | 'orbPullback' | 'orbPullback5'; // the rule that took the trade
+  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'stLadder' | 'reboundCall' | 'orbPullback' | 'orbPullback5'; // the rule that took the trade
   setup?: string;
   symbol: string;
   rule: string;

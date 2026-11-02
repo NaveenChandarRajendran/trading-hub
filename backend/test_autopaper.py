@@ -459,3 +459,95 @@ def test_supertrend_breakout_takes_the_20pct_target_then_notes_where_the_supertr
     r = list(csv.DictReader(open(os.path.join(str(tmp_path), "trade_log.csv"))))[0]
     assert r["premium_at_supertrend_exit"] == "140.0" and r["supertrend_exit_time_after_exit"]
     assert r["target_vs_hold"] == "Holding was better (+19.0% more)"
+
+
+class FakeLadderBook(FakeAccount):
+    """6-lot book: sells reduce the position by the lots sold; stops are tracked by id."""
+    key = "ladder"
+
+    def __init__(self):
+        super().__init__()
+        self.n = 0
+
+    def buy(self, inst, lots):
+        self.sent.append(("BUY", lots))
+        self.qty = lots * 30
+        self.orders["E1"] = {"status": "FILLED", "avgPrice": 100.0}
+        return "E1", 100.0, self.qty
+
+    def stop(self, inst, lots, qty, trigger):
+        self.n += 1
+        oid = f"S{self.n}"
+        self.sent.append(("SL-M", lots, trigger))
+        self.orders[oid] = {"status": "OPEN", "avgPrice": None}
+        return oid
+
+    def sell(self, inst, lots, qty):
+        self.sent.append(("SELL", lots, self.ltp_value))
+        self.qty -= qty
+        return f"X{len(self.sent)}", self.ltp_value
+
+
+def test_supertrend_ladder_sells_2_2_2_and_steps_the_stop_up(tmp_path):
+    """Owner 2-Nov-2026: 6 lots; 2 at +20 % (stop to +20 %), 2 at +50 % (stop to +50 %), last 2 on the SuperTrend exit."""
+    th, lb = FakeAccount(), FakeLadderBook()
+    cfg = {**CFG, "logDir": str(tmp_path), "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
+           "stLadder": {"enabled": True, "symbols": ["NIFTY"], "lots": 6, "stopPct": 10, "targetPct": 0,
+                        "steps": [{"atPct": 20, "sellLots": 2, "stopToPct": 20}, {"atPct": 50, "sellLots": 2, "stopToPct": 50}]}}
+    t = AutoTrader(cfg, [th, lb], clock=Clock(), alert=lambda k, m: None, state_path=os.path.join(str(tmp_path), "state.json"))
+    t.set_auto(True)
+    d = {**GO, "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "SuperTrend Breakout", "symbol": "NIFTY", "side": "CE"}
+    st = {"spot": 25012.0, "idx": {"bar": {"close": 25150}, "ind": {"st_line": 25050, "rsi": 74}}, "fut": None}
+    assert t.on_signal_ladder({**d, "symbol": "BANKNIFTY"}, st) == ""  # NIFTY only
+    assert t.on_signal_ladder(d, st) == "Entry sent"
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    assert (tr["lots"], tr["qty"], tr["stop"], tr["target"]) == (6, 180, 90.0, None) and tr["account"] == "ladder"
+
+    def step(price):
+        lb.ltp_value = price
+        t.tick()
+        time.sleep(0.05)
+        wait_idle(t)
+        for _ in range(50):
+            if not tr.get("exiting"):
+                break
+            time.sleep(0.05)
+
+    step(110.0)
+    assert tr["lots"] == 6
+    step(121.0)
+    assert (tr["lots"], tr["qty"], tr["stop"]) == (4, 120, 120.0)
+    assert ("SL-M", 4, 120.0) in lb.sent
+    step(151.0)
+    assert (tr["lots"], tr["stop"]) == (2, 150.0) and ("SL-M", 2, 150.0) in lb.sent
+    assert t._public(tr)["pnl"] == round(21 * 60 + 51 * 60 + (151 - 100) * 60, 2)
+    step(200.0)  # no more steps: the last 2 lots ride
+    assert tr["lots"] == 2 and tr["status"] == "open"
+    st["idx"]["bar"]["close"] = 25040  # SuperTrend breaks
+    t.on_candle_v2("NIFTY", st)
+    for _ in range(100):
+        if tr["status"] == "closed":
+            break
+        time.sleep(0.05)
+    assert tr["status"] == "closed" and tr["exitReason"] == "Signal"
+    assert (tr["qty"], tr["lots"]) == (180, 6)
+    assert tr["exitPrice"] == round((121 * 60 + 151 * 60 + 200 * 60) / 180, 2)
+    assert tr["grossPnl"] == round((tr["exitPrice"] - 100) * 180, 2)
+
+
+def test_supertrend_ladder_stop_before_the_first_step_closes_all_6_lots(tmp_path):
+    th, lb = FakeAccount(), FakeLadderBook()
+    cfg = {**CFG, "logDir": str(tmp_path), "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
+           "stLadder": {"enabled": True, "lots": 6, "stopPct": 10, "targetPct": 0,
+                        "steps": [{"atPct": 20, "sellLots": 2, "stopToPct": 20}]}}
+    t = AutoTrader(cfg, [th, lb], clock=Clock(), alert=lambda k, m: None, state_path=os.path.join(str(tmp_path), "state.json"))
+    t.set_auto(True)
+    d = {**GO, "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "SuperTrend Breakout", "symbol": "NIFTY", "side": "CE"}
+    assert t.on_signal_ladder(d, {"spot": 25012.0, "idx": {"bar": {"close": 1}, "ind": {"rsi": 70}}}) == "Entry sent"
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    lb.orders[tr["stopOrderId"]] = {"status": "FILLED", "avgPrice": 90.0}
+    lb.ltp_value = 90.0
+    t.tick()
+    assert tr["status"] == "closed" and tr["exitReason"] == "Stop" and tr["grossPnl"] == -1800.0

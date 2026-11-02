@@ -10,6 +10,7 @@ export const GROUPS: { id: AppGroup; label: string; closedByDefault?: boolean }[
   { id: 'home', label: '' },
   { id: 'strategies', label: 'Trading Strategies' },
   { id: 'tools', label: 'Trade and review' },
+  // owner 2-Nov-2026: charts, order flow and OI all under Live market data; Trade and review = trading + history only
   { id: 'live', label: 'Live market data', closedByDefault: true },
   { id: 'manual', label: 'Paste tools', closedByDefault: true },
   { id: 'money', label: 'My capital', closedByDefault: true }, // owner 31-Oct-2026: last and folded, not the first thing others see
@@ -53,7 +54,7 @@ export const apps: AppEntry[] = [
     group: 'strategies',
     name: 'Option Buy',
     path: '/strategies/option-buy',
-    hint: 'SuperTrend Breakout and Rebound Call: live checklists, chart, trades and OI',
+    hint: 'SuperTrend Breakout, SuperTrend Ladder and Rebound Call: live checklists, chart, trades and OI',
     icon: '▲',
     component: lazy(() => import('./strategies/OptionBuyApp')),
   },
@@ -103,25 +104,6 @@ export const apps: AppEntry[] = [
     hint: 'Past days, order book, P&L calendar and strategies side by side',
     icon: '⇄',
     component: lazy(() => import('./paper-journal/PaperJournalApp')),
-  },
-  {
-    // owner 31-Oct-2026: TradingView's own full chart with drawing tools and indicators (free widget)
-    id: 'full-chart',
-    group: 'tools',
-    name: 'Full Chart',
-    path: '/full-chart',
-    hint: "TradingView's chart with drawing tools and indicators",
-    icon: '◰',
-    component: lazy(() => import('./full-chart/FullChartApp')),
-  },
-  {
-    id: 'order-flow',
-    group: 'tools',
-    name: 'Order Flow',
-    path: '/order-flow',
-    hint: 'Buyers vs sellers per candle on Nifty and Bank Nifty futures (estimate, Dext style)',
-    icon: '≋',
-    component: lazy(() => import('./order-flow/OrderFlowApp')),
   },
   {
     id: 'backtest',
@@ -174,6 +156,35 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./pcr-trend/PcrTrendApp')),
   },
   {
+    // owner 31-Oct-2026: TradingView's own full chart with drawing tools and indicators (free widget)
+    id: 'full-chart',
+    group: 'live',
+    name: 'Full Chart',
+    path: '/full-chart',
+    hint: "TradingView's chart with drawing tools and indicators",
+    icon: '◰',
+    component: lazy(() => import('./full-chart/FullChartApp')),
+  },
+  {
+    // owner 26-Oct-2026 board of every rule on both indices; since 29-Oct-2026 each rule lives on its strategy page
+    id: 'dashboard',
+    group: 'live',
+    name: 'Charts & Signals (all rules)',
+    path: '/dashboard',
+    hint: 'Every rule on both indices on one board, the charts and the market context',
+    icon: '◫',
+    component: lazy(() => import('./dashboard/DashboardApp')),
+  },
+  {
+    id: 'order-flow',
+    group: 'live',
+    name: 'Order Flow',
+    path: '/order-flow',
+    hint: 'Buyers vs sellers per candle on Nifty and Bank Nifty futures (estimate, Dext style)',
+    icon: '≋',
+    component: lazy(() => import('./order-flow/OrderFlowApp')),
+  },
+  {
     id: 'trending-oi',
     group: 'live',
     name: 'Trending OI',
@@ -212,16 +223,6 @@ export const apps: AppEntry[] = [
     path: '/index-components',
     icon: '◨',
     component: lazy(() => import('./components/ComponentsApp')),
-  },
-  {
-    // owner 26-Oct-2026 board of every rule on both indices; since 29-Oct-2026 each rule lives on its strategy page
-    id: 'dashboard',
-    group: 'live',
-    name: 'Charts & Signals (all rules)',
-    path: '/dashboard',
-    hint: 'Every rule on both indices on one board, the charts and the market context',
-    icon: '◫',
-    component: lazy(() => import('./dashboard/DashboardApp')),
   },
 ];
 

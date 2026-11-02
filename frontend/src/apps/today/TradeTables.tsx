@@ -13,7 +13,7 @@ const mood = (v: number | null) => (!v ? '' : v > 0 ? 'gain' : 'loss');
 const pctText = (v: number | null) => (v == null ? '' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
 const rupees0 = (v: number | null) => (v == null ? '–' : `₹${inr(0)(v)}`);
 /** Each strategy keeps one colour in every table, so a trade's owner is seen at a glance. */
-export const tagOf = (w: string) => `s${(WHO_ORDER.indexOf(w) % 9) + 1}`;
+export const tagOf = (w: string) => `s${(WHO_ORDER.indexOf(w === 'SuperTrend Ladder' ? 'SuperTrend Breakout' : w) % 9) + 1}`; // the Ladder shares its signal's colour
 
 export function Money({ v, big = false }: { v: number | null; big?: boolean }) {
   return <span className={`num ${toneOf(v)} ${big ? 'td-big' : ''}`}>{v == null ? '–' : signedRupees(v)}</span>;
@@ -64,7 +64,7 @@ function StopCell({ r }: { r: TodayRow }) {
 
 function TargetCell({ r }: { r: TodayRow }) {
   if (r.indexTarget != null) return <span className="td-level"><span className="num">Index {inr(2)(r.indexTarget)}</span><span className="td-pct">2× the box</span></span>;
-  const none = r.manual ? 'Not set' : r.who === 'SuperTrend Breakout' ? 'SuperTrend exit' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
+  const none = r.manual ? 'Not set' : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
   return <Level v={r.target} entry={r.entryPrice} none={none} />;
 }
 

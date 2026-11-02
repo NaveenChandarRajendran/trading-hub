@@ -270,7 +270,8 @@ class SignalService:
                             self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
 
     def rebound_symbols(self):
-        return RB_SYMBOLS if self.cfg.get(RB, {}).get("enabled", False) else ()
+        c = self.cfg.get(RB, {})  # owner 2-Nov-2026: NIFTY too (config reboundCall.symbols); BANKNIFTY only before
+        return tuple(c.get("symbols") or RB_SYMBOLS) if c.get("enabled", False) else ()
 
     def run_rebound(self, symbol):
         """Rebound Call on the 5-minute candle that just closed (BANKNIFTY): entry when GO, shadow row otherwise."""
@@ -356,6 +357,9 @@ class SignalService:
                 if r["go"]:
                     why = self.trader.on_signal(r, st)
                     action = why or "not sent"
+                    ladder = getattr(self.trader, "on_signal_ladder", lambda *a: "")(r, st)  # SuperTrend Ladder: same signal, own book (owner 2-Nov-2026)
+                    if ladder:
+                        action += f"; Ladder: {ladder}"
                     if why != "Entry sent" and not st["positions"].get("dharaniV2"):
                         self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
                 else:
@@ -717,7 +721,7 @@ class SignalService:
         trades = [t for t in st["today"] if t["status"] == "closed"]
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
-                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "SuperTrend Breakout (app paper, Rs 1 lakh)"),
+                          ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "SuperTrend Breakout (app paper, Rs 1 lakh)"), ("stLadder", "SuperTrend Ladder (app paper, 6 lots)"),
                           (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)

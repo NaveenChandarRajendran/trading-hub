@@ -7,9 +7,9 @@ export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHu
 export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
-  { key: 'dharaniV2', name: 'SuperTrend Breakout', account: 'App · ₹1 lakh · 3-min' },
+  { key: 'dharaniV2', name: 'SuperTrend Breakout', account: 'App · Nifty only · 3-min', only: ['NIFTY'] },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
-  { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
+  { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · Nifty + BankNifty' },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
 ];
 

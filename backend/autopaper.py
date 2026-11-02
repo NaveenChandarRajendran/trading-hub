@@ -41,15 +41,17 @@ MANUAL = "manual"  # the owner's own Paper Trading screen (main paper account): 
 RB, RBK = "reboundCall", "rebound"  # Rebound Call rule (sig_rebound.py) and its own Rs 1 lakh book (owner, 27-Oct-2026)
 OB, OBK = "orbPullback", "orb"  # Box Pullback 15/5 (sig_orb.py) and its own Rs 1 lakh book (owner, 29-Oct-2026)
 OB5, OBK5 = "orbPullback5", "orb5"  # Box Pullback 5/1, its own Rs 1 lakh book (owner, 29-Oct-2026)
+# SuperTrend Ladder (owner 2-Nov-2026): the SuperTrend Breakout signal, 6 lots on its own book, sold 2 + 2 + 2 in steps
+LD, LDK = "stLadder", "ladder"
 ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "SuperTrend Breakout", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
-                 OBK5: "Box Pullback 5/1 book",
+                 OBK5: "Box Pullback 5/1 book", LDK: "SuperTrend Ladder",
                  MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
 # SuperTrend Rules); the app's paper trading = one Rs 1 lakh account per strategy (Trend Rules, Dharani Rules). A rule is
 # also a "slot": one open position per slot per index. MB as a slot = trades saved before the 4 Pillar / SuperTrend split.
-RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK, OB: OBK, OB5: OBK5}
-ACCOUNT_CFG = {RBK: RB, OBK: OB, OBK5: OB5}  # autopaper.json section per account when it is not the account key (default: the account key)
-APP = {TH, DH, RBK, OBK, OBK5, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
+RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK, OB: OBK, OB5: OBK5, LD: LDK}
+ACCOUNT_CFG = {RBK: RB, OBK: OB, OBK5: OB5, LDK: LD}  # autopaper.json section per account when it is not the account key (default: the account key)
+APP = {TH, DH, RBK, OBK, OBK5, LDK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
 def _entry_rsi(state, side):
@@ -58,6 +60,11 @@ def _entry_rsi(state, side):
         return state["ind"]["rsi"][state["i"]]
     src = state.get("idx") if side == "CE" else state.get("fut")
     return ((src or {}).get("ind") or {}).get("rsi")
+
+
+def _booked(t):
+    """Profit already booked by SuperTrend Ladder sales of an open trade."""
+    return sum((p["price"] - t["entryPrice"]) * p["qty"] for p in (t.get("ladder") or {}).get("partials", []) if p.get("price"))
 
 
 def slot_of(t):
@@ -177,6 +184,8 @@ class TradingHubAccount:
 
     def charges(self, trade):
         ids = {trade["entryOrderId"], trade.get("exitOrderId"), trade.get("stopOrderId")}
+        ids |= {p.get("orderId") for p in (trade.get("ladder") or {}).get("partials", [])}
+        ids |= set((trade.get("ladder") or {}).get("stopIds", []))
         return round(sum(t["charges"]["total"] for t in self.paper.trades() if t["order_id"] in ids), 2)
 
 
@@ -369,7 +378,7 @@ class AutoTrader:
         d = {k: v for k, v in t.items() if k not in ("checks",)}
         if ltp is not None:
             d["ltp"] = ltp
-            d["pnl"] = round((ltp - t["entryPrice"]) * t["qty"], 2)
+            d["pnl"] = round((ltp - t["entryPrice"]) * t["qty"] + _booked(t), 2)
             d["pnlPct"] = round((ltp / t["entryPrice"] - 1) * 100, 2) if t["entryPrice"] else None
         return d
 
@@ -461,6 +470,14 @@ class AutoTrader:
         threading.Thread(target=self._enter, args=(account, result, state), name=f"entry-{account}", daemon=True).start()
         return "Entry sent"
 
+    def on_signal_ladder(self, result, state):
+        """SuperTrend Ladder (owner 2-Nov-2026): the SuperTrend Breakout GO, bought again on the ladder book (6 lots)."""
+        c = self.cfg.get(LD, {})
+        if not c.get("enabled", False) or result.get("rule") != D2 or result["symbol"] not in c.get("symbols", ["NIFTY"]):
+            return ""
+        return self.on_signal({**result, "rule": LD, "name": "SUPERTREND LADDER", "setup": "SuperTrend Ladder",
+                               "noTarget": True, "ladder": True}, state)
+
     def _try(self, account, what, fn):
         """Runs fn; one retry. Two failures stop the account for the day (brief) and re-raise."""
         for attempt in (1, 2):
@@ -521,6 +538,9 @@ class AutoTrader:
                 "checks": {c["id"]: c["state"] == PASS for c in result["checks"]},
                 "checkStates": {c["id"]: c["state"] for c in result["checks"]},
             }
+            if result.get("ladder"):  # sell steps: [{atPct, sellLots, stopToPct}], the rest rides the SuperTrend exit
+                trade["ladder"] = {"steps": cfg.get("steps", []), "next": 0, "lotsTotal": lots, "qtyTotal": qty,
+                                   "partials": [], "stopIds": []}
             with self.lock:
                 self.state["trades"].append(trade)
                 self._save()
@@ -758,7 +778,7 @@ class AutoTrader:
         """Dharani v2 exit check on a completed 3-minute candle: price closed back through SuperTrend."""
         from sig_dharani_v2 import dharani_v2_exit
         for t in list(self.state["trades"]):
-            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) == D2:
+            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) in (D2, LD):
                 why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
@@ -810,6 +830,14 @@ class AutoTrader:
         acc = self.accounts[trade["account"]]
         with self.lock:
             trade.update(status="closed", exitReason=reason, exitNote=note, exitTime=self.clock().strftime("%H:%M:%S"), exitPrice=price)
+            lad = trade.get("ladder")
+            if lad and lad["partials"] and price is not None:  # whole trade: average of every sell, all lots
+                sold = lad["partials"] + [{"qty": trade["qty"], "price": price}]
+                trade["exitPriceLast"] = price
+                trade["exitPrice"] = round(sum(p["qty"] * p["price"] for p in sold) / lad["qtyTotal"], 2)
+                trade["qty"], trade["lots"] = lad["qtyTotal"], lad["lotsTotal"]
+                trade["high"], trade["low"] = max(trade["high"], price), min(trade["low"], price)
+                price = trade["exitPrice"]
             if price is not None:
                 trade["high"], trade["low"] = max(trade["high"], price), min(trade["low"], price)
                 trade["grossPnl"] = round((price - trade["entryPrice"]) * trade["qty"], 2)
@@ -849,6 +877,10 @@ class AutoTrader:
                 if t["target"] is not None and ltp >= t["target"]:
                     threading.Thread(target=self._exit, args=(t, "Target"), daemon=True).start()
                     continue
+                lad = t.get("ladder")
+                if lad and lad["next"] < len(lad["steps"]) and ltp >= t["entryPrice"] * (1 + lad["steps"][lad["next"]]["atPct"] / 100):
+                    threading.Thread(target=self._ladder_step, args=(t,), daemon=True).start()
+                    continue
             poll = 2 if t["account"] in APP else 10
             if t.get("stopOrderId") and time.monotonic() - self._last_stop_poll.get(t["id"], 0) >= poll:
                 self._last_stop_poll[t["id"]] = time.monotonic()
@@ -861,6 +893,65 @@ class AutoTrader:
                     self._close(t, "Stop", st["avgPrice"])
                 elif t["account"] in APP and acc.position_qty(t["instrument"]) == 0:
                     self._close(t, "Time" if now.time() >= cutoff else "Manual", acc.last_sell_price(t["instrument"]))
+
+    def _ladder_step(self, trade):
+        """SuperTrend Ladder step: cancel the stop, sell this step's lots, put the stop for the rest at the step's lock-in
+        (+20 % after the first sale, +50 % after the second). The last lots ride to the SuperTrend exit."""
+        acc, key = self.accounts[trade["account"]], (slot_of(trade), trade["symbol"])
+        with self.lock:
+            if trade["status"] != "open" or trade.get("exiting"):
+                return
+            trade["exiting"] = True
+            self._busy.add(key)
+        lad = trade["ladder"]
+        step = lad["steps"][lad["next"]]
+        failed = False
+        try:
+            if trade.get("stopOrderId"):
+                st = acc.order(trade["stopOrderId"])
+                if st and st["status"] == "FILLED":  # the stop got there first
+                    trade["exitOrderId"] = trade["stopOrderId"]
+                    self._close(trade, "Stop", st["avgPrice"])
+                    return
+                self._try(trade["account"], "cancel stop", lambda: acc.cancel(trade["stopOrderId"]))
+                lad["stopIds"].append(trade["stopOrderId"])
+                trade["stopOrderId"] = None
+            lots = min(int(step["sellLots"]), trade["lots"])
+            qty = lots * (trade["qty"] // trade["lots"])
+            oid, price = self._try(trade["account"], "ladder sell", lambda: acc.sell(trade["instrument"], lots, qty))
+            if price is None:  # no buyer this second: count it at the last price
+                price = acc.ltp(trade["instrument"])
+            with self.lock:
+                lad["partials"].append({"lots": lots, "qty": qty, "price": price, "time": self.clock().strftime("%H:%M:%S"),
+                                        "at": f"+{step['atPct']:g}%", "orderId": oid})
+                lad["next"] += 1
+                trade["lots"] -= lots
+                trade["qty"] -= qty
+                self._save()
+            self.on_order(trade, f"ladder +{step['atPct']:g}%")
+            if trade["lots"] <= 0:
+                trade["exitOrderId"] = oid
+                last = lad["partials"].pop()
+                trade["lots"], trade["qty"] = last["lots"], last["qty"]
+                self._close(trade, "Ladder", last["price"])
+                return
+            trade["stop"] = floor_tick(trade["entryPrice"] * (1 + step["stopToPct"] / 100))
+            try:
+                trade["stopOrderId"] = self._try(trade["account"], "stop order",
+                                                 lambda: acc.stop(trade["instrument"], trade["lots"], trade["qty"], trade["stop"]))
+            except Exception:
+                failed = True
+        except Exception as e:
+            log.exception("ladder step failed")
+            self.alert("api", f"{ACCOUNT_NAMES[trade['account']]} {trade['symbol']} ladder step failed: {e}. Check the position.")
+        finally:
+            with self.lock:
+                trade.pop("exiting", None)
+                self._busy.discard(key)
+                self._save()
+        if failed:
+            self.alert("api", f"{ACCOUNT_NAMES[trade['account']]} {trade['symbol']}: new stop failed twice; exiting the rest.")
+            self._exit(trade, "Stop order failed")
 
     def _check_pending_exit(self, t, acc):
         """A market exit that had no buyer when sent: close the trade once it fills (or the 15:15 square-off sold it);

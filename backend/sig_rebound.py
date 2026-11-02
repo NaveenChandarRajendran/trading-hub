@@ -3,7 +3,7 @@ sig_rebound.py - the "Rebound Call" rule (BankNifty Rebound Call), found by the 
 approved by the owner for PAPER trading on its own Rs 1 lakh "rebound" account (strategy_books.py). Internal id: reboundCall.
 docs/strategies/rebound-call.md is the written rule; this file must match it.
 
-BANKNIFTY only, 5-minute index candles (09:15-aligned, IST), evaluated after every 5-minute close (sig_service.run_once).
+BANKNIFTY (NIFTY too from 3-Nov-2026, owner: untested there; autopaper.json reboundCall.symbols), 5-minute index candles (09:15-aligned, IST), evaluated after every 5-minute close (sig_service.run_once).
 CALL only, the first candle of the day that meets all three (one trade a day):
     deep fall   close <= EMA 200 - 4.09 x ATR 14              (EMA and ATR on 5-minute closes, across sessions)
     down today  close <= today's open - 0.11 x average daily range (high - low) of the 10 sessions before today

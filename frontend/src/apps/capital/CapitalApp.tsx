@@ -11,12 +11,13 @@ import { longDate } from '../paper-trade/format';
 import { useMomentum, useSinceStart } from '../strategies/hooks';
 import { MoneyStrip } from '../strategies/MoneyStrip';
 import { Rs, lakhs } from '../strategies/StrategyCards';
-import { TOTAL_CAPITAL } from '../strategies/catalog';
+import { PLAN_CAPITAL, SPARE_CAPITAL } from '../strategies/catalog';
 import { START, addUp, allSections, moneyOf, returnPct, type Money as M } from '../strategies/logic/capital';
 import '../today/today.css';
 import '../strategies/strategies.css';
 
 const COLORS = ['#5b8def', '#e2a03f', '#9b6ddf', '#3fb58f'];
+const SPARE_COLOR = '#7d8796';
 const rs = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const pctText = (m: M) => { const p = returnPct(m); return p == null ? '–' : `${p > 0 ? '+' : ''}${p.toFixed(2)}%`; };
 
@@ -92,7 +93,7 @@ export default function CapitalApp() {
   const total = addUp(secs.map((s) => s.total));
   const manual = moneyOf(['Manual'], 0, since.closed, data.rows);
   const today = summarize(data.rows.filter((r) => !r.manual));
-  const share = (c: number) => (TOTAL_CAPITAL ? (c / TOTAL_CAPITAL) * 100 : 0);
+  const share = (c: number) => (PLAN_CAPITAL ? (c / PLAN_CAPITAL) * 100 : 0);
 
   return (
     <div className="ds td sg">
@@ -102,7 +103,7 @@ export default function CapitalApp() {
           <span className="td-label">Paper money since {longDate(START)}</span>
         </div>
         {since.failed && !since.loaded && <Alert kind="warn">Trade history could not be loaded. Is the backend window open?</Alert>}
-        <MoneyStrip m={total} title="Total" loaded={since.loaded}
+        <MoneyStrip m={{ ...total, capital: PLAN_CAPITAL }} title="Total" loaded={since.loaded}
           today={{ pnl: today.total, sub: <>{today.open} live · {today.closed} closed</> }} />
       </section>
 
@@ -110,9 +111,11 @@ export default function CapitalApp() {
         <div className="card-head"><h3 className="td-title">Where the money is</h3><span className="td-label">Tap a section to open it</span></div>
         <div className="cap-grid">
           <div className="cap-ring">
-            <Donut parts={secs.map((x, i) => ({ name: x.section.name, v: x.total.capital, color: COLORS[i] }))} />
+            <Donut parts={[...secs.map((x, i) => ({ name: x.section.name, v: x.total.capital, color: COLORS[i] })),
+              { name: 'Spare', v: SPARE_CAPITAL, color: SPARE_COLOR }]} />
             <div className="cap-legend">
               {secs.map((x, i) => <span key={x.section.id}><b style={{ background: COLORS[i] }} />{x.section.name} · {share(x.total.capital).toFixed(0)}%</span>)}
+              <span><b style={{ background: SPARE_COLOR }} />Spare for future tests · {lakhs(SPARE_CAPITAL)}</span>
             </div>
           </div>
           {secs.map((x, i) => <SectionCard key={x.section.id} name={x.section.name} to={x.section.path} m={x.total} lines={x.lines} color={COLORS[i]} />)}

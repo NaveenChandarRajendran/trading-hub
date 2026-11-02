@@ -26,14 +26,14 @@ import holidays
 
 log = logging.getLogger("journal")
 
-STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "SuperTrend Breakout",
+STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "dharaniV2": "SuperTrend Breakout", "stLadder": "SuperTrend Ladder",
             "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "orbPullback": "Box Pullback 15/5", "orbPullback5": "Box Pullback 5/1", "sellStraddle": "Expiry Straddle (sell)",
             "sellCalmCall": "Calm-day Call Sell", "sellStrangle": "2-month Strangle (sell)",
             "sellStraddle940": "Expiry Straddle 9:40 (sell)", "sellStraddle1126": "Expiry Straddle 11:26 (sell)",
             "sellStraddle1224": "Expiry Straddle 12:24 (sell)"}
-ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · SuperTrend Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1",
+ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · SuperTrend Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1", "ladder": "App · SuperTrend Ladder",
            "selling": "App · Selling", "manual": "App · Manual"}
-STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "SuperTrend Breakout", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
+STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "SuperTrend Breakout", "SuperTrend Ladder", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
               "Calm-day Call Sell", "2-month Strangle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
               "Expiry Straddle 12:24 (sell)", "Manual"]
 
@@ -45,7 +45,7 @@ RENAMED = {"Dharani Rules": "SuperTrend Breakout", "App · Dharani": "App · Sup
            "Power Breakout": "SuperTrend Breakout", "App · Power Breakout": "App · SuperTrend Breakout"}
 # The phone messages list the live rules grouped like the app's Trading Strategies menu (owner 29-Oct-2026).
 PHONE_GROUPS = [
-    ("Option Buy", ["SuperTrend Breakout", "Rebound Call"]),
+    ("Option Buy", ["SuperTrend Breakout", "SuperTrend Ladder", "Rebound Call"]),
     ("Option Sell", ["Expiry Straddle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
                      "Expiry Straddle 12:24 (sell)", "Calm-day Call Sell", "2-month Strangle (sell)"]),
     ("Scalping", ["Box Pullback 15/5"]),  # 5/1 dropped by the owner 30-Oct-2026
