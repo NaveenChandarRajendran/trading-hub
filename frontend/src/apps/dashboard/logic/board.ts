@@ -9,7 +9,7 @@ export const BOARD: { key: StrategyKey; name: string; account: string; only?: st
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
   { key: 'dharaniV2', name: 'SuperTrend Breakout', account: 'App · Nifty only · 3-min', only: ['NIFTY'] },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
-  { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · Nifty + BankNifty' },
+  { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
 ];
 

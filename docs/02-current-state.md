@@ -11,7 +11,7 @@ _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top 
   6 lots; sell 2 at +20 % (stop for the rest -> +20 %), 2 at +50 % (stop -> +50 %), last 2 on the SuperTrend exit;
   -10 % stop until the first sale. `autopaper._ladder_step`; trade keeps `ladder.partials`, closes with the average
   sell price over all 6 lots. Config `autopaper.json` stLadder.
-- **Rebound Call on NIFTY too** (`reboundCall.symbols`); untested on NIFTY (owner's call, learn from paper).
+- Rebound Call: `reboundCall.symbols` switch added; stays BANKNIFTY only until the NIFTY backtest (owner 2-Nov-2026: test first).
 - Capital: Option Buy 3.5 L (Breakout 1.5 L, Ladder 1.5 L, Rebound 50 k), spare 50 k for future tests: Rs 25 L in all
   (`catalog.ts` SPARE_CAPITAL / PLAN_CAPITAL).
 - Sidebar: Full Chart, Charts & Signals, Order Flow moved to "Live market data"; "Trade and review" = Buy / Sell,

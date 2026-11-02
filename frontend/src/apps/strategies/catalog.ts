@@ -59,8 +59,8 @@ export const STRATEGIES: StrategyInfo[] = [
     capital: 150000,
   },
   {
-    who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['NIFTY', 'BANKNIFTY'],
-    how: '5-minute candles: after a deep fall below EMA 200, buys a call when price bounces back near VWAP. Nifty is new (tested on Bank Nifty only).',
+    who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['BANKNIFTY'],
+    how: 'Bank Nifty 5-minute: after a deep fall below EMA 200, buys a call when price bounces back near VWAP.',
     exits: 'Stop −25% · target +50% · 3:14 PM time exit',
     capital: 50000,
   },
