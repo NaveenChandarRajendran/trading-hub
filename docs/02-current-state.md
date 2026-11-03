@@ -2,6 +2,19 @@
 
 _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top of the Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
 
+## Owner's 2-Nov-2026 asks, shipped 3-Nov-2026 evening
+- **Momentum 20 live prices (display only)**: `momentum_book.refresh_live` reads Yahoo's 1-minute chart
+  (`regularMarketPrice`) for the held stocks every 60 s, 09:15-15:35 on trading days (`autopaper.json momentum.live` /
+  `liveSeconds`). `status()` shows tiles and book value at the live price until the close is valued (after 15:50 the
+  saved close wins). Never used for fills or the saved daily value. Page label "● Live prices · HH:MM" / "Closing prices".
+  Before this, buy-day tiles showed only the buying cost (-0.2 %) until 15:50: that was by design, not a bug.
+- **Box Pullback later pullbacks -> shadow log**: the rule still trades once a day per index; `sig_orb.all_signals`
+  finds every later break-and-pullback, `SignalService.shadow_later_pullbacks` logs each fresh one with
+  `add_skip(repeat_ok=True)` (setup "Box Pullback 15/5 · later pullback") -> `shadow_skips.csv` -> Excel Shadow Log.
+  Review on 15 Nov whether a 2nd trade a day would have helped.
+- Rebound Call NIFTY backtest (2-Nov): +40 k over 5 years / 179 trades, 38 % wins, worst drop 29 k (BankNifty +1.73 L):
+  stays BANKNIFTY only.
+
 ## Owner's 2-Nov-2026 changes (live from Tue 3 Nov)
 - **SuperTrend Breakout: NIFTY only** (`dharaniV2.symbols`), 1 lot, stop -10 %, **target +20 %** or earlier SuperTrend
   close. After a target exit the post-exit shadow records where the SuperTrend exit would have come; trade log columns

@@ -602,8 +602,9 @@ class AutoTrader:
             self._save()
         self._refresh_watch()
 
-    def add_skip(self, result, state, missed, why):
-        """A setup the rule skipped (docs: owner's brief 7b). Tracks the ATM option that WOULD have been bought."""
+    def add_skip(self, result, state, missed, why, repeat_ok=False):
+        """A setup the rule skipped (docs: owner's brief 7b). Tracks the ATM option that WOULD have been bought.
+        repeat_ok: log every distinct candle (Box Pullback's later pullbacks) instead of one row per 30 minutes."""
         symbol, side, rule = result["symbol"], result["side"], result.get("setup") or "Trend Rules"
         now = self.clock()
         self._roll_day()
@@ -611,7 +612,8 @@ class AutoTrader:
             return
         for sh in self.state["shadows"]:
             if sh["kind"] == "skip" and sh["rule"] == rule and sh["symbol"] == symbol and sh["side"] == side \
-                    and (now - datetime.fromisoformat(sh["createdAt"])).total_seconds() < SKIP_REPEAT_MINUTES * 60:
+                    and (sh["candle"] == result.get("at") if repeat_ok
+                         else (now - datetime.fromisoformat(sh["createdAt"])).total_seconds() < SKIP_REPEAT_MINUTES * 60):
                 return
         acc = self.accounts.get(TH)
         if not acc:

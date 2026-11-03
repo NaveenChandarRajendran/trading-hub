@@ -4,7 +4,7 @@ export interface MomHolding { sym: string; qty: number; entry: number; since: st
 export interface MomTrade { day: string; sym: string; side: 'BUY' | 'SELL'; qty: number; price: number | null; charges: number; pnl?: number; pnlPct?: number; money?: number }
 export interface MomBook { key: 'momSwitch' | 'momAll'; name: string; capital: number; cash: number; value: number; pnl: number; pnlPct: number; holdings: MomHolding[]; trades: MomTrade[]; values: [string, number][] }
 export interface MomSignal { date: string; regimeOk: boolean; nifty: number; nifty200: number; stocks: number; top: string[] }
-export interface MomState { books: MomBook[]; lastDay: string | null; error: string; busy: boolean; start: string; nextCheck: string; signal: MomSignal | null }
+export interface MomState { books: MomBook[]; lastDay: string | null; error: string; busy: boolean; start: string; nextCheck: string; signal: MomSignal | null; live?: { on: boolean; at: string | null } }
 
 /** One line saying what the book is doing right now. */
 export function bookStatus(b: MomBook, s: MomState): string {
@@ -23,3 +23,7 @@ export function switchText(sig: MomSignal | null): string {
 
 /** Booked P&L of the closed (sold) trades. */
 export const bookedPnl = (b: MomBook) => b.trades.reduce((a, t) => a + (t.side === 'SELL' ? t.pnl ?? 0 : 0), 0);
+
+/** Which price the tiles show (owner 2-Nov-2026): live during market hours, else the last saved close. */
+export const priceNote = (live: MomState['live'], b: MomBook) =>
+  live?.on && live.at ? `● Live prices · ${live.at}` : `Closing prices · ${b.values.length ? b.values[b.values.length - 1][0] : '—'}`;

@@ -150,6 +150,7 @@ class SignalService:
         self._summary_day = None
         self._key_alert_day = None
         self._orb_day = {}  # (rule, symbol) -> date of the day's Box Pullback signal (one a day, as the backtest)
+        self._orb_later = set()  # (rule, symbol, signal epoch) of later Box Pullback signals already shadow-logged
         self._rebound_day = {}  # symbol -> date of the day's first Rebound Call signal (one a day, as the backtest)
         self._stop = threading.Event()
         self._thread = None
@@ -269,6 +270,27 @@ class SignalService:
                         why = self.trader.on_signal(r, st)
                         if why != "Entry sent" and not st["positions"].get(ob):
                             self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
+                self.shadow_later_pullbacks(ob, symbol, st, r)
+
+    def shadow_later_pullbacks(self, ob, symbol, st, r):
+        """Box Pullback takes ONE trade a day. Every later break-and-pullback of the day goes to the shadow log only
+        (shadow_skips.csv: would the -10 % / +20 % trade have worked?), owner 2-Nov-2026, reviewed 15 Nov. Never trades.
+        Only a fresh signal (its minute just closed) is logged, so the tracked premium is the one the entry would pay."""
+        if not self.trader:
+            return
+        for sig in (st.get("orbAll") or [])[1:]:
+            key = (ob, symbol, sig["signalTime"])
+            if key in self._orb_later:
+                continue
+            self._orb_later.add(key)
+            if st.get("lastMinute", 0) - sig["signalTime"] > 120:
+                continue  # an old one (app started late): no fair premium any more
+            hm = f"{sig['touchAt'][0]:02d}:{sig['touchAt'][1]:02d}"
+            res = {**r, "side": sig["side"], "at": hm, "setup": f"{r['setup']} · later pullback"}
+            try:
+                self.trader.add_skip(res, st, "-", "Later pullback: one trade a day, shadow only", repeat_ok=True)
+            except Exception:
+                log.exception("box pullback shadow")
 
     def entry_context(self, symbol, side):
         """Did Trending OI and the estimated order flow agree with this entry? Record only: never blocks a trade

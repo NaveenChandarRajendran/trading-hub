@@ -175,3 +175,50 @@ def test_next_check_is_the_last_trading_day_of_the_month(tmp_path):
     desk, now, texts, data = make_desk(tmp_path, 0.001)
     now["t"] = at("2026-11-02", (10, 0))
     assert desk.next_check() == "2026-11-30"
+
+
+def test_live_prices_move_the_tiles_until_the_close_is_valued(tmp_path):
+    """Owner 2-Nov-2026: tiles should move during the day. Display only: the saved book never changes."""
+    desk, now, texts, data = make_desk(tmp_path, 0.001)
+    now["t"] = at("2026-10-30", (16, 0))
+    desk.step()
+    now["t"] = at("2026-11-02", (10, 0))
+    desk.step()  # bought at the 2 Nov open
+    before = json.dumps(desk.state, sort_keys=True)
+    h = desk.state["books"]["momAll"]["holdings"]["S24.NS"]
+    asked = []
+
+    def live_many(syms):
+        asked.append(syms)
+        t = int(now["t"].timestamp())
+        return {s: (desk.state["books"]["momAll"]["holdings"][s]["last"] * 1.05, t) for s in syms}
+    desk.prices.live_many = live_many
+    desk.snap = json.loads(json.dumps(desk.state))
+    now["t"] = at("2026-11-02", (11, 30))
+    desk.refresh_live()
+    assert len(asked[0]) == 20
+    st = desk.status()
+    b = next(x for x in st["books"] if x["key"] == "momAll")
+    tile = next(x for x in b["holdings"] if x["sym"] == "S24")
+    assert st["live"] == {"on": True, "at": "11:30"}
+    assert abs(tile["last"] - h["last"] * 1.05) < 0.01
+    assert 4.5 < tile["pnlPct"] < 5.0  # +5 % less the buying costs
+    assert b["value"] > 520000
+    assert json.dumps(desk.state, sort_keys=True) == before  # display only
+    # outside market hours / a holiday: no Yahoo call
+    now["t"] = at("2026-11-02", (8, 0))
+    desk.refresh_live()
+    assert len(asked) == 1
+    # after the close is valued, the saved close wins again
+    now["t"] = at("2026-11-02", (16, 0))
+    desk.step()
+    st = desk.status()
+    assert st["live"]["on"] is False
+    b = next(x for x in st["books"] if x["key"] == "momAll")
+    assert b["value"] < 520000
+
+
+def test_parse_live():
+    js = {"chart": {"result": [{"meta": {"regularMarketPrice": 326.5, "regularMarketTime": 1793611393}}]}}
+    assert MB.parse_live(js) == (326.5, 1793611393)
+    assert MB.parse_live({"chart": {"result": []}}) is None

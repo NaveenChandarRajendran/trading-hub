@@ -82,6 +82,54 @@ def evaluate(mins, box_min=BOX_MIN, break_tf=BREAK_TF):
     return out
 
 
+def all_signals(mins, box_min=BOX_MIN, break_tf=BREAK_TF):
+    """Every break-and-pullback of the day, in order (the first one is evaluate()'s signal). After each pullback the walk
+    starts again: the next break_tf-minute close outside the box (either side), then the next touch of that box edge.
+    Used only for the SHADOW LOG of the later ones (owner 2-Nov-2026: the rule still takes one trade a day)."""
+    out = []
+    if len(mins) < box_min or _hm(mins[0]["time"]) != (9, 15):
+        return out
+    box = mins[:box_min]
+    hi, lo = max(m["high"] for m in box), min(m["low"] for m in box)
+    if hi <= lo:
+        return out
+    rest = mins[box_min:]
+    bars = aggregate(rest, break_tf)
+    after = 0  # epoch: a new break must be a candle that starts at or after this
+    while True:
+        found = None
+        for b in bars:
+            if b["time"] < after:
+                continue
+            n = sum(1 for m in rest if b["time"] <= m["time"] < b["time"] + break_tf * 60)
+            if n < break_tf and b is bars[-1]:
+                return out  # still forming
+            if _hm(b["time"] + break_tf * 60) > LAST_ENTRY:
+                return out
+            if b["close"] > hi or b["close"] < lo:
+                found = b
+                break
+        if not found:
+            return out
+        up = found["close"] > hi
+        lvl = hi if up else lo
+        end = found["time"] + break_tf * 60
+        touch = None
+        for m in rest:
+            if m["time"] < end:
+                continue
+            if _hm(m["time"] + 60) > LAST_ENTRY:
+                return out
+            if (up and m["low"] <= lvl) or (not up and m["high"] >= lvl):
+                touch = m
+                break
+        if not touch:
+            return out
+        out.append({"side": "CE" if up else "PE", "breakAt": _hm(end), "touchAt": _hm(touch["time"]),
+                    "signalTime": touch["time"], "level": lvl})
+        after = touch["time"] + 60
+
+
 def build_state_orb(symbol, now, src, max_age=None, rule=RULE):
     """Returns (state, problems). src: sig_service.MarketSources (candles_v2; only the index candles are used)."""
     problems = []
@@ -98,7 +146,8 @@ def build_state_orb(symbol, now, src, max_age=None, rule=RULE):
     ev = evaluate(mins, box_min, break_tf)
     state = {"symbol": symbol, "marketOpen": src.market_open(), "positions": src.positions(symbol),
              "hm": (now.hour, now.minute), "signalTime": datetime.fromtimestamp(mins[-1]["time"], IST).strftime("%H:%M"),
-             "bar": mins[-1], "spot": mins[-1]["close"], "orb": ev, "rule": rule}
+             "bar": mins[-1], "spot": mins[-1]["close"], "orb": ev, "rule": rule,
+             "orbAll": all_signals(mins, box_min, break_tf), "lastMinute": mins[-1]["time"]}
     return state, problems
 
 

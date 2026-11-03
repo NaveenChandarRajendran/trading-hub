@@ -11,7 +11,8 @@ the combinations"). Rule changes need the owner's OK.
 Two versions, each on its own book: 15/5 = 15-min box + 5-min close; 5/1 = 5-min box + 1-min close.
 1. Box: high and low of 09:15-09:29 (15/5) or 09:15-09:19 (5/1).
 2. Break: the first 5-minute (15/5) or 1-minute (5/1) candle after the box that CLOSES above the box high (call) or below the box low (put).
-   Only the day's first break counts.
+   Only the day's first break counts. Later breaks and pullbacks of the day are shadow-logged only (owner 2-Nov-2026,
+   `shadow_skips.csv`, setup "Box Pullback 15/5 · later pullback"), never traded.
 3. Pullback: after that candle, the first 1-minute candle that touches the box edge again (low <= box high for a call,
    high >= box low for a put). Buy the ATM option at the next minute. No pullback by 13:30: no trade today.
 4. Stop -10 %, target +20 % on the option premium (owner 29-Oct-2026: uniform 10 / 20 for buying and scalping).

@@ -29,7 +29,8 @@ Each trading day D (skip weekends and NSE holidays, `holidays.py`):
    Consolidated date list (J5:J70; add the next month's dates before it starts) and that the calendars show D after
    a recalculation (LibreOffice headless convert on a copy). Keep `fullCalcOnLoad` on so Excel recalculates on open.
 5. **`Rules and Data Log`**: one row for any rule change, backtest result or watch-list finding of the day.
-6. **`Shadow Log`**: skipped / blocked setups worth keeping (from `shadow_skips.csv`).
+6. **`Shadow Log`**: skipped / blocked setups worth keeping (from `shadow_skips.csv`), incl. Box Pullback's later
+   pullbacks (setup "Box Pullback 15/5 · later pullback", from 3-Nov-2026).
 7. **Check before saying done**: re-open the saved copy, list D on every sheet above, compare the MegaBull calendar
    value with the trade rows (net / invested), write it back with the mtime guard, and list the folder to confirm the
    new size and time. Tell the owner the day's numbers per sheet.

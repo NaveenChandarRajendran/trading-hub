@@ -130,3 +130,45 @@ def test_switch_off(tmp_path):
     st, _ = build_state_orb("NIFTY", DAY.replace(hour=9, minute=41, second=5), Src(day_up()))
     assert t.on_signal(orb_rule(st), st) == "Box Pullback is off (config orbPullback.enabled)"
     assert acc.sent == []
+
+
+def day_twice():
+    """day_up's 09:40 pullback, then back inside, a second close above the box at 09:50 and a second touch at 09:50."""
+    rows = day_up()
+    rows += [bar(26 + k, 22812, 22815, 22805, 22810) for k in range(4)]  # 09:41-09:44 inside the box
+    rows += [bar(30 + k, 22805 + 6 * k, 22835 + 6 * k, 22804 + 6 * k, 22808 + 6 * k) for k in range(5)]  # 09:45-49 closes 22,832
+    rows.append(bar(35, 22830, 22832, 22798, 22805))  # 09:50 touches 22,800 again
+    return rows
+
+
+def test_all_signals_lists_every_pullback_first_one_matches_the_rule():
+    rows = day_twice()
+    sigs = __import__("sig_orb").all_signals(rows)
+    assert [(s["side"], s["touchAt"]) for s in sigs] == [("CE", (9, 40)), ("CE", (9, 50))]
+    ev = evaluate(rows)
+    assert ev["touchAt"] == sigs[0]["touchAt"] and ev["signalTime"] == sigs[0]["signalTime"]
+    assert __import__("sig_orb").all_signals(day_up()) == sigs[:1]
+
+
+def test_later_pullbacks_go_to_the_shadow_log_only():
+    """Owner 2-Nov-2026: one trade a day; every later pullback is shadow-logged (never traded), once each."""
+    from sig_service import SignalService
+    rows = day_twice()
+    calls = []
+
+    class Trader:
+        def add_skip(self, result, state, missed, why, repeat_ok=False):
+            calls.append((result["side"], result["at"], result["setup"], why, repeat_ok))
+
+    svc = SignalService.__new__(SignalService)
+    svc.trader, svc._orb_later = Trader(), set()
+    sig_orb = __import__("sig_orb")
+    st = {"orbAll": sig_orb.all_signals(rows), "lastMinute": rows[-1]["time"]}
+    r = {"setup": "Box Pullback 15/5", "rule": OB, "symbol": "NIFTY"}
+    svc.shadow_later_pullbacks(OB, "NIFTY", st, r)
+    svc.shadow_later_pullbacks(OB, "NIFTY", st, r)  # next minute: not again
+    assert calls == [("CE", "09:50", "Box Pullback 15/5 · later pullback", "Later pullback: one trade a day, shadow only", True)]
+    # a later pullback found long after its minute (app started late) is not logged
+    svc._orb_later, calls[:] = set(), []
+    svc.shadow_later_pullbacks(OB, "NIFTY", {**st, "lastMinute": rows[-1]["time"] + 600}, r)
+    assert calls == []

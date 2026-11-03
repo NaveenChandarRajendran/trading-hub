@@ -36,6 +36,7 @@ EQUITY_LIST = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 HISTORY_DAYS = 430  # calendar days of bars for a ranking (253+ trading days)
 CLOSE_AT = (15, 50)
+LIVE_FROM, LIVE_UNTIL = (9, 15), (15, 35)  # live prices on the page (display only, owner 2-Nov-2026)
 OPEN_AT = (9, 35)
 
 
@@ -64,6 +65,26 @@ class YahooPrices:
                     last = type(e).__name__
             time.sleep(1.5 * (attempt + 1))
         raise IOError(f"{sym}: {last}")
+
+    def live(self, sym):
+        """Latest traded price today (display only): (price, epoch) from Yahoo's 1-minute chart, None when missing."""
+        for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+            try:
+                r = self.get(CHART.format(host=host, sym=sym), {"range": "1d", "interval": "1m"})
+                if r.status_code == 200:
+                    return parse_live(r.json())
+            except Exception:
+                continue
+        return None
+
+    def live_many(self, syms):
+        """{sym: (price, epoch)} for the symbols Yahoo answered."""
+        out = {}
+        with ThreadPoolExecutor(self.workers) as ex:
+            for s, q in zip(syms, ex.map(self.live, syms)):
+                if q:
+                    out[s] = q
+        return out
 
     def many(self, syms, start):
         """{sym: bars}; a symbol that keeps failing is left out (logged)."""
@@ -99,6 +120,13 @@ def parse_chart(js):
         o = (q.get("open") or [None] * len(ts))[i]
         out[d] = {"d": d, "o": o or None, "c": c, "a": adj[i] or c, "v": (q.get("volume") or [0] * len(ts))[i] or 0}
     return [out[d] for d in sorted(out)]
+
+
+def parse_live(js):
+    res = ((js or {}).get("chart") or {}).get("result") or []
+    meta = (res[0].get("meta") or {}) if res else {}
+    p, t = meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+    return (float(p), int(t)) if p and t else None
 
 
 def equity_symbols(path, get=None):
@@ -139,8 +167,11 @@ class MomentumDesk:
         self.last_error = ""
         self.busy = False
         self._stop = threading.Event()
+        self.live = {}  # sym -> (price, epoch): today's live prices, DISPLAY ONLY (never used for fills or the daily value)
+        self.live_at = None
         if start:
             threading.Thread(target=self._run, name="momentum", daemon=True).start()
+            threading.Thread(target=self._live_run, name="momentum-live", daemon=True).start()
 
     # ---------- persistence ----------
     def _load(self):
@@ -178,6 +209,30 @@ class MomentumDesk:
 
     def stop(self):
         self._stop.set()
+
+    def _live_run(self):
+        while not self._stop.is_set():
+            try:
+                self.refresh_live()
+            except Exception:
+                log.exception("momentum live prices failed")
+            self._stop.wait(int(self.cfg.get("liveSeconds", 60)))
+
+    def refresh_live(self, now=None):
+        """Market hours of a trading day: the latest price of every held stock (owner 2-Nov-2026: tiles should move
+        during the day). Display only: fills and the daily value still use Yahoo's daily open / close."""
+        now = now or self.clock()
+        if not self.cfg.get("live", True) or not holidays.is_trading_day(now.date()):
+            return
+        if not (LIVE_FROM <= (now.hour, now.minute) <= LIVE_UNTIL):
+            return
+        held = sorted({s for b in self.snap["books"].values() for s in b["holdings"]})
+        if not held:
+            return
+        got = self.prices.live_many(held)
+        if got:
+            self.live = {**self.live, **got}
+            self.live_at = now.strftime("%H:%M")
 
     def step(self, now=None):
         """Process every trading day since the last one done (catch-up safe; each step is idempotent)."""
@@ -375,19 +430,39 @@ class MomentumDesk:
                "start": self.cfg.get("start", "2026-10-30"), "nextCheck": self.next_check(),
                "signal": None if not last else {**{k: last[k] for k in ("date", "regimeOk", "nifty", "nifty200", "stocks")},
                                                 "top": [s.replace(".NS", "") for s, _ in last["ranked"][:M.TOP]]}}
+        today = self.clock().date()
+        live = self._live_view(st, today)
+        out["live"] = {"on": bool(live), "at": self.live_at if live else None}
         for k, title in BOOKS.items():
             b = st["books"][k]
+            hs = {s: self._with_live(h, live.get(s)) for s, h in b["holdings"].items()}
             hold = [{"sym": s.replace(".NS", ""), "qty": round(h["qty"], 2), "entry": round(h["entry"], 2), "since": h["day"],
                      "last": round(h.get("last") or h["entry"], 2), "money": round(h["money"], 2),
                      "value": round(self._worth(h), 2), "pnl": round(self._worth(h) - h["money"], 2),
-                     "pnlPct": round((self._worth(h) / h["money"] - 1) * 100, 2)} for s, h in b["holdings"].items()]
-            value = b["cash"] + sum(self._worth(h) for h in b["holdings"].values())
+                     "pnlPct": round((self._worth(h) / h["money"] - 1) * 100, 2)} for s, h in hs.items()]
+            value = b["cash"] + sum(self._worth(h) for h in hs.values())
             out["books"].append({"key": k, "name": title, "capital": b["capital"], "cash": round(b["cash"], 2),
                                  "value": round(value, 2), "pnl": round(value - b["capital"], 2),
                                  "pnlPct": round((value / b["capital"] - 1) * 100, 2),
                                  "holdings": sorted(hold, key=lambda h: -h["pnl"]),
                                  "trades": b["trades"][-60:], "values": b["values"][-400:]})
         return out
+
+    def _live_view(self, st, today):
+        """Today's live prices, only until the close is valued (after 15:50 the saved close is the truth)."""
+        if (st.get("lastDay") or "") >= today.isoformat():
+            return {}
+        day = lambda t: datetime.fromtimestamp(t, IST).date()  # noqa: E731
+        return {s: p for s, (p, t) in self.live.items() if day(t) == today}
+
+    @staticmethod
+    def _with_live(h, p):
+        """A copy of holding h moved to live price p: growth scales by p / the last saved price (open on the buy day,
+        else the last close), so splits / dividends already in growth stay counted."""
+        base = h.get("last")
+        if not p or not base:
+            return h
+        return {**h, "growth": h.get("growth", 1.0) * p / base, "last": p}
 
     def next_check(self):
         """The coming month-end check day (by the NSE holiday list)."""

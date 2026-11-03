@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { EmptyState, Segmented } from '../../shared/ui';
 import { price, signedRupees, toneOf } from '../paper-trade/format';
-import { bookStatus, bookedPnl, switchText, type MomBook, type MomHolding, type MomState } from '../today/logic/momentum';
+import { bookStatus, bookedPnl, priceNote, switchText, type MomBook, type MomHolding, type MomState } from '../today/logic/momentum';
 import { Money } from '../today/TradeTables';
 import { MOMENTUM_RULES, momName } from './catalog';
 import { moneyOfMomentum } from './logic/capital';
@@ -65,7 +65,7 @@ function Tile({ h, weight }: { h: MomHolding; weight: number }) {
 const VIEWS = [{ value: 'tiles', label: 'Heatmap' }, { value: 'table', label: 'Table' }] as const;
 
 /** One book's stocks, folded until opened, shown like the Index components page (heatmap or table). */
-function BookDetail({ b }: { b: MomBook }) {
+function BookDetail({ b, live }: { b: MomBook; live?: MomState['live'] }) {
   const sells = b.trades.filter((t) => t.side === 'SELL');
   const [view, setView] = useState<'tiles' | 'table'>('tiles');
   const total = b.holdings.reduce((a, h) => a + h.value, 0) || 1;
@@ -78,7 +78,7 @@ function BookDetail({ b }: { b: MomBook }) {
       </summary>
       {!b.holdings.length ? <EmptyState>No stocks held right now.</EmptyState> : (
         <>
-        <div className="toolbar"><Segmented label="View" options={VIEWS} value={view} onChange={setView} /><span className="td-label">Weight = share of the money in stocks · best first</span></div>
+        <div className="toolbar"><Segmented label="View" options={VIEWS} value={view} onChange={setView} /><span className="td-label">{priceNote(live, b)} · weight = share of the money in stocks · best first</span></div>
         {view === 'tiles' ? <div className="mo-tiles">{sorted.map((h) => <Tile key={h.sym} h={h} weight={(h.value / total) * 100} />)}</div> : (
         <div className="td-scroll">
           <table className="t td-table">
@@ -127,7 +127,7 @@ export function MomentumDetail({ s, failed }: { s: MomState | undefined; failed:
   return (
     <>
       {s.error && <p className="td-foot down">{s.error}</p>}
-      {s.books.map((b) => <BookDetail key={b.key} b={b} />)}
+      {s.books.map((b) => <BookDetail key={b.key} b={b} live={s.live} />)}
     </>
   );
 }

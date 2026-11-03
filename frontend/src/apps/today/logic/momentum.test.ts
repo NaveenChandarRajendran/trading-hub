@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookStatus, bookedPnl, switchText, type MomBook, type MomState } from './momentum';
+import { bookStatus, bookedPnl, priceNote, switchText, type MomBook, type MomState } from './momentum';
 
 const book = (over: Partial<MomBook> = {}): MomBook => ({
   key: 'momSwitch', name: 'Momentum 20 · with Nifty switch', capital: 500000, cash: 500000, value: 500000, pnl: 0, pnlPct: 0,
@@ -23,5 +23,11 @@ describe('momentum card words', () => {
   it('switch line', () => {
     expect(switchText(sig)).toBe('Nifty 22,750 is below its 200-day average 24,071 (check of 2026-10-30)');
     expect(switchText(null)).toBe('No month-end check yet');
+  });
+  it('says whether the tiles show live or closing prices', () => {
+    const b = book({ values: [['2026-10-30', 500000], ['2026-11-02', 497928]] });
+    expect(priceNote({ on: true, at: '11:42' }, b)).toBe('● Live prices · 11:42');
+    expect(priceNote({ on: false, at: null }, b)).toBe('Closing prices · 2026-11-02');
+    expect(priceNote(undefined, book())).toBe('Closing prices · —');
   });
 });
