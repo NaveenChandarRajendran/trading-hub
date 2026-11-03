@@ -569,3 +569,11 @@ def test_box_pullback_entry_context_goes_to_the_trade_log(tmp_path):
     wait_idle(t)
     r = list(csv.DictReader(open(os.path.join(str(tmp_path), "trade_log.csv"))))[0]
     assert (r["trending_oi_at_entry"], r["oi_agrees"], r["order_flow_agrees"]) == ("Bullish", "N", "Y")
+
+
+def test_ladder_config_keeps_room_after_each_sale():
+    """Owner 3-Nov-2026: after selling at +20 % the stop goes to +10 % (not +20 %), after +50 % to +20 %."""
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(__file__).parent / "autopaper.json").read_text())["stLadder"]
+    assert [(s["atPct"], s["stopToPct"]) for s in cfg["steps"]] == [(20, 10), (50, 20)]
+    assert all(s["stopToPct"] < s["atPct"] for s in cfg["steps"])

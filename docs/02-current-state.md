@@ -21,7 +21,7 @@ _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top 
   `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit`, `target_vs_hold` -> Excel SuperTrend Breakout tab.
   (29 Oct exit test: SuperTrend exit +2.33 L vs -10/+20 +1.25 L; owner chose the target anyway, to test it live.)
 - **SuperTrend Ladder** (new, slot `stLadder`, book `ladder` Rs 1.5 L, NIFTY only): same GO as SuperTrend Breakout,
-  6 lots; sell 2 at +20 % (stop for the rest -> +20 %), 2 at +50 % (stop -> +50 %), last 2 on the SuperTrend exit;
+  6 lots; sell 2 at +20 % (stop for the rest -> +10 %), 2 at +50 % (stop -> +20 %; owner 3-Nov-2026, backtest +9.67 L vs +7.98 L), last 2 on the SuperTrend exit;
   -10 % stop until the first sale. `autopaper._ladder_step`; trade keeps `ladder.partials`, closes with the average
   sell price over all 6 lots. Config `autopaper.json` stLadder.
 - Rebound Call: `reboundCall.symbols` switch added; stays BANKNIFTY only until the NIFTY backtest (owner 2-Nov-2026: test first).

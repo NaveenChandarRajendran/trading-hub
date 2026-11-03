@@ -38,8 +38,8 @@ Order flow is not part of this setup.
   above it). After a target exit the app keeps watching the option (record only) and the trade log gets
   `supertrend_exit_time_after_exit`, `premium_at_supertrend_exit` and `target_vs_hold` ("20% target was right" or
   "Holding was better (+x% more)"; 15:15 premium if SuperTrend never flipped). NIFTY only from 3-Nov-2026.
-  The same GO also buys the **SuperTrend Ladder** (6 lots, own book): 2 sold at +20 % (stop -> +20 %), 2 at +50 %
-  (stop -> +50 %), the last 2 on the SuperTrend exit. Safety stop: SL-M at fill × 0.90 (−10%). Hard exit 15:15 (the teacher's
+  The same GO also buys the **SuperTrend Ladder** (6 lots, own book): 2 sold at +20 % (stop -> +10 %), 2 at +50 %
+  (stop -> +20 %; owner 3-Nov-2026), the last 2 on the SuperTrend exit. Safety stop: SL-M at fill × 0.90 (−10%). Hard exit 15:15 (the teacher's
   ends 15:28).
 - One open position per index at a time; a new entry is allowed after an exit when all conditions are true again.
   Daily limits are the Dharani account's own (6 trades, ₹10,000 loss; the teacher allows 10).

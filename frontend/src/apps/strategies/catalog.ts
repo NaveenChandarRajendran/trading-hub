@@ -55,7 +55,7 @@ export const STRATEGIES: StrategyInfo[] = [
   {
     who: 'SuperTrend Ladder', name: 'SuperTrend Ladder', section: 'optionBuy', ruleKey: 'dharaniV2', book: 'ladder', indices: ['NIFTY'],
     how: 'Same Nifty signal as SuperTrend Breakout, but buys 6 lots and sells them in three steps to ride big trends.',
-    exits: 'Sell 2 lots at +20% (stop moves to +20%) · 2 at +50% (stop moves to +50%) · last 2 when SuperTrend turns · −10% stop until the first sale',
+    exits: 'Sell 2 lots at +20% (stop moves to +10%) · 2 at +50% (stop moves to +20%) · last 2 when SuperTrend turns · −10% stop until the first sale',
     capital: 150000,
   },
   {
