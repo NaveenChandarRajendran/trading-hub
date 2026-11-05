@@ -32,10 +32,14 @@ export const WHO: Record<Who, { name: string; where: string }> = {
   'Expiry Straddle 9:40 (sell)': { name: 'Expiry Straddle 9:40', where: 'App · Selling ₹10L' },
   'Expiry Straddle 11:26 (sell)': { name: 'Expiry Straddle 11:26', where: 'App · Selling ₹10L' },
   'Expiry Straddle 12:24 (sell)': { name: 'Expiry Straddle 12:24', where: 'App · Selling ₹10L' },
+  'Weekly Strangle (sell)': { name: 'Weekly Strangle', where: 'App · Selling ₹11.5L' }, // owner 5-Nov-2026
+  'Fear + Calendar': { name: 'Fear + Calendar', where: 'App · Nifty futures' }, // owner 5-Nov-2026
 };
 export const SELLING: Who[] = ['Expiry Straddle (sell)', 'Calm-day Call Sell', '2-month Strangle (sell)', 'Expiry Straddle 9:40 (sell)',
-  'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)'];
-export const WHO_ORDER: Who[] = ['Manual', 'SuperTrend Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING, 'SuperTrend Ladder'];
+  'Expiry Straddle 11:26 (sell)', 'Expiry Straddle 12:24 (sell)', 'Weekly Strangle (sell)'];
+export const WHO_ORDER: Who[] = ['Manual', 'SuperTrend Breakout', 'Trend Rules', 'Rebound Call', 'Box Pullback 15/5', '4 Pillar Rules', 'SuperTrend Rules', ...SELLING, 'SuperTrend Ladder', 'Fear + Calendar'];
+/** Nifty futures margin, about 12 % of the contract value (Fear + Calendar, owner 5-Nov-2026): capital in use. */
+export const FUT_MARGIN = 0.12;
 export const whoInfo = (w: Who) => WHO[w] ?? { name: w, where: '' };
 
 export interface TodayRow {
@@ -60,6 +64,7 @@ export interface TodayRow {
   pnlPct: number | null;
   afterCharges: boolean; // closed trades: net of charges; open trades: before charges
   securityId: number | null; // for the live feed and the manual Exit button
+  autoId: string | null; // the auto trader's trade id (rule trades, and a hand-bought option given a stop): Edit stop / target
   stop: number | null; // option price that closes it at a loss (a sold leg: above the sell price)
   target: number | null; // option price that books the profit (none: the rule exits another way)
   indexStop: number | null; // Box Pullback: the index level that stops it (box middle) and its 2R target
@@ -118,9 +123,10 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
       // a hand-bought option closed by its stop / target: say which (the journal only knows "Manual")
       exitReason: (br?.status === 'closed' && br.exitReason) || t.exitReason,
       price, priceAt, pnl, pnlPct, afterCharges: !open && t.netPnl != null, securityId: sid,
+      autoId: manual ? (br?.status === 'open' ? br.id : null) : a ? a.id : null,
       stop: t.stop ?? a?.stop ?? br?.stop ?? null, target: t.target ?? a?.target ?? br?.target ?? null,
       indexStop: a?.indexStop ?? null, indexTarget: a?.indexTarget ?? null,
-      capital: !short && t.entryPrice != null ? r2(t.entryPrice * qty) : null, marginShared: 0,
+      capital: !short && t.entryPrice != null ? r2(t.entryPrice * qty * ((t.side as string) === 'FUT' ? FUT_MARGIN : 1)) : null, marginShared: 0,
     };
   });
   // sold legs: one estimated margin per strategy (open legs together, each closed leg on its own), split over its legs

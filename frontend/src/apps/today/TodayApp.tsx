@@ -131,12 +131,12 @@ export default function TodayApp() {
           <h3 className="td-title">Strategies today</h3>
           <span className="td-label">Tap a card to open its page</span>
         </div>
-        <StrategyCards sections={['optionBuy', 'optionSell', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage closed={data.marketClosed} history={since.closed}
+        <StrategyCards sections={['optionBuy', 'optionSell', 'futures', 'scalping']} rows={rows} signals={signals} selling={selling.data} linkToPage closed={data.marketClosed} history={since.closed}
           extra={<>
-        <div className={`sg-section ${momOpen ? 'has-detail' : ''}`} style={{ ['--n' as string]: 2 }}>
+        <div className={`sg-section ${momOpen ? 'has-detail' : ''}`} style={{ ['--n' as string]: 3 }}>
           <div className="sg-section-head">
             <Link to="/strategies/momentum" className="sg-section-name">Momentum</Link>
-            <span className="td-label">Monthly stock books</span>
+            <span className="td-label">Stock books</span>
           </div>
           <MomentumCards s={momentum.data} failed={momentum.failed} compact open={momOpen} onToggle={setMomOpen} history={since.closed} />
         </div>

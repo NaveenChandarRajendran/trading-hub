@@ -29,6 +29,11 @@ export function cardState(info: StrategyInfo, rows: TodayRow[], signals: Record<
   const open = mine.filter((r) => r.open);
   const pnl = mine.reduce((s, r) => s + (r.pnl ?? 0), 0);
   const lines: string[] = [];
+  if (info.futKey) { // Fear + Calendar Nifty futures (owner 5-Nov-2026): holds 1 lot while a signal is on
+    if (open.length) return { kind: 'trade', title: 'Holding 1 lot', lines: [open[0].option] };
+    if (mine.length) return { kind: pnl >= 0 ? 'up' : 'down', title: pnl >= 0 ? 'Sold today · won' : 'Sold today · lost', lines: [] };
+    return { kind: 'wait', title: 'Flat · waits for a signal', lines: ['Checks at 3:20 PM'] };
+  }
   if (info.sellKey) {
     const keys = info.sellKeys ?? [info.sellKey];
     const c = sellCell(selling ?? null, keys[0], {}, closed);

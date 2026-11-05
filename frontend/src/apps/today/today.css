@@ -75,3 +75,4 @@
 .td .td-mom-row { display: grid; grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(110px, 1fr)) auto; align-items: center; gap: var(--sp-3); }
 .td .td-mom-fig { display: flex; flex-direction: column; gap: 2px; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .td .td-mom-row { grid-template-columns: 1fr 1fr; } }
+.td-style { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }

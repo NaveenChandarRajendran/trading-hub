@@ -280,6 +280,11 @@ class FuturesBook:
                 p = self._price(pos["securityId"])
                 if p:
                     self.state["lastPrice"] = [p, now.isoformat()]
+                if H.is_trading_day(today) and (now.hour, now.minute) >= (9, 15) and self.state.get("carried") != today.isoformat() \
+                        and pos["entryDay"] < today.isoformat():
+                    self.state["carried"] = today.isoformat()  # held overnight: show it on today's page
+                    self._save()
+                    self._emit(pos, "carry", now)
             if not H.is_trading_day(today) or (now.hour, now.minute) < DECIDE_AT or now.hour >= 16:
                 return
             if self.state["done"] == today.isoformat():

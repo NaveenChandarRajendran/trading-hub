@@ -89,15 +89,22 @@ export function useToday() {
       : r.short // Selling book: buy the leg back
         ? act(() => requestJson(API_BASE, `/api/selling/exit/${encodeURIComponent(r.id)}`, { method: 'POST' }), `Buy-back sent for ${r.option}`)
         : act(() => sigN.exitTrade(r.id), `Exit sent for ${r.option}`);
-  /** Stop + target on a hand-bought option, as option prices (owner 29-Oct-2026: shown and editable before placing). */
-  const placeBracket = (r: TodayRow, stop: number, target: number) =>
-    act(() => requestJson(API_BASE, '/api/autopaper/bracket', { method: 'POST', body: { securityId: r.securityId, stopPrice: stop, targetPrice: target } }),
-      `Stop ${stop.toFixed(2)} and target ${target.toFixed(2)} placed on ${r.option}`);
+  /** Stop + target on a hand-bought option, as option prices (owner 29-Oct-2026: shown and editable before placing).
+   * target null = "stop only, ride till SuperTrend breaks or 3:15" (owner 5-Nov-2026). */
+  const placeBracket = (r: TodayRow, stop: number, target: number | null) =>
+    act(() => requestJson(API_BASE, '/api/autopaper/bracket', { method: 'POST', body: { securityId: r.securityId, stopPrice: stop, targetPrice: target, ride: target == null } }),
+      target == null ? `Stop ${stop.toFixed(2)} placed on ${r.option}: it rides till SuperTrend breaks or 3:15` : `Stop ${stop.toFixed(2)} and target ${target.toFixed(2)} placed on ${r.option}`);
+  /** Edit stop / target of any open trade (owner 5-Nov-2026: set and forget). target null = remove it. */
+  const editLevels = (r: TodayRow, stop: number, target: number | null) =>
+    r.short
+      ? act(() => requestJson(API_BASE, `/api/selling/stop/${encodeURIComponent(r.id)}`, { method: 'POST', body: { stop } }), `Buy-back stop of ${r.option} moved to ${stop.toFixed(2)}`)
+      : act(() => requestJson(API_BASE, '/api/autopaper/edit', { method: 'POST', body: { tradeId: r.autoId, stop, target, removeTarget: target == null } }),
+        `${r.option}: stop ${stop.toFixed(2)}${target == null ? ', no target' : `, target ${target.toFixed(2)}`}`);
 
   const marketOpen = paper.meta?.marketOpen ?? sigN.data?.meta.marketOpen ?? false;
   const marketClosed = (paper.meta?.marketOpen ?? sigN.data?.meta.marketOpen) === false; // known closed (not just still loading)
   return {
-    paper, sigN, sigB, auto, selling, rows, trades, error, busy, notice, today, marketOpen, marketClosed, act, exitRow, placeBracket,
+    paper, sigN, sigB, auto, selling, rows, trades, error, busy, notice, today, marketOpen, marketClosed, act, exitRow, placeBracket, editLevels,
     loading: trades == null && error == null,
     context: { NIFTY: ctx('NIFTY'), BANKNIFTY: ctx('BANKNIFTY') },
     bracketDefaults: { stopPct: 10, targetPct: 20 }, // owner 29-Oct-2026: option buying stop −10 % / target +20 %

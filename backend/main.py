@@ -436,7 +436,8 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
         def on_fut(trade, event):
             if journal is not None:
                 journal.record(trade, event, tracker.clock())
-            phone.on_order(trade, event, None)
+            if event != "carry":
+                phone.on_order(trade, event, None)
         svc.futures = fear.FuturesBook(fcfg, paper, svc.fear, get_vix=sources.vix, get_nifty=nifty_1520, on_event=on_fut,
                                        data_dir="data", clock=tracker.clock)
     return svc

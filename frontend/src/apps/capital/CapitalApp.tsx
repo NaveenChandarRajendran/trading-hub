@@ -11,12 +11,13 @@ import { longDate } from '../paper-trade/format';
 import { useMomentum, useSinceStart } from '../strategies/hooks';
 import { MoneyStrip } from '../strategies/MoneyStrip';
 import { Rs, lakhs } from '../strategies/StrategyCards';
-import { PLAN_CAPITAL, SPARE_CAPITAL } from '../strategies/catalog';
-import { START, addUp, allSections, moneyOf, returnPct, type Money as M } from '../strategies/logic/capital';
+import { ENDING, ENDING_CAPITAL, PLAN_CAPITAL, SPARE_CAPITAL } from '../strategies/catalog';
+import { START, addUp, allSections, endingMoney, moneyOf, returnPct, type Money as M } from '../strategies/logic/capital';
 import '../today/today.css';
 import '../strategies/strategies.css';
 
-const COLORS = ['#5b8def', '#e2a03f', '#9b6ddf', '#3fb58f'];
+const COLORS = ['#5b8def', '#e2a03f', '#d9576b', '#9b6ddf', '#3fb58f'];
+const ENDING_COLOR = '#b8a07a';
 const SPARE_COLOR = '#7d8796';
 const rs = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const pctText = (m: M) => { const p = returnPct(m); return p == null ? '–' : `${p > 0 ? '+' : ''}${p.toFixed(2)}%`; };
@@ -90,7 +91,9 @@ export default function CapitalApp() {
   const since = useSinceStart();
   const mom = useMomentum();
   const secs = allSections(since.closed, data.rows, mom.data);
-  const total = addUp(secs.map((s) => s.total));
+  const ending = endingMoney(since.closed, data.rows); // owner 5-Nov-2026: the 2-month strangle, apart until 29 Dec
+  const plan = addUp(secs.map((s) => s.total));
+  const total = addUp([plan, ...ending.map((e) => ({ ...e.m, capital: 0 }))]); // its P&L counts, its capital is apart
   const manual = moneyOf(['Manual'], 0, since.closed, data.rows);
   const today = summarize(data.rows.filter((r) => !r.manual));
   const share = (c: number) => (PLAN_CAPITAL ? (c / PLAN_CAPITAL) * 100 : 0);
@@ -105,6 +108,9 @@ export default function CapitalApp() {
         {since.failed && !since.loaded && <Alert kind="warn">Trade history could not be loaded. Is the backend window open?</Alert>}
         <MoneyStrip m={{ ...total, capital: PLAN_CAPITAL }} title="Total" loaded={since.loaded}
           today={{ pnl: today.total, sub: <>{today.open} live · {today.closed} closed</> }} />
+        {ENDING.length > 0 && (
+          <p className="td-foot">Plan from 6 Nov: {lakhs(PLAN_CAPITAL)}. Plus {ENDING.map((e) => `${e.name} ${lakhs(e.capital)} until ${longDate(e.endsOn as string)}`).join(', ')} = {lakhs(PLAN_CAPITAL + ENDING_CAPITAL)} for now.</p>
+        )}
       </section>
 
       <section className="card">
@@ -119,6 +125,7 @@ export default function CapitalApp() {
             </div>
           </div>
           {secs.map((x, i) => <SectionCard key={x.section.id} name={x.section.name} to={x.section.path} m={x.total} lines={x.lines} color={COLORS[i]} />)}
+          {ending.length > 0 && <SectionCard name="Ending soon" to="/strategies/option-sell" m={addUp(ending.map((e) => e.m))} lines={ending.map((e) => ({ ...e, name: `${e.name} · ends ${longDate(ENDING[0].endsOn as string)}` }))} color={ENDING_COLOR} />}
         </div>
         <p className="td-foot">Manual practice trades (not in the totals): <Money v={manual.net} /> from {manual.trades} trade{manual.trades === 1 ? '' : 's'}.</p>
       </section>
@@ -138,7 +145,8 @@ export default function CapitalApp() {
                 <Row key={s.section.id} name={s.section.name} m={s.total} share={share(s.total.capital)} cls="cap-sec" to={s.section.path} />,
                 ...s.lines.map((l) => <Row key={l.key} name={l.name} m={l.m} share={share(l.m.capital)} cls="cap-sub" />),
               ])}
-              <Row name="All strategies" m={total} share={100} cls="cap-total" />
+              {ending.map((e) => <Row key={e.key} name={`${e.name} (ending, outside the plan)`} m={e.m} share={null} cls="cap-sub" />)}
+              <Row name="All strategies" m={{ ...total, capital: plan.capital }} share={100} cls="cap-total" />
             </tbody>
           </table>
         </div>

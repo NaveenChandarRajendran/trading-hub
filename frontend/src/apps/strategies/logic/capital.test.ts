@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { JTrade } from '../../paper-journal/logic/journal';
 import type { MomState } from '../../today/logic/momentum';
 import type { TodayRow } from '../../today/logic/today';
-import { PLAN_CAPITAL, TOTAL_CAPITAL, sectionCapital, strategyByWho } from '../catalog';
+import { ENDING_CAPITAL, PLAN_CAPITAL, TOTAL_CAPITAL, sectionCapital, strategyByWho } from '../catalog';
 import { allSections, moneyOf, moneyOfMomentum, returnPct, sectionMoney } from './capital';
 
 const t = (strategy: string, netPnl: number, charges: number, status: 'open' | 'closed' = 'closed') =>
@@ -11,11 +11,12 @@ const t = (strategy: string, netPnl: number, charges: number, status: 'open' | '
 const open = (who: string, pnl: number, capital: number) => ({ who, open: true, pnl, capital }) as unknown as TodayRow;
 
 describe('capital split (owner 30-Oct-2026)', () => {
-  it('₹25 lakh in all (owner 2-Nov-2026): buy 3.5, sell 10, momentum 10, scalping 1, spare 0.5', () => {
-    expect([sectionCapital('optionBuy'), sectionCapital('optionSell'), sectionCapital('momentum'), sectionCapital('scalping')])
-      .toEqual([350000, 1000000, 1000000, 100000]);
-    expect(TOTAL_CAPITAL).toBe(2450000);
-    expect(PLAN_CAPITAL).toBe(2500000);
+  it('₹34 lakh in all (owner 5-Nov-2026): buy 3.5 + spare 0.5, sell 11.5, futures 2.5, stocks 15, scalping 1', () => {
+    expect([sectionCapital('optionBuy'), sectionCapital('optionSell'), sectionCapital('futures'), sectionCapital('momentum'), sectionCapital('scalping')])
+      .toEqual([350000, 1150000, 250000, 1500000, 100000]);
+    expect(TOTAL_CAPITAL).toBe(3350000);
+    expect(PLAN_CAPITAL).toBe(3400000);
+    expect(ENDING_CAPITAL).toBe(250000); // the 2-month strangle, shown apart until 29 Dec
   });
   it('the four timed straddles are one strategy', () => {
     expect(strategyByWho('Expiry Straddle 11:26 (sell)')?.name).toBe('Expiry Straddle');
@@ -32,7 +33,7 @@ describe('money of a strategy', () => {
   it('a section adds up its strategies, the straddle times together', () => {
     const s = sectionMoney('optionSell', [t('Expiry Straddle 9:40 (sell)', 500, 70), t('Expiry Straddle 12:24 (sell)', -100, 70)], [], undefined);
     expect(s.lines.find((l) => l.name === 'Expiry Straddle')?.m.net).toBe(400);
-    expect(s.total.capital).toBe(1000000);
+    expect(s.total.capital).toBe(1150000);
   });
   it('momentum: value − capital, delivery charges are taxes', () => {
     const st = { books: [{ key: 'momAll', capital: 500000, pnl: -1200, holdings: [{ value: 498000 }], trades: [{ side: 'BUY', charges: 300 }] }] } as unknown as MomState;
@@ -40,6 +41,6 @@ describe('money of a strategy', () => {
     expect(moneyOfMomentum('momSwitch', st)).toMatchObject({ capital: 500000, net: 0 });
   });
   it('all sections', () => {
-    expect(allSections([], [], undefined).map((x) => x.total.capital)).toEqual([350000, 1000000, 1000000, 100000]);
+    expect(allSections([], [], undefined).map((x) => x.total.capital)).toEqual([350000, 1150000, 250000, 1500000, 100000]);
   });
 });

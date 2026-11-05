@@ -17,6 +17,8 @@ export interface TicketTarget {
 
 const num = (s: string) => (s.trim() === '' ? null : Number(s));
 
+const EXIT_STYLES = [{ value: 'target', label: 'Stop + target' }, { value: 'ride', label: 'Stop only · ride SuperTrend' }] as const;
+
 export function OrderTicket({ target, paper, onClose, onDone }: {
   target: TicketTarget;
   paper: Paper;
@@ -33,6 +35,9 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
   const [withBracket, setWithBracket] = useState(true);
   const [stopPct, setStopPct] = useState('10');
   const [targetPct, setTargetPct] = useState('20');
+  // owner 5-Nov-2026: pick the exit style when buying; "ride" = stop only, out when SuperTrend breaks or at 3:15
+  const [style, setStyle] = useState<'target' | 'ride'>('target');
+  const ride = style === 'ride';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -59,7 +64,7 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
 
   const canBracket = !o && target.side === 'BUY' && orderType === 'MARKET';
   const preview = bracketPrices(tick?.ask || tick?.ltp || 0, Number(stopPct), Number(targetPct));
-  const bracketError = canBracket && withBracket && !bracketPrices(1, Number(stopPct), Number(targetPct))
+  const bracketError = canBracket && withBracket && !bracketPrices(1, Number(stopPct), ride ? 20 : Number(targetPct))
     ? 'Stop % must be between 0 and 100 and target % above 0' : '';
 
   const submit = async () => {
@@ -82,11 +87,11 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
           return;
         }
         let msg = `${target.side === 'BUY' ? 'Buy' : 'Sell'} ${r.qty} ${target.name}: ${r.status.toLowerCase()}.`;
-        const levels = canBracket && withBracket && r.status === 'FILLED' ? bracketPrices(r.order.avg_price ?? 0, Number(stopPct), Number(targetPct)) : null;
+        const levels = canBracket && withBracket && r.status === 'FILLED' ? bracketPrices(r.order.avg_price ?? 0, Number(stopPct), ride ? 20 : Number(targetPct)) : null;
         if (levels) {
           try {
-            await requestJson(API_BASE, '/api/autopaper/bracket', { method: 'POST', body: { securityId: target.securityId, stopPrice: levels.stop, targetPrice: levels.target } });
-            msg += ` Stop ${levels.stop.toFixed(2)} and target ${levels.target.toFixed(2)} placed.`;
+            await requestJson(API_BASE, '/api/autopaper/bracket', { method: 'POST', body: { securityId: target.securityId, stopPrice: levels.stop, targetPrice: ride ? null : levels.target, ride } });
+            msg += ride ? ` Stop ${levels.stop.toFixed(2)} placed; it rides till SuperTrend breaks or 3:15.` : ` Stop ${levels.stop.toFixed(2)} and target ${levels.target.toFixed(2)} placed.`;
           } catch (e) {
             msg += ` Stop + target NOT placed (${e instanceof ApiError ? e.message : 'no answer'}): set them on the Today page.`;
           }
@@ -135,17 +140,22 @@ export function OrderTicket({ target, paper, onClose, onDone }: {
         </div>
         {canBracket && (
           <div className="pt-bracket">
-            <label className="pt-check"><input type="checkbox" checked={withBracket} onChange={(e) => setWithBracket(e.target.checked)} /> Add stop + target after the buy</label>
+            <label className="pt-check"><input type="checkbox" checked={withBracket} onChange={(e) => setWithBracket(e.target.checked)} /> Protect it right after the buy</label>
+            {withBracket && <Segmented label="Exit style" options={EXIT_STYLES} value={style} onChange={setStyle} />}
             {withBracket && (
               <div className="pt-fields">
                 <label className="field">Stop % below buy
                   <input type="number" min={1} max={99} step={1} value={stopPct} onChange={(e) => setStopPct(e.target.value)} />
                   <span className="pt-hint num">{preview ? `about ${price(preview.stop)}` : ''}</span>
                 </label>
+                {ride ? (
+                  <span className="pt-hint">No target: sells when the 3-minute SuperTrend breaks, or at 3:15 PM</span>
+                ) : (
                 <label className="field">Target % above buy
                   <input type="number" min={1} step={1} value={targetPct} onChange={(e) => setTargetPct(e.target.value)} />
                   <span className="pt-hint num">{preview ? `about ${price(preview.target)}` : ''}</span>
                 </label>
+                )}
               </div>
             )}
           </div>

@@ -64,7 +64,7 @@ function StopCell({ r }: { r: TodayRow }) {
 
 function TargetCell({ r }: { r: TodayRow }) {
   if (r.indexTarget != null) return <span className="td-level"><span className="num">Index {inr(2)(r.indexTarget)}</span><span className="td-pct">2× the box</span></span>;
-  const none = r.manual ? 'Not set' : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
+  const none = r.manual ? (r.stop != null ? 'Rides SuperTrend' : 'Not set') : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
   return <Level v={r.target} entry={r.entryPrice} none={none} />;
 }
 
@@ -78,34 +78,55 @@ function CapitalCell({ r }: { r: TodayRow }) {
   );
 }
 
-/** Stop + target editor for a hand-bought option: shows the default levels as price and %, both can be changed. */
-function BracketEditor({ r, stopPct, targetPct, busy, onPlace, onClose }: {
-  r: TodayRow; stopPct: number; targetPct: number; busy: boolean; onPlace: (stop: number, target: number) => void; onClose: () => void;
+/** Stop / target editor (owner 5-Nov-2026: "set and forget"): every open trade can change its stop and its target, or
+ * drop the target. mode "new": a hand-bought option without a stop yet (exit style picked here); "edit": an open trade
+ * the app manages (the SL-M stop order moves too); "sold": a sold leg (its buy-back stop only). Prices are premiums. */
+function LevelEditor({ r, mode, stopPct, targetPct, busy, onSave, onClose }: {
+  r: TodayRow; mode: 'new' | 'edit' | 'sold'; stopPct: number; targetPct: number; busy: boolean;
+  onSave: (stop: number, target: number | null) => void; onClose: () => void;
 }) {
   const entry = r.entryPrice ?? 0;
+  const now = r.price ?? entry;
   const round = (x: number) => Math.round(x * 20) / 20;
-  const [stop, setStop] = useState(() => round(entry * (1 - stopPct / 100)).toFixed(2));
-  const [target, setTarget] = useState(() => round(entry * (1 + targetPct / 100)).toFixed(2));
+  const [stop, setStop] = useState(() => (mode !== 'new' && r.stop != null ? r.stop : round(entry * (1 - stopPct / 100))).toFixed(2));
+  const [target, setTarget] = useState(() => (mode !== 'new' && r.target != null ? r.target : round(entry * (1 + targetPct / 100))).toFixed(2));
+  const [ride, setRide] = useState(mode === 'edit' && r.target == null);
   const s = Number(stop);
   const t = Number(target);
-  const problem = !(s > 0) ? 'Type a stop price' : s >= entry ? `The stop must be below the buy price ${price(entry)}` :
-    !(t > 0) ? 'Type a target price' : t <= entry ? `The target must be above the buy price ${price(entry)}` : '';
-  const risk = (entry - s) * r.qty;
+  const ref = mode === 'new' ? entry : now;
+  const problem = !(s > 0) ? 'Type a stop price'
+    : mode === 'sold' ? (s <= now ? `The buy-back stop must be above the price now ${price(now)}` : '')
+      : s >= ref ? `The stop must be below ${mode === 'new' ? 'the buy price' : 'the price now'} ${price(ref)}`
+        : ride ? '' : !(t > 0) ? 'Type a target price' : t <= ref ? `The target must be above ${mode === 'new' ? 'the buy price' : 'the price now'} ${price(ref)}` : '';
+  const risk = (r.short ? s - entry : entry - s) * r.qty;
   const reward = (t - entry) * r.qty;
+  const title = mode === 'sold' ? `Buy-back stop for ${r.option} · sold at ${price(entry)}` : `${mode === 'new' ? 'Stop + target' : 'Edit stop / target'} for ${r.option} · bought at ${price(entry)}`;
   return (
-    <div className="td-bracket" role="group" aria-label={`Stop and target for ${r.option}`}>
-      <span className="td-bracket-title">Stop + target for {r.option} · bought at {price(entry)}</span>
-      <label className="field">Stop (sell if it falls to)
+    <div className="td-bracket" role="group" aria-label={title}>
+      <span className="td-bracket-title">{title}</span>
+      {mode !== 'sold' && (
+        <span className="td-style" role="radiogroup" aria-label="Exit style">
+          <button type="button" role="radio" aria-checked={!ride} className={`db-toggle ${!ride ? 'on' : ''}`} onClick={() => setRide(false)}>Stop + target</button>
+          <button type="button" role="radio" aria-checked={ride} className={`db-toggle ${ride ? 'on' : ''}`} onClick={() => setRide(true)}>
+            {mode === 'new' ? 'Stop only · ride till SuperTrend breaks or 3:15' : 'Stop only · no target'}
+          </button>
+        </span>
+      )}
+      <label className="field">{mode === 'sold' ? 'Stop (buy back if it rises to)' : 'Stop (sell if it falls to)'}
         <input type="number" step="0.05" min="0" value={stop} onChange={(e) => setStop(e.target.value)} />
-        <span className="td-pct">{s > 0 && entry ? pctText(movePct(s, entry)) : ''}{s > 0 && s < entry ? ` · risk ${signedRupees(-risk)}` : ''}</span>
+        <span className="td-pct">{s > 0 && entry ? pctText(movePct(s, entry)) : ''}{problem ? '' : ` · ${risk > 0 ? 'risk' : 'locks'} ${signedRupees(-risk)}`}</span>
       </label>
-      <label className="field">Target (sell if it rises to)
-        <input type="number" step="0.05" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
-        <span className="td-pct">{t > 0 && entry ? pctText(movePct(t, entry)) : ''}{t > entry ? ` · gain ${signedRupees(reward)}` : ''}</span>
-      </label>
+      {mode !== 'sold' && !ride && (
+        <label className="field">Target (sell if it rises to)
+          <input type="number" step="0.05" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
+          <span className="td-pct">{t > 0 && entry ? pctText(movePct(t, entry)) : ''}{t > entry ? ` · gain ${signedRupees(reward)}` : ''}</span>
+        </label>
+      )}
       <span className="td-bracket-end">
         {problem && <span className="down td-pct">{problem}</span>}
-        <button type="button" className="btn primary" disabled={busy || !!problem} onClick={() => onPlace(s, t)}>Place stop + target</button>
+        <button type="button" className="btn primary" disabled={busy || !!problem} onClick={() => onSave(s, mode === 'sold' || ride ? null : t)}>
+          {mode === 'new' ? (ride ? 'Place stop' : 'Place stop + target') : 'Save'}
+        </button>
         <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
       </span>
     </div>
@@ -131,7 +152,8 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
         </thead>
         <tbody>
           {rows.map((r) => {
-            const canBracket = r.manual && r.securityId != null && r.stop == null;
+            const mode: 'new' | 'edit' | 'sold' | null = r.short ? 'sold' : r.autoId ? 'edit'
+              : r.manual && r.securityId != null && r.stop == null ? 'new' : null;
             return (
               <Fragment key={r.id}>
                 <tr className={`td-row ${mood(r.pnl)}`}>
@@ -152,9 +174,10 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                   <td><CapitalCell r={r} /></td>
                   <td className="txt">
                     <span className="td-actions">
-                      {canBracket && (
+                      {mode && (
                         <button type="button" className="btn" disabled={data.busy} aria-expanded={editing === r.id}
-                          title="Set a stop and a target on this option" onClick={() => setEditing(editing === r.id ? null : r.id)}>Stop / target</button>
+                          title={mode === 'new' ? 'Set a stop (and a target) on this option' : 'Change the stop or the target'}
+                          onClick={() => setEditing(editing === r.id ? null : r.id)}>{mode === 'new' ? 'Stop / target' : 'Edit stop / target'}</button>
                       )}
                       {(r.manual ? r.securityId != null : true) && (
                         <ConfirmButton label={r.short ? 'Buy back' : 'Exit'} ask={r.short ? 'Buy back now' : 'Exit now'} busy={data.busy}
@@ -163,12 +186,12 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                     </span>
                   </td>
                 </tr>
-                {editing === r.id && (
+                {editing === r.id && mode && (
                   <tr className="td-edit-row">
                     <td colSpan={OPEN_COLS}>
-                      <BracketEditor r={r} stopPct={data.bracketDefaults.stopPct} targetPct={data.bracketDefaults.targetPct} busy={data.busy}
+                      <LevelEditor r={r} mode={mode} stopPct={data.bracketDefaults.stopPct} targetPct={data.bracketDefaults.targetPct} busy={data.busy}
                         onClose={() => setEditing(null)}
-                        onPlace={(s, t) => void data.placeBracket(r, s, t).then((ok) => ok && setEditing(null))} />
+                        onSave={(s, t) => void (mode === 'new' ? data.placeBracket(r, s, t) : data.editLevels(r, s, t)).then((ok) => ok && setEditing(null))} />
                     </td>
                   </tr>
                 )}

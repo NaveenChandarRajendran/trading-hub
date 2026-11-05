@@ -15,7 +15,7 @@ describe('sidebar groups', () => {
     expect(g[0].apps.map((a) => a.name)).toEqual(['Today']);
     expect(g[5].apps.map((a) => a.name)).toEqual(['Total Capital & P&L']); // last, folded (owner 31-Oct-2026)
     expect(apps[0].id).toBe('today');
-    expect(g[1].apps.map((a) => a.name)).toEqual(['Option Buy', 'Option Sell', 'Momentum', 'Scalping']);
+    expect(g[1].apps.map((a) => a.name)).toEqual(['Option Buy', 'Option Sell', 'Futures', 'Momentum', 'Scalping']);
     expect(g[2].apps.map((a) => a.name)).toEqual(['Buy / Sell', 'Trade History', 'Backtest']);
     // owner 2-Nov-2026: charts and order flow are live market data
     expect(g[3].apps.map((a) => a.id)).toEqual(['full-chart', 'dashboard', 'order-flow', 'trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components']);

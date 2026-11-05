@@ -5,7 +5,7 @@ import { EmptyState, Segmented } from '../../shared/ui';
 import { price, signedRupees, toneOf } from '../paper-trade/format';
 import { bookStatus, bookedPnl, priceNote, switchText, type MomBook, type MomHolding, type MomState } from '../today/logic/momentum';
 import { Money } from '../today/TradeTables';
-import { MOMENTUM_RULES, momName } from './catalog';
+import { CLENOW_RULES, MOMENTUM_RULES, momName } from './catalog';
 import { moneyOfMomentum } from './logic/capital';
 import { CardShell, MoneyLines, Rs, RulesDetail } from './StrategyCards';
 
@@ -39,6 +39,9 @@ export function MomentumCards({ s, failed, compact = false, open: openIn, onTogg
                 </span>
               )}
               {b.key === 'momAll' && <span className="sg-switch">Always holds the top 20</span>}
+              {b.key === 'clenow' && <span className={`sg-switch ${s.clenow?.signal ? (s.clenow.signal.regimeOk ? 'up' : 'down') : ''}`}>
+                {s.clenow?.signal ? (s.clenow.signal.regimeOk ? '▲ Top 20 smooth risers · checked Fridays' : '▼ Nifty below 200-day avg · cash') : `Top 20 smooth risers · first check ${s.clenow?.nextCheck ?? 'Friday'}`}
+              </span>}
               <span className="sg-line">{b.holdings.length ? `${b.holdings.length} stocks · cash ${rs(b.cash)}` : bookStatus(b, s)}</span>
             </span>
             <MoneyLines m={moneyOfMomentum(b.key, s)} />
@@ -47,6 +50,7 @@ export function MomentumCards({ s, failed, compact = false, open: openIn, onTogg
       </div>
       {open && <RulesDetail title="Momentum 20: the rules" rules={MOMENTUM_RULES}
         link={compact ? { to: '/strategies/momentum', text: 'Open Momentum page →' } : undefined} />}
+      {open && <RulesDetail title="Clenow weekly: the rules" rules={CLENOW_RULES} />}
     </>
   );
 }

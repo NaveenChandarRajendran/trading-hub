@@ -33,3 +33,42 @@
 .bt .bt-info-note { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
 .bt .bt-cell { display: flex; align-items: center; justify-content: center; height: 24px; font-size: var(--fs-xs); color: var(--text); font-variant-numeric: tabular-nums; }
 .bt .bt-chart-dd { height: 200px; }
+
+/* Results cards (owner 5-Nov-2026): one simple card per paper strategy */
+.bt .bt-head .bt-lead { margin: 0 0 var(--sp-3); color: var(--text-2); max-width: 75ch; }
+.bt .bt-pills { display: flex; gap: var(--sp-2); }
+.bt .bt-pill { padding: 3px 12px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; }
+.bt .bt-pill.up { background: color-mix(in srgb, var(--up) 15%, transparent); color: var(--up); }
+.bt .bt-pill.down { background: color-mix(in srgb, var(--down) 15%, transparent); color: var(--down); }
+.bt .bt-read { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
+.bt .bt-read > div { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
+.bt .bt-read b { font-size: var(--fs-md); }
+.bt .bt-read span { font-size: var(--fs-sm); color: var(--text-2); }
+.bt .bt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-4); }
+.bt .bt-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-width: 0; border-top: 4px solid var(--up); }
+.bt .bt-card.lost { border-top-color: var(--down); }
+.bt .bt-card.ending { border-top-color: var(--warn); }
+.bt .bt-card-top { display: flex; justify-content: space-between; gap: var(--sp-2); align-items: center; }
+.bt .bt-verdict { font-size: var(--fs-xs); font-weight: 700; padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--up) 15%, transparent); color: var(--up); }
+.bt .bt-verdict.lost { background: color-mix(in srgb, var(--down) 15%, transparent); color: var(--down); }
+.bt .bt-verdict.ending { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--text); }
+.bt .bt-index { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 2px 10px; border-radius: 999px; }
+.bt .bt-name { margin: 0; font-size: var(--fs-lg); }
+.bt .bt-what { margin: 0; font-size: var(--fs-sm); color: var(--text-2); min-height: 2.6em; }
+.bt .bt-spark { width: 100%; height: 120px; display: block; }
+.bt .bt-spark .up { fill: color-mix(in srgb, var(--up) 22%, transparent); }
+.bt .bt-spark .dn { fill: color-mix(in srgb, var(--down) 22%, transparent); }
+.bt .bt-spark .ln { fill: none; stroke: var(--text); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.bt .bt-card .bt-spark .ln { stroke: var(--up); }
+.bt .bt-card.lost .bt-spark .ln { stroke: var(--down); }
+.bt .bt-spark .base { stroke: var(--border-strong); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.bt .bt-spark .dot.up { fill: var(--up); } .bt .bt-spark .dot.dn { fill: var(--down); }
+.bt .bt-spark text { fill: var(--text-3); font-size: 10px; }
+.bt .bt-figs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.bt .bt-fig { display: flex; flex-direction: column; gap: 1px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
+.bt .bt-fig b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.bt .bt-fig b.up { color: var(--up); } .bt .bt-fig b.down { color: var(--down); }
+.bt .bt-label { font-size: var(--fs-xs); color: var(--text-2); }
+.bt .bt-keep ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-5, 20px); display: flex; flex-direction: column; gap: 6px; color: var(--text-2); }
+.bt .bt-years { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.bt .bt-head .card-head { flex-wrap: wrap; gap: var(--sp-2); }

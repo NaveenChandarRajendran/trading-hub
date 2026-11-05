@@ -2,13 +2,15 @@
 // Backend: momentum_book.py. PAPER ONLY.
 export interface MomHolding { sym: string; qty: number; entry: number; since: string; last: number; money: number; value: number; pnl: number; pnlPct: number }
 export interface MomTrade { day: string; sym: string; side: 'BUY' | 'SELL'; qty: number; price: number | null; charges: number; pnl?: number; pnlPct?: number; money?: number }
-export interface MomBook { key: 'momSwitch' | 'momAll'; name: string; capital: number; cash: number; value: number; pnl: number; pnlPct: number; holdings: MomHolding[]; trades: MomTrade[]; values: [string, number][] }
+export interface MomBook { key: 'momSwitch' | 'momAll' | 'clenow'; name: string; capital: number; cash: number; value: number; pnl: number; pnlPct: number; holdings: MomHolding[]; trades: MomTrade[]; values: [string, number][] }
 export interface MomSignal { date: string; regimeOk: boolean; nifty: number; nifty200: number; stocks: number; top: string[] }
-export interface MomState { books: MomBook[]; lastDay: string | null; error: string; busy: boolean; start: string; nextCheck: string; signal: MomSignal | null; live?: { on: boolean; at: string | null } }
+export interface MomState { books: MomBook[]; lastDay: string | null; error: string; busy: boolean; start: string; nextCheck: string; signal: MomSignal | null; live?: { on: boolean; at: string | null };
+  clenow?: { signal: MomSignal | null; nextCheck: string; error: string } }
 
 /** One line saying what the book is doing right now. */
 export function bookStatus(b: MomBook, s: MomState): string {
   if (b.holdings.length) return `Holding ${b.holdings.length} stocks · cash ₹${Math.round(b.cash).toLocaleString('en-IN')}`;
+  if (b.key === 'clenow') return !s.clenow?.signal ? `In cash · first check ${s.clenow?.nextCheck ?? 'Friday'}` : !s.clenow.signal.regimeOk ? 'In cash · Nifty below its 200-day average' : 'In cash · buys at the next open';
   if (!s.signal) return `In cash · first check ${s.nextCheck}`;
   if (b.key === 'momSwitch' && !s.signal.regimeOk) return 'In cash · Nifty below its 200-day average';
   return 'In cash · buys at the next open';

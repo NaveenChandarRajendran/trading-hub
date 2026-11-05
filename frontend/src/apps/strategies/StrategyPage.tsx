@@ -19,6 +19,7 @@ import { useToday } from '../today/useToday';
 import { inSection, sectionOf, type SectionId } from './catalog';
 import { StrategyCards } from './StrategyCards';
 import { MoneyStrip } from './MoneyStrip';
+import { FuturesPanel, SensexWatchPanel } from './ExtraPanels';
 import { useSinceStart } from './hooks';
 import { sectionMoney } from './logic/capital';
 import '../today/today.css';
@@ -133,6 +134,9 @@ export default function StrategyPage({ section }: { section: SectionId }) {
         <StrategyCards sections={[section]} rows={rows} signals={signals} selling={selling.data} closed={data.marketClosed} history={since.closed}
           onPick={(who) => { if (ruled.some((r) => r.who === who)) setPick(who); }} />
       </section>
+
+      {section === 'futures' && <FuturesPanel />}
+      {isSell && <SensexWatchPanel />}
 
       {/* 3. chart */}
       <div className="db-section-head">

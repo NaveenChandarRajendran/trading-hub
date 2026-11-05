@@ -5,7 +5,7 @@ import type { JTrade } from '../../paper-journal/logic/journal';
 import type { MomState } from '../../today/logic/momentum';
 import type { TodayRow } from '../../today/logic/today';
 const BROKERAGE_PER_ORDER = 20; // Dhan, flat per executed F&O order (backend paper_charges.py)
-import { MOMENTUM_BOOKS, SECTIONS, inSection, whosOfInfo, type SectionId, type StrategyInfo } from '../catalog';
+import { ENDING, MOMENTUM_BOOKS, SECTIONS, inSection, whosOfInfo, type SectionId, type StrategyInfo } from '../catalog';
 
 export const START = '2026-10-20'; // first paper trades in the journal
 
@@ -83,10 +83,14 @@ export interface Line { key: string; name: string; m: Money }
 export function sectionMoney(id: SectionId, closed: JTrade[], openRows: TodayRow[], mom: MomState | undefined): { lines: Line[]; total: Money } {
   const lines: Line[] = id === 'momentum'
     ? MOMENTUM_BOOKS.map((b) => ({ key: b.key, name: b.name, m: moneyOfMomentum(b.key, mom) }))
-    : inSection(id).map((s) => ({ key: s.who, name: s.name, m: moneyOfStrategy(s, closed, openRows) }));
+    : inSection(id).filter((s) => !s.endsOn).map((s) => ({ key: s.who, name: s.name, m: moneyOfStrategy(s, closed, openRows) }));
   return { lines, total: addUp(lines.map((l) => l.m)) };
 }
 
 /** All four sections (the Total Capital page). */
 export const allSections = (closed: JTrade[], openRows: TodayRow[], mom: MomState | undefined) =>
   SECTIONS.map((s) => ({ section: s, ...sectionMoney(s.id, closed, openRows, mom) }));
+
+/** Strategies being wound down (owner 5-Nov-2026: the 2-month strangle until 29 Dec), shown apart from the plan. */
+export const endingMoney = (closed: JTrade[], openRows: TodayRow[]): Line[] =>
+  ENDING.map((s) => ({ key: s.who, name: s.name, m: moneyOfStrategy(s, closed, openRows) }));

@@ -24,7 +24,7 @@ export default function MomentumApp() {
       <section className="card">
         <div className="card-head">
           <h3 className="td-title">Momentum strategies</h3>
-          <span className="td-label">Top 20 NSE stocks, picked every month-end{m.data ? ` · next ${m.data.nextCheck}` : ""}</span>
+          <span className="td-label">Top 20 NSE stocks · Momentum 20 every month-end{m.data ? ` (next ${m.data.nextCheck})` : ''} · Clenow every Friday</span>
         </div>
         <MomentumCards s={m.data} failed={m.failed} />
       </section>

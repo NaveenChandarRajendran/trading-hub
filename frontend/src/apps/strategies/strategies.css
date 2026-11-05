@@ -343,3 +343,12 @@ a.sg-section-name:hover { color: var(--accent); }
 .cap-card-head b { color: var(--text); }
 .cap-grid + .td-foot { margin-top: var(--sp-3); }
 .sb .sb-leg > * { min-width: 0; }
+
+/* Futures / Sensex panels (owner 5-Nov-2026): big lights, few words */
+.fx-lights { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.fx-light { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); min-width: 0; }
+.fx-light i { width: 14px; height: 14px; border-radius: 50%; background: var(--border); }
+.fx-light.on { border-color: var(--up, #16a34a); background: color-mix(in srgb, var(--up, #16a34a) 9%, var(--surface)); }
+.fx-light.on i { background: var(--up, #16a34a); box-shadow: 0 0 0 4px color-mix(in srgb, var(--up, #16a34a) 22%, transparent); }
+.fx-light b { font-size: var(--fs-md, 15px); }
+.fx-big { font-size: 22px; font-weight: 700; }

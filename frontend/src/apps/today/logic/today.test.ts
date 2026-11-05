@@ -45,7 +45,8 @@ describe('today', () => {
       ['Manual', 347.75, 1, 'in-trade'], ['SuperTrend Breakout', 900, 1, 'up'], ['Trend Rules', -286, 1, 'in-trade'], ['Rebound Call', 0, 0, 'none'], ['Box Pullback 15/5', 0, 0, 'none'],
       ['4 Pillar Rules', 0, 0, 'none'], ['SuperTrend Rules', 0, 0, 'none'], ['Expiry Straddle (sell)', 0, 0, 'none'],
       ['Calm-day Call Sell', 0, 0, 'none'], ['2-month Strangle (sell)', 0, 0, 'none'], ['Expiry Straddle 9:40 (sell)', 0, 0, 'none'],
-      ['Expiry Straddle 11:26 (sell)', 0, 0, 'none'], ['Expiry Straddle 12:24 (sell)', 0, 0, 'none'], ['SuperTrend Ladder', 0, 0, 'none'],
+      ['Expiry Straddle 11:26 (sell)', 0, 0, 'none'], ['Expiry Straddle 12:24 (sell)', 0, 0, 'none'], ['Weekly Strangle (sell)', 0, 0, 'none'],
+      ['SuperTrend Ladder', 0, 0, 'none'], ['Fear + Calendar', 0, 0, 'none'],
     ]);
     expect(s.byWho[0].holding).toEqual(['NIFTY 27 OCT 22700 PUT']);
     expect([s.byWho[1].won, s.byWho[1].lost]).toEqual([1, 0]);
