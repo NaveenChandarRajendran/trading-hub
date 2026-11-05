@@ -152,11 +152,13 @@ def equity_symbols(path, get=None):
 
 # ---------- the desk ----------
 class MomentumDesk:
+    BOOKS, ACCOUNT, NAME = BOOKS, ACCOUNT, "MOMENTUM 20"
+
     def __init__(self, cfg, on_text=lambda text: None, data_dir="data", prices=None, clock=None, start=True,
                  symbols=None):
         self.cfg = cfg
         self.on_text = on_text
-        self.dir = os.path.join(data_dir, "books", ACCOUNT)
+        self.dir = os.path.join(data_dir, "books", self.ACCOUNT)
         self.path = os.path.join(self.dir, "state.json")
         self.prices = prices or YahooPrices()
         self.clock = clock or (lambda: datetime.now(IST))
@@ -182,7 +184,7 @@ class MomentumDesk:
             st = {}
         cap = float(self.cfg.get("capital", 500000))
         st.setdefault("books", {})
-        for k in BOOKS:
+        for k in self.BOOKS:
             st["books"].setdefault(k, {"cash": cap, "capital": cap, "holdings": {}, "trades": [], "values": [],
                                        "applied": None})
         st.setdefault("signals", {})
@@ -269,11 +271,14 @@ class MomentumDesk:
             if not done_day:
                 break  # today's open is filled; the close comes after 15:50
             self._value(d)
-            if self._month_end(d, cal, today):
+            if self._check_day(d, cal, today):
                 self._signal(d, cal, nifty)
             st["lastDay"] = d
             self._save()
         self._save()
+
+    def _check_day(self, d, cal, today):
+        return self._month_end(d, cal, today)
 
     @staticmethod
     def _month_end(d, cal, today):
@@ -345,7 +350,7 @@ class MomentumDesk:
         bars = self._bars_since(need, d)
         msgs = [self._apply(k, sig, d, bars) for k in todo]
         self._save()
-        self.on_text(f"✅ MOMENTUM 20 · filled at the {d} open (paper)\n" + "\n".join(msgs))
+        self.on_text(f"✅ {self.NAME} · filled at the {d} open (paper)\n" + "\n".join(msgs))
 
     def _bars_since(self, syms, d):
         """Bars from the earliest entry day of these holdings (or d) on: growth is measured on one Yahoo download so
@@ -402,7 +407,7 @@ class MomentumDesk:
                                     "charges": round(cost, 2), "money": round(per, 2)})
         b["applied"] = sig["date"]
         skipped = len(buys) - len(opens)
-        return f"{BOOKS[key]}: sold {len(sells)}, bought {len(opens)}" + (f" ({skipped} had no price, skipped)" if skipped else "")
+        return f"{self.BOOKS[key]}: sold {len(sells)}, bought {len(opens)}" + (f" ({skipped} had no price, skipped)" if skipped else "")
 
     @staticmethod
     def _worth(h):
@@ -433,7 +438,7 @@ class MomentumDesk:
         today = self.clock().date()
         live = self._live_view(st, today)
         out["live"] = {"on": bool(live), "at": self.live_at if live else None}
-        for k, title in BOOKS.items():
+        for k, title in self.BOOKS.items():
             b = st["books"][k]
             hs = {s: self._with_live(h, live.get(s)) for s, h in b["holdings"].items()}
             hold = [{"sym": s.replace(".NS", ""), "qty": round(h["qty"], 2), "entry": round(h["entry"], 2), "since": h["day"],

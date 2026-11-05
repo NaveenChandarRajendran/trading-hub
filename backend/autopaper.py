@@ -783,7 +783,7 @@ class AutoTrader:
         """Dharani v2 exit check on a completed 3-minute candle: price closed back through SuperTrend."""
         from sig_dharani_v2 import dharani_v2_exit
         for t in list(self.state["trades"]):
-            if t["status"] == "open" and t["symbol"] == symbol and slot_of(t) in (D2, LD):
+            if t["status"] == "open" and t["symbol"] == symbol and (slot_of(t) in (D2, LD) or t.get("ride")):
                 why = dharani_v2_exit(state, t["side"])
                 if why:
                     threading.Thread(target=self._exit, args=(t, "Signal", why), daemon=True).start()
@@ -990,7 +990,7 @@ class AutoTrader:
         self._stop_evt.set()
 
     # ---------- manual bracket (dashboard button "Place stop + target together") ----------
-    def bracket(self, security_id, stop_pct=None, target_pct=None, stop_price=None, target_price=None):
+    def bracket(self, security_id, stop_pct=None, target_pct=None, stop_price=None, target_price=None, ride=False):
         """Attach a stop and a target to an open Trading Hub paper position the owner bought by hand. Tracked like an
         auto trade (stop pending, target watched), logged with rule "Manual". Owner 29-Oct-2026: the page may send the
         stop and target as option prices (shown and editable before placing); otherwise the Trend percentages."""
@@ -1008,10 +1008,12 @@ class AutoTrader:
         cfg = self.cfg[TH]  # the manual bracket keeps the Trend percentages (-15 % / +20 %)
         sp, tp = stop_pct or cfg["stopPct"], target_pct or cfg["targetPct"]
         stop = floor_tick(stop_price) if stop_price else floor_tick(fill * (1 - sp / 100))
-        target = ceil_tick(target_price) if target_price else ceil_tick(fill * (1 + tp / 100))
+        # owner 5-Nov-2026: "Stop only, ride till SuperTrend breaks or 3:15" -> no target; the 3-minute SuperTrend exit
+        # of SuperTrend Breakout (sig_dharani_v2.dharani_v2_exit) or the 15:14 time exit closes it
+        target = None if ride else ceil_tick(target_price) if target_price else ceil_tick(fill * (1 + tp / 100))
         if not 0 < stop < fill:
             raise AccountError(f"The stop must be below the buy price {fill:.2f}")
-        if target <= fill:
+        if target is not None and target <= fill:
             raise AccountError(f"The target must be above the buy price {fill:.2f}")
         inst = {"id": security_id, "name": inst_raw["name"], "strike": inst_raw["strike"], "expiry": inst_raw["expiry"],
                 "optionType": inst_raw["optionType"], "lotSize": inst_raw["lotSize"]}
@@ -1021,8 +1023,8 @@ class AutoTrader:
             "setup": None, "grade": "n.a.", "side": inst["optionType"], "instrument": inst, "qty": qty, "lots": lots,
             "entryOrderId": None, "entryTime": self.clock().strftime("%H:%M:%S"), "entryPrice": round(fill, 2),
             "stop": stop, "target": target, "stopOrderId": None,
-            "status": "open", "high": fill, "low": fill, "deltaStatus": "not checked", "tags": ["manual"], "checks": {},
-            "spotAtEntry": None, "invested": round(fill * qty, 2),
+            "status": "open", "high": fill, "low": fill, "deltaStatus": "not checked", "tags": ["manual"] + (["ride"] if ride else []),
+            "checks": {}, "spotAtEntry": None, "invested": round(fill * qty, 2), "ride": bool(ride),
         }
         trade["stopOrderId"] = acc.stop(inst, lots, qty, trade["stop"])
         with self.lock:
@@ -1042,6 +1044,63 @@ class AutoTrader:
                 raise AccountError(why)
             return acc.client.orders()
         return acc.paper.orders()
+
+    def ride_symbols(self):
+        """Indices with an open manual "ride till SuperTrend breaks" trade (they need the 3-minute SuperTrend state)."""
+        return sorted({t["symbol"] for t in self.state["trades"] if t["status"] == "open" and t.get("ride")})
+
+    def edit_trade(self, trade_id, stop=None, target=None, remove_target=False):
+        """Today page "Edit stop / target" (owner 5-Nov-2026: set and forget). Moves the pending SL-M stop (cancel +
+        new stop order at the new trigger) and / or changes or removes the watched target. Works for every open auto
+        or manual trade. Prices are option premiums."""
+        with self.lock:
+            t = next((x for x in self.state["trades"] if x["id"] == trade_id and x["status"] == "open"), None)
+            if not t:
+                raise AccountError("No open trade with that id")
+            if t.get("exiting") or t.get("exitPending"):
+                raise AccountError("This trade is closing right now")
+            acc = self.accounts[t["account"]]
+            try:
+                ltp = acc.ltp(t["instrument"])
+            except Exception:
+                ltp = None
+            ref = ltp or t["entryPrice"]
+            if stop is not None:
+                stop = floor_tick(stop)
+                if not 0 < stop < ref:
+                    raise AccountError(f"The stop must be below the price now ({ref:.2f})")
+            if target is not None:
+                target = ceil_tick(target)
+                if target <= ref:
+                    raise AccountError(f"The target must be above the price now ({ref:.2f})")
+            t["exiting"] = True  # tick() leaves the trade alone while the stop is swapped
+        try:
+            if stop is not None and stop != t.get("stop"):
+                old = t.get("stopOrderId")
+                if old:
+                    st = acc.order(old)
+                    if st and st["status"] == "FILLED":
+                        t.pop("exiting", None)
+                        t["exitOrderId"] = old
+                        self._close(t, "Stop", st["avgPrice"])
+                        raise AccountError("The old stop had already filled: the trade is closed")
+                    acc.cancel(old)
+                    if t.get("ladder"):
+                        t["ladder"]["stopIds"].append(old)
+                t["stopOrderId"] = None
+                t["stop"] = stop
+                t["stopOrderId"] = acc.stop(t["instrument"], t["lots"], t["qty"], stop)
+            if remove_target:
+                t["target"] = None
+            elif target is not None:
+                t["target"] = target
+            t.setdefault("edits", []).append({"time": self.clock().strftime("%H:%M:%S"), "stop": t["stop"], "target": t["target"]})
+        finally:
+            with self.lock:
+                t.pop("exiting", None)
+                self._save()
+        self.on_order(t, "edited")
+        return self._public(t)
 
     def exit_trade(self, trade_id):
         t = next((t for t in self.state["trades"] if t["id"] == trade_id and t["status"] == "open"), None)

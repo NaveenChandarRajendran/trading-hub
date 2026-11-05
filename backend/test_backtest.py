@@ -1,7 +1,7 @@
 """Backtest engine on synthetic data: candles, fills (stop / target / signal / time / gaps), costs, and a full run that
 must not crash. The rules themselves are tested in test_sig_rules.py and test_dharani_v2.py."""
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import backtest as bt
 from sig_indicators import IST
@@ -105,6 +105,11 @@ def test_download_caches_and_option_prices_rebuild_a_fixed_strike(tmp_path, monk
         n, skipped = bt_data.download(c, date(2026, 10, 10), symbols=("NIFTY",))
         assert n == 2 + 3 * 42 and skipped == 0  # NIFTY + VIX index windows; 3 half-months x (21 call + 21 put offsets)
         assert c.calls[-1][1]["requiredData"][-1] == "oi"
+        opt = [b for path, b in c.calls if path == "/charts/rollingoption"]
+        # Dhan now answers one day per call (Nov 2026): toDate = fromDate + 1 day, weekdays only
+        assert all(date.fromisoformat(b["toDate"]) - date.fromisoformat(b["fromDate"]) == timedelta(days=1) for b in opt)
+        assert all(date.fromisoformat(b["fromDate"]).weekday() < 5 for b in opt)
+        assert len(opt) == 42 * len(bt_data.trading_days(date(2026, 9, 1), date(2026, 10, 10)))
         n2, skipped2 = bt_data.download(c, date(2026, 10, 10), symbols=("NIFTY",))
         assert n2 == 2 + 42 and skipped2 == 2 * 42  # only the windows reaching today are fetched again
         p = bt_data.OptionPrices("NIFTY")

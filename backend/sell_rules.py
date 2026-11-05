@@ -22,8 +22,15 @@ clock; sell_desk.py runs them.
    Salem trader's Dhan podcast): the same expiry-day straddle as rule 1, sold again at 09:40 (stop +80 %), 11:26
    (stop +80 %) and 12:24 (stop +70 %), each its own pair, no move-to-cost, buy back at 15:14. 5-year test as one basket
    (research/timed-straddle/): +1.92 L on 2021-24, +1.34 L on 2025-26, profit every year, worst day about -25 k.
+5. Weekly Strangle (sellWeekly, owner approved 5-Nov-2026, research/selling-2pct/): NIFTY, 2 lots. At 09:20 on the
+   3rd trading day before each weekly expiry (expiry from Dhan's list, NSE holidays skipped; no trade when that day is
+   itself an expiry day) sell the call 200 points above and the put 200 points below the ATM strike (nearest 50 to the
+   09:19 spot) of that expiry. Each leg is bought back on its own when it doubles (stop +100 %); the rest buys back at
+   15:14 on expiry day. Holds overnight. 5-year test: +7.36 L on 2 lots, 43 of 60 months in profit.
+Owner 5-Nov-2026 also: the four expiry straddles are skipped when India VIX's first value of the day is below 12
+(minVixOpen), and the 2-month strangle starts no new cycle once the current one ends (noNewCycle).
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from statistics import fmean, pstdev
 
 from sig_indicators import IST
@@ -31,17 +38,20 @@ from sig_indicators import IST
 STRADDLE, CALM, STRANGLE = "sellStraddle", "sellCalmCall", "sellStrangle"
 S940, S1126, S1224 = "sellStraddle940", "sellStraddle1126", "sellStraddle1224"
 STRADDLES = (STRADDLE, S940, S1126, S1224)  # expiry-day straddles, one pair each
-RULES = (STRADDLE, CALM, STRANGLE, S940, S1126, S1224)
+WEEKLY = "sellWeekly"
+RULES = (STRADDLE, CALM, STRANGLE, S940, S1126, S1224, WEEKLY)
 NAMES = {STRADDLE: "Expiry Straddle (sell)", CALM: "Calm-day Call Sell", STRANGLE: "2-month Strangle (sell)",
-         S940: "Expiry Straddle 9:40 (sell)", S1126: "Expiry Straddle 11:26 (sell)", S1224: "Expiry Straddle 12:24 (sell)"}
+         S940: "Expiry Straddle 9:40 (sell)", S1126: "Expiry Straddle 11:26 (sell)", S1224: "Expiry Straddle 12:24 (sell)",
+         WEEKLY: "Weekly Strangle (sell)"}
 SYMBOL = "NIFTY"
 
 DEFAULTS = {
-    "enabled": True, "capital": 1000000, "lots": 1,
+    "enabled": True, "capital": 1000000, "lots": 1, "minVixOpen": 0,
     STRADDLE: {"enabled": True, "entry": "09:20", "stopPct": 50, "trailToCost": True},
     CALM: {"enabled": True, "entry": "10:15", "maxWidth": 1.34, "bars": 20, "stopPct": 50},
     STRANGLE: {"enabled": True, "entry": "10:00", "check": "15:05", "awayPct": 5, "days": 61, "minDays": 45, "maxDays": 80,
-               "rollAtPct": 70, "maxLoss": 60000},
+               "rollAtPct": 70, "maxLoss": 60000, "noNewCycle": False},
+    WEEKLY: {"enabled": False, "entry": "09:20", "daysBefore": 3, "away": 200, "stopPct": 100, "lots": 2},
     S940: {"enabled": True, "entry": "09:40", "stopPct": 80, "trailToCost": False},
     S1126: {"enabled": True, "entry": "11:26", "stopPct": 80, "trailToCost": False},
     S1224: {"enabled": True, "entry": "12:24", "stopPct": 70, "trailToCost": False},
@@ -127,3 +137,23 @@ def leg_stop(sell_price, stop_pct):
     raw = sell_price * (1 + stop_pct / 100)
     return round(-(-raw // 0.05) * 0.05, 2)
 
+
+
+def weekly_entry_expiry(expiries, today, days_before=3, holidays=()):
+    """The weekly expiry to sell today, or None: today must not be an expiry day and the nearest expiry must be exactly
+    `days_before` trading days after today (NSE holidays and weekends skipped)."""
+    if not expiries or expiries[0] <= today.isoformat():
+        return None
+    exp = date.fromisoformat(expiries[0])
+    n, d = 0, today
+    while d < exp:
+        d += timedelta(days=1)
+        if d.weekday() < 5 and d.isoformat() not in holidays:
+            n += 1
+    return expiries[0] if n == days_before else None
+
+
+def weekly_strikes(spot, away=200, step=50):
+    """(call strike, put strike) `away` points from the ATM strike."""
+    k = atm_strike(spot, step)
+    return k + away, k - away

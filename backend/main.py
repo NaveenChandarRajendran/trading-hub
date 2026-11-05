@@ -329,6 +329,11 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         if getattr(signals, "selling", None) is not None:
             import sell_desk
             sell_desk.register(app, signals.selling)
+        import fear
+        fear.register(app, getattr(signals, "futures", None), getattr(signals, "fear", None))
+        if getattr(signals, "sensex", None) is not None:
+            import sensex_watch
+            sensex_watch.register(app, signals.sensex)
         if signals.phone is not None:
             import notify
             notify.register(app, signals.phone)
@@ -339,6 +344,13 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
                                               on_text=phone.send if phone is not None else (lambda text: None))
             momentum_book.register(app, desk)
             app.state.momentum = desk
+        if signal_config.get("clenow", {}).get("enabled", False):  # Clenow weekly stock book (owner 5-Nov-2026)
+            import clenow
+            phone = signals.phone
+            cdesk = clenow.ClenowDesk(signal_config["clenow"], data_dir="data",
+                                      on_text=phone.send if phone is not None else (lambda text: None))
+            clenow.register(app, cdesk)
+            app.state.clenow = cdesk
     return app
 
 
@@ -400,8 +412,33 @@ def build_signals(cfg, tracker, candles, get_expiries, lot_size, trending_oi_bod
                 journal.record(trade, event, tracker.clock())
             if event != "carry":
                 phone.on_order(trade, event, notify.day_pnl(rows_today()) if event.startswith("exit") else None)
-        svc.selling = sell_desk.SellDesk(cfg["selling"], paper, candles, on_event=on_sell, data_dir="data")
+        svc.selling = sell_desk.SellDesk(cfg["selling"], paper, candles, on_event=on_sell, data_dir="data",
+                                         vix=sources.vix)
         paper.tick_listeners.append(svc.selling)
+    # Fear + Calendar (owner 5-Nov-2026): the daily Fear signal pauses SuperTrend Breakout / Ladder entries, and a
+    # Rs 2.5 lakh Nifty FUTURES paper book trades the three signals
+    svc.sensex = None
+    if cfg.get("sensexWatch", {}).get("enabled", False):  # owner 3-Nov-2026: Sensex expiry straddles, watch only
+        import sensex_watch
+        svc.sensex = sensex_watch.SensexWatch(tracker.client, cfg["sensexWatch"], vix=sources.vix, data_dir="data",
+                                              log_dir=cfg.get("logDir"), clock=tracker.clock)
+    import fear
+    svc.fear = fear.FearHistory("data", client=tracker.client, clock=tracker.clock)
+    svc.futures = None
+    fcfg = cfg.get("fearCalendar", {})
+    if paper and fcfg.get("enabled", False):
+        def nifty_1520():
+            _f, _s, one_min, _fut, _ve, _le = candles.get("NIFTY", max_age=20)
+            today = [m for m in one_min or [] if datetime.fromtimestamp(m["time"], IST).date() == tracker.clock().date()]
+            at = [m for m in today if datetime.fromtimestamp(m["time"], IST).strftime("%H:%M") <= "15:20"]
+            return at[-1]["close"] if at else None
+
+        def on_fut(trade, event):
+            if journal is not None:
+                journal.record(trade, event, tracker.clock())
+            phone.on_order(trade, event, None)
+        svc.futures = fear.FuturesBook(fcfg, paper, svc.fear, get_vix=sources.vix, get_nifty=nifty_1520, on_event=on_fut,
+                                       data_dir="data", clock=tracker.clock)
     return svc
 
 

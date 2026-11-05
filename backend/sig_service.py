@@ -225,14 +225,25 @@ class SignalService:
         c = self.cfg.get("dharaniV2", {})
         return c.get("symbols", ["NIFTY", "BANKNIFTY"]) if c.get("enabled", True) else []
 
-    def _v2(self, symbol, now, max_age=None):
-        """Dharani v2 state on 3-minute candles, or (None, []) for an index it does not trade."""
-        if symbol not in self.v2_symbols():
+    def _v2(self, symbol, now, max_age=None, force=False):
+        """Dharani v2 state on 3-minute candles, or (None, []) for an index it does not trade (force: a manual
+        "ride till SuperTrend breaks" trade needs the state anyway)."""
+        if symbol not in self.v2_symbols() and not force:
             return None, []
         try:
             st, problems = build_state_v2(symbol, now, self.src, max_age=max_age)
             if st:
-                st["premiumNear"] = (self.cfg.get("dharaniV2", {}).get("premiumNear") or {}).get(symbol)
+                c = self.cfg.get("dharaniV2", {})
+                st["premiumNear"] = (c.get("premiumNear") or {}).get(symbol)
+                # owner 5-Nov-2026: no entry before 9:45 on a 1 % gap day; no new entries on Fear days
+                if not c.get("gapPause", True):
+                    st["dayOpen"] = None
+                fr = getattr(self, "fear", None)
+                if fr is not None and c.get("fearPause", True):
+                    try:
+                        st["fear"] = bool(fr.info().get("on"))
+                    except Exception:
+                        log.exception("fear signal")
             return st, problems
         except Exception as e:
             log.exception("dharani v2 state")
@@ -377,6 +388,11 @@ class SignalService:
     def run_v2(self):
         """One 3-minute cycle: Dharani v2 exits and entries (NIFTY and BANKNIFTY by default)."""
         self.heartbeat = self.clock()
+        rides = getattr(self.trader, "ride_symbols", lambda: [])() if self.trader else []
+        for symbol in [s for s in rides if s not in self.v2_symbols()]:  # exits only (owner 5-Nov-2026)
+            st, _p = self._v2(symbol, self.clock(), max_age=15, force=True)
+            if st and st.get("complete"):
+                self.trader.on_candle_v2(symbol, st)
         for symbol in self.v2_symbols():
             st, problems = None, []
             for attempt in range(3):  # Dhan's last minute can trail: retry twice, 15 s apart
@@ -888,6 +904,14 @@ class BracketBody(BaseModel):
     securityId: int
     stopPrice: Optional[float] = None  # owner 29-Oct-2026: the page shows the stop / target and lets the owner change them
     targetPrice: Optional[float] = None
+    ride: bool = False  # owner 5-Nov-2026: stop only, ride till the SuperTrend breaks or 15:14
+
+
+class EditBody(BaseModel):
+    tradeId: str
+    stop: Optional[float] = None
+    target: Optional[float] = None
+    removeTarget: bool = False
 
 
 class ExitBody(BaseModel):
@@ -909,6 +933,8 @@ def skipped_setup(r):
         return None
     by = {c["id"]: c for c in r["checks"]}
     off = [c["label"] for c in r["checks"] if c["state"] != PASS and not c.get("exempt")]
+    if r["rule"] == "dharaniV2" and r.get("pauses") and r.get("score") == r.get("total"):
+        return "-", "; ".join(r["pauses"])  # a full GO held back by the gap-day / fear-day pause (owner 5-Nov-2026)
     if r["rule"] == "dharaniV2":  # SuperTrend on the side and exactly one other condition missed
         if by.get("supertrend", {}).get("state") != PASS or r.get("score") != r.get("total", 0) - 1 \
                 or by.get("window", {}).get("state") != PASS:
@@ -1046,7 +1072,17 @@ def register(app, svc):
     @app.post("/api/autopaper/bracket")
     def bracket(body: BracketBody):
         try:
-            return svc.trader.bracket(body.securityId, stop_price=body.stopPrice, target_price=body.targetPrice)
+            return svc.trader.bracket(body.securityId, stop_price=body.stopPrice, target_price=body.targetPrice, ride=body.ride)
+        except Exception as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/api/autopaper/edit")
+    def edit_trade(body: EditBody):
+        """Edit stop / target of an open trade (owner 5-Nov-2026)."""
+        if not svc.trader:
+            raise HTTPException(503, "Auto paper trading is not running.")
+        try:
+            return svc.trader.edit_trade(body.tradeId, stop=body.stop, target=body.target, remove_target=body.removeTarget)
         except Exception as e:
             raise HTTPException(409, str(e))
 

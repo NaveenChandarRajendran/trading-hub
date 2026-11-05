@@ -76,6 +76,17 @@ def half_months(start, end):
     return out
 
 
+def trading_days(frm, to):
+    """Weekdays in [frm, to) that are not NSE holidays (holidays.py)."""
+    import holidays
+    out, d = [], frm
+    while d < to:
+        if d.weekday() < 5 and d.isoformat() not in holidays.NSE_HOLIDAYS:
+            out.append(d)
+        d += timedelta(days=1)
+    return out
+
+
 def _call(client, path, body, tries=4):
     for k in range(tries):
         try:
@@ -124,18 +135,24 @@ def download(client, today, symbols=("NIFTY", "BANKNIFTY"), log=print, progress=
             data = {k: (p or {}).get(k) or [] for k in ("timestamp", "open", "high", "low", "close", "volume")}
         else:
             flag = "MONTH" if sym == "BANKNIFTY" and frm >= BN_MONTHLY_FROM else "WEEK"
-            body = {"exchangeSegment": "NSE_FNO", "interval": "1", "securityId": IDX[sym], "instrument": "OPTIDX",
-                    "expiryFlag": flag, "expiryCode": 1, "strike": strike_code(off), "drvOptionType": side,
-                    "requiredData": ["open", "high", "low", "close", "strike", "oi"], "fromDate": str(frm), "toDate": str(to)}
-            try:
-                p = _call(client, "/charts/rollingoption", body)
-            except DhanError as e:
-                if off in CORE[side]:
-                    raise
-                log(f"  {sym} {side} {strike_code(off)} {frm}: not available ({e}); saved empty")
-                p = None
-            d = ((p or {}).get("data") or {}).get("ce" if side == "CALL" else "pe") or {}
-            data = {k: d.get(k) or [] for k in FIELDS}
+            # Dhan (Nov 2026) answers /charts/rollingoption only for ONE day at a time (toDate = fromDate + 1 day,
+            # anything wider is HTTP 400 DH-905): one call per trading day, merged into the same half-month file.
+            data = {k: [] for k in FIELDS}
+            for day in trading_days(frm, min(to, end)):
+                body = {"exchangeSegment": "NSE_FNO", "interval": "1", "securityId": IDX[sym], "instrument": "OPTIDX",
+                        "expiryFlag": flag, "expiryCode": 1, "strike": strike_code(off), "drvOptionType": side,
+                        "requiredData": ["open", "high", "low", "close", "strike", "oi"], "fromDate": str(day),
+                        "toDate": str(day + timedelta(days=1))}
+                try:
+                    p = _call(client, "/charts/rollingoption", body)
+                except DhanError as e:
+                    if off in CORE[side]:
+                        raise
+                    log(f"  {sym} {side} {strike_code(off)} {day}: not available ({e}); left empty")
+                    p = None
+                d = ((p or {}).get("data") or {}).get("ce" if side == "CALL" else "pe") or {}
+                for k in FIELDS:
+                    data[k].extend(d.get(k) or [])
             data["expiryFlag"] = flag
         save(name, data)
         calls += 1

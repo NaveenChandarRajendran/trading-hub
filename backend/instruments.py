@@ -186,6 +186,13 @@ class OptionInstruments:
             live = [f for f in self._futures if f["symbol"] == symbol and f["expiry"] >= today]
             return min(live, key=lambda f: f["expiry"]) if live else None
 
+    def futures(self, symbol, today=None):
+        """Every unexpired future of the index, nearest first (Fear + Calendar book rolls into the next one)."""
+        self.near_future(symbol, today)  # same refresh rules
+        today = today or self._today()
+        with self._lock:
+            return sorted((f for f in self._futures if f["symbol"] == symbol and f["expiry"] >= today), key=lambda f: f["expiry"])
+
     def future_ids(self):
         """Security IDs of the cached index futures (never downloads: called for every feed packet)."""
         return {f["securityId"] for f in self._futures}

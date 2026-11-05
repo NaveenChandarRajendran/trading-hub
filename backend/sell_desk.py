@@ -28,8 +28,10 @@ RETRY_MIN = 10  # an entry that can't fill (no price yet) keeps trying this many
 
 
 class SellDesk:
-    def __init__(self, cfg, paper, candles, on_event=lambda trade, event: None, data_dir="data", clock=None, start=True):
+    def __init__(self, cfg, paper, candles, on_event=lambda trade, event: None, data_dir="data", clock=None, start=True,
+                 vix=None):
         self.cfg = R.config(cfg)
+        self.vix = vix  # India VIX now (owner 5-Nov-2026: straddles skip a day whose first VIX is below 12)
         self.paper, self.candles, self.on_event = paper, candles, on_event
         self.clock = clock or paper.clock
         self.path = os.path.join(data_dir, "books", ACCOUNT, "state.json")
@@ -153,12 +155,21 @@ class SellDesk:
             if not self._in_session(now):
                 return
             c = self.cfg
+            if self.state.get("vixOpen") is None and self.vix is not None and c.get("minVixOpen"):
+                try:
+                    v = self.vix()
+                except Exception:
+                    v = None
+                if v:
+                    self.state["vixOpen"] = round(float(v), 2)
+                    self._save()
             if self._at(now, c["timeExit"]):
                 self._time_exit(now)
                 return
             for rule, key, fn in ((R.STRADDLE, "entry", self._straddle), (R.STRANGLE, "entry", self._strangle_entry),
                                   (R.CALM, "entry", self._calm), (R.S940, "entry", self._straddle_at(R.S940)),
-                                  (R.S1126, "entry", self._straddle_at(R.S1126)), (R.S1224, "entry", self._straddle_at(R.S1224))):
+                                  (R.S1126, "entry", self._straddle_at(R.S1126)), (R.S1224, "entry", self._straddle_at(R.S1224)),
+                                  (R.WEEKLY, "entry", self._weekly)):
                 if c[rule].get("enabled", True) and not self.state["done"].get(rule) and self._at(now, c[rule][key]):
                     self._attempt(rule, fn, now)
             if self.state.get("rollPending"):
@@ -173,7 +184,7 @@ class SellDesk:
         day = now.date().isoformat()
         if self.state["day"] == day:
             return
-        self.state.update(day=day, done={}, tries={}, notes={})
+        self.state.update(day=day, done={}, tries={}, notes={}, vixOpen=None)
         for lg in self.open_legs():  # positional legs show on each day's Today page as open
             self._emit(lg, "carry", now)
         self._save()
@@ -219,6 +230,10 @@ class SellDesk:
         exps = self.paper.option_expiries(R.SYMBOL)
         if not R.is_expiry_day(exps, now.date()):
             return "Not a NIFTY expiry day: no trade"
+        low = self.cfg.get("minVixOpen") or 0
+        vo = self.state.get("vixOpen")
+        if low and vo is not None and vo < low:
+            return f"Skipped: India VIX opened at {vo:.2f}, below {low:g}"
         spot = self.spot()
         if not spot:
             return "retry: no NIFTY price"
@@ -259,11 +274,41 @@ class SellDesk:
             return "retry: no buyers in the depth"
         return f"Calm (band width {width:.2f} %): sold {k} CE @ {leg['entryPrice']:.2f}"
 
+    def _weekly(self, now):
+        """Weekly Strangle (owner 5-Nov-2026): 3 trading days before the weekly expiry, 200 points either side."""
+        c = self.cfg[R.WEEKLY]
+        exp = R.weekly_entry_expiry(self.paper.option_expiries(R.SYMBOL), now.date(), c["daysBefore"], self.paper.holidays)
+        if not exp:
+            return "Not an entry day (3 trading days before expiry): no trade"
+        if self.open_legs(R.WEEKLY):
+            return "Still holding last week's legs"
+        cut = now.replace(second=0, microsecond=0).timestamp() - 60  # the 09:19 minute
+        _sessions, one_min, _fut, _err = self.candles.get_with_futures(R.SYMBOL, max_age=20, n=1)
+        mins = [m for m in one_min or [] if m["time"] <= cut and datetime.fromtimestamp(m["time"], now.tzinfo).date() == now.date()]
+        spot = mins[-1]["close"] if mins else self.spot()
+        if not spot:
+            return "retry: no NIFTY price"
+        kc, kp = R.weekly_strikes(spot, c["away"])
+        ce, pe = self._chain_leg(exp, kc, "CE"), self._chain_leg(exp, kp, "PE")
+        if not ce or not pe:
+            return f"Skipped: no {kc} CE / {kp} PE for {exp}"
+        if not self._ready([ce, pe]):
+            return "retry: waiting for prices"
+        legs = [self._sell(R.WEEKLY, inst, now, stop_pct=c["stopPct"], lots=c.get("lots")) for inst in (ce, pe)]
+        if not all(legs):
+            for lg in legs:
+                if lg:
+                    self._close(lg, "Entry incomplete", now)
+            return "retry: no buyers in the depth"
+        return f"Sold {exp} {kc} CE @ {legs[0]['entryPrice']:.2f} + {kp} PE @ {legs[1]['entryPrice']:.2f} (spot {spot:,.2f})"
+
     def _strangle_entry(self, now):
         c = self.cfg[R.STRANGLE]
         if self.open_legs(R.STRANGLE):
             cyc = self.state["cycle"] or {}
             return f"Holding the {cyc.get('expiry', '')} strangle"
+        if c.get("noNewCycle"):  # owner 5-Nov-2026: the running strangle is the last one
+            return "Ended: no new 2-month strangle (owner 5-Nov-2026)"
         exp = R.strangle_expiry(self.paper.option_expiries(R.SYMBOL), now.date(), c["days"], c["minDays"], c["maxDays"])
         if not exp:
             return f"Skipped: no NIFTY expiry {c['minDays']}-{c['maxDays']} days away"
@@ -351,10 +396,10 @@ class SellDesk:
                 self._close(lg, "Time exit 15:14" if lg["rule"] != R.STRANGLE else "Expiry day 15:14", now)
 
     # ---------- fills ----------
-    def _sell(self, rule, inst, now, stop_pct=None):
-        """Sell 1 lot (cfg lots) at market on the bids. Returns the leg, or None if no buyers."""
+    def _sell(self, rule, inst, now, stop_pct=None, lots=None):
+        """Sell 1 lot (cfg lots, or `lots`) at market on the bids. Returns the leg, or None if no buyers."""
         book = self.books.get(inst["securityId"])
-        qty = self.cfg.get("lots", 1) * inst["lotSize"]
+        qty = int(lots or self.cfg.get("lots", 1)) * inst["lotSize"]
         w = walk_depth(book.bids, qty) if book else None
         if w is None:
             return None
@@ -442,6 +487,21 @@ class SellDesk:
                     "cycle": {**self.state["cycle"], "pnl": self.cycle_pnl(shown=True)} if self.state["cycle"] else None,
                     "error": self.last_error}
 
+    def edit_stop(self, leg_id, stop):
+        """Today page "Edit stop" on a SOLD leg (owner 5-Nov-2026): the buy-back price; None removes it."""
+        with self.lock:
+            lg = self.state["legs"].get(leg_id)
+            if not lg or lg["status"] != "open":
+                raise LookupError(f"No open selling leg {leg_id}")
+            if stop is not None:
+                ltp = self.ltp(lg["securityId"])
+                if stop <= 0 or (ltp and stop <= ltp):
+                    raise ValueError(f"The buy-back stop must be above the price now ({ltp:.2f})" if ltp else "Bad stop")
+                stop = round(-(-stop // 0.05) * 0.05, 2)
+            lg["stop"] = stop
+            self._save()
+            return self.trade(lg)
+
     def exit_leg(self, leg_id):
         with self.lock:
             lg = self.state["legs"].get(leg_id)
@@ -457,6 +517,20 @@ def register(app, desk):
     @app.get("/api/selling/state")
     def state():
         return desk.status()
+
+    from pydantic import BaseModel
+
+    class StopBody(BaseModel):
+        stop: float | None = None
+
+    @app.post("/api/selling/stop/{leg_id}")
+    def edit_stop(leg_id: str, body: StopBody):
+        try:
+            return desk.edit_stop(leg_id, body.stop)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(409, str(e))
 
     @app.post("/api/selling/exit/{leg_id}")
     def exit_one(leg_id: str):

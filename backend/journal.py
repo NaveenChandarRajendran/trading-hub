@@ -30,12 +30,13 @@ STRATEGY = {"fourPillar": "4 Pillar Rules", "superTrend": "SuperTrend Rules", "d
             "tradingHub": "Trend Rules", "reboundCall": "Rebound Call", "orbPullback": "Box Pullback 15/5", "orbPullback5": "Box Pullback 5/1", "sellStraddle": "Expiry Straddle (sell)",
             "sellCalmCall": "Calm-day Call Sell", "sellStrangle": "2-month Strangle (sell)",
             "sellStraddle940": "Expiry Straddle 9:40 (sell)", "sellStraddle1126": "Expiry Straddle 11:26 (sell)",
-            "sellStraddle1224": "Expiry Straddle 12:24 (sell)"}
+            "sellStraddle1224": "Expiry Straddle 12:24 (sell)", "sellWeekly": "Weekly Strangle (sell)",
+            "fearCalendar": "Fear + Calendar"}
 ACCOUNT = {"megabull": "MegaBull", "tradingHub": "App · Trend", "dharani": "App · SuperTrend Breakout", "rebound": "App · Rebound Call", "orb": "App · Box Pullback 15/5", "orb5": "App · Box Pullback 5/1", "ladder": "App · SuperTrend Ladder",
-           "selling": "App · Selling", "manual": "App · Manual"}
+           "selling": "App · Selling", "manual": "App · Manual", "futures": "App · Fear + Calendar"}
 STRATEGIES = ["4 Pillar Rules", "SuperTrend Rules", "SuperTrend Breakout", "SuperTrend Ladder", "Trend Rules", "Rebound Call", "Box Pullback 15/5", "Expiry Straddle (sell)",
               "Calm-day Call Sell", "2-month Strangle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
-              "Expiry Straddle 12:24 (sell)", "Manual"]
+              "Expiry Straddle 12:24 (sell)", "Weekly Strangle (sell)", "Fear + Calendar", "Manual"]
 
 
 # Owner 29-Oct-2026: "Dharani Rules" is shown as "SuperTrend Breakout" (rule id dharaniV2 unchanged). Rows saved before the
@@ -47,7 +48,8 @@ RENAMED = {"Dharani Rules": "SuperTrend Breakout", "App · Dharani": "App · Sup
 PHONE_GROUPS = [
     ("Option Buy", ["SuperTrend Breakout", "SuperTrend Ladder", "Rebound Call"]),
     ("Option Sell", ["Expiry Straddle (sell)", "Expiry Straddle 9:40 (sell)", "Expiry Straddle 11:26 (sell)",
-                     "Expiry Straddle 12:24 (sell)", "Calm-day Call Sell", "2-month Strangle (sell)"]),
+                     "Expiry Straddle 12:24 (sell)", "Calm-day Call Sell", "Weekly Strangle (sell)", "2-month Strangle (sell)"]),
+    ("Futures", ["Fear + Calendar"]),
     ("Scalping", ["Box Pullback 15/5"]),  # 5/1 dropped by the owner 30-Oct-2026
 ]
 
@@ -142,6 +144,15 @@ class Journal:
             orders.append({**base, "time": t.get("entryTime") or now.strftime("%H:%M:%S"), "orderId": t.get("entryOrderId"),
                            "side": "SELL" if t.get("short") else "BUY", "type": "MARKET", "price": t.get("entryPrice"),
                            "trigger": None, "status": "FILLED", "note": "Entry (sell)" if t.get("short") else "Entry"})
+        elif event == "edited":  # stop / target changed on the Today page (owner 5-Nov-2026)
+            for o in orders:
+                if o.get("tradeId") == t["id"] and o.get("type") == "SL-M" and o["status"] == "OPEN" \
+                        and o["orderId"] != t.get("stopOrderId"):
+                    o.update(status="CANCELLED", cancelledAt=now.strftime("%H:%M:%S"), note="Stop loss (moved)")
+            if t.get("stopOrderId") and not find(t["stopOrderId"]):
+                orders.append({**base, "time": now.strftime("%H:%M:%S"), "orderId": t["stopOrderId"], "side": "SELL",
+                               "type": "SL-M", "price": None, "trigger": t.get("stop"), "status": "OPEN",
+                               "note": "Stop loss (edited)"})
         elif event == "stop placed" and t.get("stopOrderId") and not find(t["stopOrderId"]):
             orders.append({**base, "time": now.strftime("%H:%M:%S"), "orderId": t["stopOrderId"], "side": "SELL",
                            "type": "SL-M", "price": None, "trigger": t.get("stop"), "status": "OPEN", "note": "Stop loss"})

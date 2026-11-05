@@ -84,6 +84,10 @@ def build_state_v2(symbol, now, src, max_age=None):
     prev = previous_session(one_min, sessions[-2:])
     state["piv"] = pivots(prev["high"], prev["low"], prev["close"]) if prev else None
     state["spot"] = bars[-1]["close"]
+    # gap-day rule (owner 5-Nov-2026): today's first index open vs the previous session's close
+    today_bars = [b for b in bars if datetime.fromtimestamp(b["time"], IST).date() == datetime.fromtimestamp(bars[-1]["time"], IST).date()]
+    state["dayOpen"] = today_bars[0]["open"] if today_bars else None
+    state["prevClose"] = prev["close"] if prev else None
     fbars, fcomplete = closed_bars(fut_min or [], now)
     if fbars and fbars[-1]["time"] == bars[-1]["time"]:
         fprev = previous_session(fut_min, sessions[-2:])
@@ -161,15 +165,44 @@ def dharani_v2_rule(state):
     checks = both[side]
     green = all(c["state"] == PASS for c in checks)
     blocked = [b for b in gates(state, "dharaniV2", MB_LAST_ENTRY) if not b.startswith("No new entries")]
+    pauses = day_pauses(state, side)
+    blocked += pauses
     return {
         "rule": "dharaniV2", "name": "POWER BREAKOUT", "setup": "SuperTrend Breakout", "account": "SuperTrend Breakout (app paper)",
         "symbol": state["symbol"], "side": side, "go": green and not blocked, "grade": "A" if green else None,
         "checks": checks, "blocked": blocked, "tags": [], "at": state.get("signalTime"),
-        "score": score[side], "total": total[side], "interval": INTERVAL,
+        "score": score[side], "total": total[side], "interval": INTERVAL, "pauses": pauses,
         "premiumNear": state.get("premiumNear") or PREMIUM_NEAR.get(state["symbol"], 250),
         # the call's "Close above R1" level (index, Traditional pivot of the previous session), drawn on the chart
         "pivotR1": round((state.get("piv") or {}).get("R1"), 2) if (state.get("piv") or {}).get("R1") is not None else None,
     }
+
+
+GAP_PCT = 1.0          # owner 5-Nov-2026: a 1 % gap in the trade's direction ...
+GAP_UNTIL = "09:45"    # ... means no entry on a candle that starts before 09:45 (research/gap-day, variant G2)
+
+
+def gap_pct(state, side):
+    """Today's opening gap in % in the trade's direction (CE: gap up, PE: gap down), or None without data."""
+    o, pc = state.get("dayOpen"), state.get("prevClose")
+    if not o or not pc:
+        return None
+    g = (o - pc) / pc * 100
+    return g if side == "CE" else -g
+
+
+def day_pauses(state, side):
+    """Day-level pauses for SuperTrend Breakout and Ladder (owner 5-Nov-2026), each a short reason:
+    - gap day: Nifty opened >= 1 % from the previous close in the trade's direction -> no entry before 09:45;
+    - fear day: the Fear signal is on (India VIX closed > 10 % above its 10-day average; on until Nifty closes above its
+      5-day average or 5 trading days, fear.py) -> no new entries at all (research/chop-filter)."""
+    out = []
+    g = gap_pct(state, side)
+    if g is not None and g >= GAP_PCT and (state.get("signalTime") or "99:99") < GAP_UNTIL:
+        out.append(f"Gap {'up' if side == 'CE' else 'down'} {g:.1f} %: no entry before 9:45")
+    if state.get("fear"):
+        out.append("Fear day (VIX jump): no new buys")
+    return out
 
 
 def dharani_v2_exit(state, side):
