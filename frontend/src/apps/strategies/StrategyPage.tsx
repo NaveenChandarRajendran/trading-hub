@@ -16,7 +16,7 @@ import { useToggles } from '../dashboard/DashboardApp';
 import { forIndex, summarize } from '../today/logic/today';
 import { ClosedTable, Money, OpenTable } from '../today/TradeTables';
 import { useToday } from '../today/useToday';
-import { inSection, sectionOf, type SectionId } from './catalog';
+import { inSection, sectionOf, whosOfInfo, type SectionId } from './catalog';
 import { StrategyCards } from './StrategyCards';
 import { MoneyStrip } from './MoneyStrip';
 import { FuturesPanel, SensexWatchPanel } from './ExtraPanels';
@@ -94,7 +94,7 @@ export default function StrategyPage({ section }: { section: SectionId }) {
   const dash = { NIFTY: { ...dN, setInterval: (v: number) => setInterval_(v) }, BANKNIFTY: { ...dB, setInterval: (v: number) => setInterval_(v) } };
   const signals: Record<string, SignalsState | null> = { NIFTY: sigN.data, BANKNIFTY: sigB.data };
 
-  const whos = list.map((s) => s.who);
+  const whos = list.flatMap((s) => whosOfInfo(s)); // all 4 straddle times count (owner 9-Nov-2026)
   const mine = rows.filter((r) => whos.includes(r.who));
   const shown = forIndex(mine, 'both');
   const sum = summarize(mine);
