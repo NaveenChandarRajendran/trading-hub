@@ -109,7 +109,7 @@ export default function CapitalApp() {
         <MoneyStrip m={{ ...total, capital: PLAN_CAPITAL }} title="Total" loaded={since.loaded}
           today={{ pnl: today.total, sub: <>{today.open} live · {today.closed} closed</> }} />
         {ENDING.length > 0 && (
-          <p className="td-foot">Plan from 6 Nov: {lakhs(PLAN_CAPITAL)}. Plus {ENDING.map((e) => `${e.name} ${lakhs(e.capital)} until ${longDate(e.endsOn as string)}`).join(', ')} = {lakhs(PLAN_CAPITAL + ENDING_CAPITAL)} for now.</p>
+          <p className="td-foot">Plan from 6 Nov: {lakhs(PLAN_CAPITAL)}. {ENDING.map((e) => e.endedOn ? `${e.name} ended ${longDate(e.endedOn)} (its ${lakhs(e.capital)} is free again; its result stays in the totals)` : `Plus ${e.name} ${lakhs(e.capital)} until ${longDate(e.endsOn as string)} = ${lakhs(PLAN_CAPITAL + ENDING_CAPITAL)} for now`).join('. ')}.</p>
         )}
       </section>
 
@@ -125,7 +125,7 @@ export default function CapitalApp() {
             </div>
           </div>
           {secs.map((x, i) => <SectionCard key={x.section.id} name={x.section.name} to={x.section.path} m={x.total} lines={x.lines} color={COLORS[i]} />)}
-          {ending.length > 0 && <SectionCard name="Ending soon" to="/strategies/option-sell" m={addUp(ending.map((e) => e.m))} lines={ending.map((e) => ({ ...e, name: `${e.name} · ends ${longDate(ENDING[0].endsOn as string)}` }))} color={ENDING_COLOR} />}
+          {ending.length > 0 && <SectionCard name={ENDING.every((e) => e.endedOn) ? 'Ended' : 'Ending soon'} to="/strategies/option-sell" m={addUp(ending.map((e) => e.m))} lines={ending.map((e) => ({ ...e, name: ENDING[0].endedOn ? `${e.name} · ended ${longDate(ENDING[0].endedOn)}` : `${e.name} · ends ${longDate(ENDING[0].endsOn as string)}` }))} color={ENDING_COLOR} />}
         </div>
         <p className="td-foot">Manual practice trades (not in the totals): <Money v={manual.net} /> from {manual.trades} trade{manual.trades === 1 ? '' : 's'}.</p>
       </section>

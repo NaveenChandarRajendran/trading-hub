@@ -19,6 +19,7 @@ export interface StrategyInfo {
   whos?: string[]; // all journal names it covers (the four timed expiry straddles are one strategy)
   sellKeys?: string[]; // all its selling desk slots
   futKey?: string; // Nifty futures paper book (/api/futures/state, owner 5-Nov-2026)
+  endedOn?: string; // the wound-down strategy has closed for good (2-month strangle: book stop 6-Nov-2026)
   endsOn?: string; // a strategy being wound down: shown, but its capital is outside the plan total (owner 5-Nov-2026)
 }
 
@@ -91,8 +92,8 @@ export const STRATEGIES: StrategyInfo[] = [
   {
     who: '2-month Strangle (sell)', name: '2-month Strangle', section: 'optionSell', sellKey: 'sellStrangle', book: 'selling', indices: ['NIFTY'],
     how: 'Sells a call and a put about 5% away, about 2 months out. Held overnight. The current one is the last: no new cycle after it ends.',
-    exits: 'Rolls a leg at 70% profit · stops at ₹60,000 loss · ends 29 Dec',
-    capital: 250000, endsOn: '2026-12-29',
+    exits: 'Rolls a leg at 70% profit · stops at ₹60,000 loss · ended 6 Nov (₹60,000 stop)',
+    capital: 250000, endsOn: '2026-12-29', endedOn: '2026-11-06',
   },
   {
     who: 'Fear + Calendar', name: 'Fear + Calendar', section: 'futures', futKey: 'fearCalendar', book: 'futures', indices: ['NIFTY'],
