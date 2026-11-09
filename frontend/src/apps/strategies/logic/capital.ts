@@ -4,6 +4,7 @@
 import type { JTrade } from '../../paper-journal/logic/journal';
 import type { MomState } from '../../today/logic/momentum';
 import type { TodayRow } from '../../today/logic/today';
+export const SLIPPAGE = 0.005; // per fill, the backtests' figure
 const BROKERAGE_PER_ORDER = 20; // Dhan, flat per executed F&O order (backend paper_charges.py)
 import { ENDING, MOMENTUM_BOOKS, SECTIONS, inSection, whosOfInfo, type SectionId, type StrategyInfo } from '../catalog';
 
@@ -17,13 +18,14 @@ export interface Money {
   net: number; // booked + running
   brokerage: number; // ₹20 per executed order (Dhan); stock delivery trades have none
   taxes: number; // STT, exchange fees, GST, SEBI, stamp duty
+  slippage: number; // estimate for real orders: 0.5 % of each fill (as in the backtests), not taken out of net (owner 9-Nov-2026)
   trades: number; // closed trades (a sold leg counts as one)
   won: number;
   lost: number;
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
-const empty = (capital: number): Money => ({ capital, inUse: 0, booked: 0, running: 0, net: 0, brokerage: 0, taxes: 0, trades: 0, won: 0, lost: 0 });
+const empty = (capital: number): Money => ({ capital, inUse: 0, booked: 0, running: 0, net: 0, brokerage: 0, taxes: 0, slippage: 0, trades: 0, won: 0, lost: 0 });
 
 /** Return on the capital set aside, in %. */
 export const returnPct = (m: Pick<Money, 'net' | 'capital'>) => (m.capital ? r2((m.net / m.capital) * 100) : null);
@@ -39,6 +41,7 @@ export function moneyOf(whos: string[], capital: number, closed: JTrade[], openR
     const brk = Math.min(ch, 2 * BROKERAGE_PER_ORDER); // entry + exit order
     m.brokerage += brk;
     m.taxes += ch - brk;
+    m.slippage += SLIPPAGE * ((t.entryPrice ?? 0) + (t.exitPrice ?? 0)) * (t.qty ?? 0);
     m.trades += 1;
     if (t.netPnl > 0) m.won += 1; else m.lost += 1;
   }
@@ -48,7 +51,7 @@ export function moneyOf(whos: string[], capital: number, closed: JTrade[], openR
     m.inUse += r.capital ?? 0;
   }
   m.booked = r2(m.booked); m.running = r2(m.running); m.net = r2(m.booked + m.running);
-  m.brokerage = r2(m.brokerage); m.taxes = r2(m.taxes); m.inUse = r2(m.inUse);
+  m.brokerage = r2(m.brokerage); m.taxes = r2(m.taxes); m.slippage = r2(m.slippage); m.inUse = r2(m.inUse);
   return m;
 }
 
@@ -63,7 +66,7 @@ export function moneyOfMomentum(key: string, s: MomState | undefined): Money {
   const booked = r2(sells.reduce((a, t) => a + (t.pnl ?? 0), 0));
   const inUse = r2(b.holdings.reduce((a, h) => a + h.value, 0));
   return {
-    capital: b.capital || cap, inUse, booked, running: r2(b.pnl - booked), net: r2(b.pnl), brokerage: 0,
+    capital: b.capital || cap, inUse, booked, running: r2(b.pnl - booked), net: r2(b.pnl), brokerage: 0, slippage: 0,
     taxes: r2(b.trades.reduce((a, t) => a + (t.charges ?? 0), 0)), trades: sells.length,
     won: sells.filter((t) => (t.pnl ?? 0) > 0).length, lost: sells.filter((t) => (t.pnl ?? 0) <= 0).length,
   };

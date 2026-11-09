@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Rs, lakhs } from './StrategyCards';
 import { returnPct, type Money as M } from './logic/capital';
 
+const r0 = (v: number) => Math.round(v);
 const rs = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 
 export function MoneyStrip({ m, title, today, loaded = true, extra }: {
@@ -27,6 +28,7 @@ export function MoneyStrip({ m, title, today, loaded = true, extra }: {
         {loaded ? <span className="sg-fig-big"><Rs v={m.net} /></span> : <span className="sg-fig-big">…</span>}
         <span className={`td-label ${m.net > 0 ? 'up' : m.net < 0 ? 'down' : ''}`}>{pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}% return` : ''}</span>
         <span className="td-label">open <Rs v={m.running} /></span>
+        {m.slippage > 0 && <span className="td-label" title="Real orders fill a little worse than the screen price. Estimate: 0.5% of every buy and sell, as in the backtests.">With real-order slippage ≈ <Rs v={r0(m.net - m.slippage)} /></span>}
       </div>
       {today && (
         <div className={`sg-fig ${mood(today.pnl)}`}>
