@@ -31,7 +31,7 @@ import { useToday } from '../today/useToday';
 import { summarize } from '../today/logic/today';
 import './dashboard.css';
 
-const INDICATORS = [
+export const INDICATORS = [
   ['supertrend', `SuperTrend ${ST_PERIOD},${ST_FACTOR}`], ['bollinger', `Bollinger ${BB_PERIOD}`], ['ema', `EMA ${EMA_PERIOD}`],
   ['vwap', 'VWAP'], ['volume', 'Volume'], ['rsi', `RSI ${RSI_PERIOD}`], ['delta', 'Cum. delta (est.)'],
 ] as const;

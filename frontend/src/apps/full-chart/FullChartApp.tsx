@@ -1,62 +1,39 @@
-// Full chart (owner 31-Oct-2026: "the full chart like TradingView, with the tools and indicators"). This is
-// TradingView's free chart widget: its own data, drawing tools and indicators; our rule lines are not on it.
-// Needs internet to s3.tradingview.com. If the widget cannot show an NSE symbol, the button opens TradingView itself.
-import { useEffect, useRef, useState } from 'react';
+// Full chart (owner 31-Oct-2026: "the full chart like TradingView"). 11-Nov-2026: TradingView's free widget does not show
+// NSE indices ("only available on TradingView"), so the owner OK'd our own Dhan chart here: big, live, any index,
+// any candle size, past days, own indicators. TradingView itself stays one click away for drawing tools.
+import { useState } from 'react';
 import { Segmented } from '../../shared/ui';
-import { useTheme } from '../../shared/theme';
+import { ChartPanel } from '../dashboard/ChartPanel';
+import { INDICATORS, useToggles } from '../dashboard/DashboardApp';
+import { useDashboard } from '../dashboard/useDashboard';
+import { useSignals } from '../dashboard/useSignals';
+import '../dashboard/dashboard.css';
 import './full-chart.css';
 
-const SYMBOLS = [{ value: 'NSE:NIFTY', label: 'Nifty' }, { value: 'NSE:BANKNIFTY', label: 'Bank Nifty' }, { value: 'NSE:NIFTY1!', label: 'Nifty futures' }] as const;
-const FRAMES = [{ value: '1', label: '1m' }, { value: '5', label: '5m' }, { value: '15', label: '15m' }, { value: '60', label: '1h' }, { value: 'D', label: 'Day' }] as const;
+const SYMBOLS = [{ value: 'NIFTY', label: 'Nifty' }, { value: 'BANKNIFTY', label: 'Bank Nifty' }] as const;
 type Sym = (typeof SYMBOLS)[number]['value'];
-type Frame = (typeof FRAMES)[number]['value'];
-const SRC = 'https://s3.tradingview.com/tv.js';
-
-declare global { interface Window { TradingView?: { widget: new (o: Record<string, unknown>) => unknown } } }
-
-let loading: Promise<void> | null = null;
-const loadTv = () => loading ??= new Promise<void>((ok, bad) => {
-  const s = document.createElement('script');
-  s.src = SRC;
-  s.async = true;
-  s.onload = () => ok();
-  s.onerror = () => { loading = null; bad(new Error('blocked')); };
-  document.head.appendChild(s);
-});
+const TV: Record<Sym, string> = { NIFTY: 'NSE:NIFTY', BANKNIFTY: 'NSE:BANKNIFTY' };
 
 export default function FullChartApp() {
-  const { mode } = useTheme();
-  const [symbol, setSymbol] = useState<Sym>('NSE:NIFTY');
-  const [frame, setFrame] = useState<Frame>('5');
-  const [failed, setFailed] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let live = true;
-    loadTv().then(() => {
-      if (!live || !box.current || !window.TradingView) return;
-      box.current.innerHTML = '<div id="tv-full" style="height:100%"></div>';
-      new window.TradingView.widget({
-        container_id: 'tv-full', autosize: true, symbol, interval: frame, timezone: 'Asia/Kolkata', theme: mode,
-        style: '1', locale: 'in', allow_symbol_change: true, hide_side_toolbar: false, withdateranges: true, details: true,
-      });
-      setFailed(false);
-    }, () => live && setFailed(true));
-    return () => { live = false; };
-  }, [symbol, frame, mode]);
-
-  const open = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
+  const [symbol, setSymbol] = useState<Sym>('NIFTY');
+  const sig = useSignals(symbol);
+  const d = useDashboard([], { symbol });
+  const toggles = useToggles();
+  const open = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(TV[symbol])}`;
   return (
-    <div className="ds fullchart">
+    <div className="ds db fullchart">
       <div className="fullchart-bar">
         <Segmented label="Index" options={SYMBOLS} value={symbol} onChange={setSymbol} />
-        <Segmented label="Time frame" options={FRAMES} value={frame} onChange={setFrame} />
+        <span className="db-toggles" role="group" aria-label="Indicators">
+          {INDICATORS.map(([k, label]) => (
+            <button key={k} type="button" className={`db-toggle ${toggles.indicators[k] ? 'on' : ''}`} aria-pressed={toggles.indicators[k]}
+              onClick={() => toggles.toggle(k)}>{label}</button>
+          ))}
+        </span>
         <a className="btn ghost" href={open} target="_blank" rel="noreferrer">Open on TradingView ↗</a>
       </div>
-      {failed
-        ? <div className="fullchart-off card">TradingView did not load (no internet?). Use the button above.</div>
-        : <div className="fullchart-box card" ref={box} />}
-      <p className="td-foot">TradingView&apos;s chart and data. Our rule lines are on the strategy pages.</p>
+      <ChartPanel key={symbol} d={d} sig={sig.data} strategy="all" indicators={toggles.indicators} />
+      <p className="td-foot">Live Dhan prices. Tap indicators above to add them. Our rule lines are on the strategy pages.</p>
     </div>
   );
 }
