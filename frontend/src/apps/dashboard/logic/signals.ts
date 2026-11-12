@@ -16,7 +16,7 @@ export interface Check {
 }
 
 export interface RuleResult {
-  rule: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'reboundCall' | 'orbPullback' | 'orbPullback5';
+  rule: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'reboundCall' | 'gapBuy' | 'orbPullback' | 'orbPullback5';
   name: string; // "TREND RULES" | "4 PILLAR RULES" | "SUPERTREND RULES" | "DHARANI RULES"
   setup?: string; // "4 Pillar Rules" | "SuperTrend Rules" | "Dharani Rules" (older trades: "4 Pillar", "SuperTrend Nifty")
   box?: { high: number; low: number } | null; // Box Pullback: the opening box (drawn on the chart)
@@ -105,7 +105,7 @@ export interface Instrument {
 export interface AutoTrade {
   id: string;
   account: AccountKey | 'manual';
-  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'stLadder' | 'reboundCall' | 'orbPullback' | 'orbPullback5'; // the rule that took the trade
+  slot?: 'tradingHub' | 'fourPillar' | 'superTrend' | 'megabull' | 'dharaniV2' | 'stLadder' | 'reboundCall' | 'gapBuy' | 'orbPullback' | 'orbPullback5'; // the rule that took the trade
   setup?: string;
   symbol: string;
   rule: string;
@@ -180,7 +180,7 @@ export interface SignalsState {
     problems: string[]; watcher: { running: boolean; lastRun: string | null; late: boolean };
   };
   context: (ContextRow | null)[];
-  rules: { tradingHub?: RuleResult; fourPillar?: RuleResult; superTrend?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult | null; reboundCall?: RuleResult | null; orbPullback?: RuleResult | null; orbPullback5?: RuleResult | null };
+  rules: { tradingHub?: RuleResult; fourPillar?: RuleResult; superTrend?: RuleResult; megabull?: RuleResult; dharaniV2?: RuleResult | null; reboundCall?: RuleResult | null; gapBuy?: RuleResult | null; orbPullback?: RuleResult | null; orbPullback5?: RuleResult | null };
   trendingOi: ToiRow[];
   oiViews: {
     dhan: OiView | null; sensibull: OiView | null; agreement: 'Agree' | 'Mixed' | null;

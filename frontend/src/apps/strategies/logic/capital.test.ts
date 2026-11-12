@@ -11,10 +11,10 @@ const t = (strategy: string, netPnl: number, charges: number, status: 'open' | '
 const open = (who: string, pnl: number, capital: number) => ({ who, open: true, pnl, capital }) as unknown as TodayRow;
 
 describe('capital split (owner 30-Oct-2026)', () => {
-  it('₹34 lakh in all (owner 5-Nov-2026): buy 3.5 + spare 0.5, sell 11.5, futures 2.5, stocks 15, scalping 1', () => {
+  it('₹34 lakh in all (owner 5-Nov-2026; 12-Nov-2026 the spare 0.5 went to Big Gap Buy): buy 4, sell 11.5, futures 2.5, stocks 15, scalping 1', () => {
     expect([sectionCapital('optionBuy'), sectionCapital('optionSell'), sectionCapital('futures'), sectionCapital('momentum'), sectionCapital('scalping')])
-      .toEqual([350000, 1150000, 250000, 1500000, 100000]);
-    expect(TOTAL_CAPITAL).toBe(3350000);
+      .toEqual([400000, 1150000, 250000, 1500000, 100000]);
+    expect(TOTAL_CAPITAL).toBe(3400000);
     expect(PLAN_CAPITAL).toBe(3400000);
     expect(ENDING_CAPITAL).toBe(250000); // the 2-month strangle, shown apart until 29 Dec
   });
@@ -41,6 +41,6 @@ describe('money of a strategy', () => {
     expect(moneyOfMomentum('momSwitch', st)).toMatchObject({ capital: 500000, net: 0 });
   });
   it('all sections', () => {
-    expect(allSections([], [], undefined).map((x) => x.total.capital)).toEqual([350000, 1150000, 250000, 1500000, 100000]);
+    expect(allSections([], [], undefined).map((x) => x.total.capital)).toEqual([400000, 1150000, 250000, 1500000, 100000]);
   });
 });

@@ -43,15 +43,16 @@ OB, OBK = "orbPullback", "orb"  # Box Pullback 15/5 (sig_orb.py) and its own Rs 
 OB5, OBK5 = "orbPullback5", "orb5"  # Box Pullback 5/1, its own Rs 1 lakh book (owner, 29-Oct-2026)
 # SuperTrend Ladder (owner 2-Nov-2026): the SuperTrend Breakout signal, 6 lots on its own book, sold 2 + 2 + 2 in steps
 LD, LDK = "stLadder", "ladder"
+GB, GBK = "gapBuy", "gap"  # Big Gap Buy (sig_gap.py), Bank Nifty, its own Rs 50,000 book (owner, 12-Nov-2026)
 ACCOUNT_NAMES = {TH: "Trend", MB: "MegaBull", DH: "SuperTrend Breakout", RBK: "Rebound Call book", OBK: "Box Pullback 15/5 book",
-                 OBK5: "Box Pullback 5/1 book", LDK: "SuperTrend Ladder",
+                 OBK5: "Box Pullback 5/1 book", LDK: "SuperTrend Ladder", GBK: "Big Gap Buy book",
                  MANUAL: "Paper Trading (manual)"}
 # rule (sig_rules result "rule") -> account (owner, 25-Oct-2026): MegaBull = the strict rules (4 Pillar Rules,
 # SuperTrend Rules); the app's paper trading = one Rs 1 lakh account per strategy (Trend Rules, Dharani Rules). A rule is
 # also a "slot": one open position per slot per index. MB as a slot = trades saved before the 4 Pillar / SuperTrend split.
-RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK, OB: OBK, OB5: OBK5, LD: LDK}
-ACCOUNT_CFG = {RBK: RB, OBK: OB, OBK5: OB5, LDK: LD}  # autopaper.json section per account when it is not the account key (default: the account key)
-APP = {TH, DH, RBK, OBK, OBK5, LDK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
+RULE_ACCOUNT = {TH: TH, FP: MB, STR: MB, D2: DH, MB: MB, RB: RBK, OB: OBK, OB5: OBK5, LD: LDK, GB: GBK}
+ACCOUNT_CFG = {RBK: RB, OBK: OB, OBK5: OB5, LDK: LD, GBK: GB}  # autopaper.json section per account when it is not the account key (default: the account key)
+APP = {TH, DH, RBK, OBK, OBK5, LDK, GBK, MANUAL}  # accounts inside the app (live Dhan prices, fills on the order book); MegaBull is outside
 
 
 def _entry_rsi(state, side):
@@ -458,6 +459,8 @@ class AutoTrader:
             return "Dharani v2 is off (config dharaniV2.enabled)"
         if slot == RB and not self.cfg.get(RB, {}).get("enabled", False):
             return "Rebound Call is off (config reboundCall.enabled)"
+        if slot == GB and not self.cfg.get(GB, {}).get("enabled", False):
+            return "Big Gap Buy is off (config gapBuy.enabled)"
         if slot in (OB, OB5) and not self.cfg.get(slot, {}).get("enabled", False):
             return f"Box Pullback is off (config {slot}.enabled)"
         if slot in self.cfg.get("watchOnly", []):  # owner 28-Oct-2026: signal is shadow-logged, no paper trade
@@ -541,6 +544,8 @@ class AutoTrader:
                 "checkStates": {c["id"]: c["state"] for c in result["checks"]},
                 "context": result.get("context"),
             }
+            if cfg.get("maxHoldMin"):  # Big Gap Buy: out after this many minutes (owner 12-Nov-2026: 60, as the backtest)
+                trade["exitBy"] = (self.clock() + timedelta(minutes=int(cfg["maxHoldMin"]))).strftime("%H:%M:%S")
             if result.get("ladder"):  # sell steps: [{atPct, sellLots, stopToPct}], the rest rides the SuperTrend exit
                 trade["ladder"] = {"steps": cfg.get("steps", []), "next": 0, "lotsTotal": lots, "qtyTotal": qty,
                                    "partials": [], "stopIds": []}
@@ -872,6 +877,9 @@ class AutoTrader:
                 continue
             if now.time() >= cutoff:
                 threading.Thread(target=self._exit, args=(t, "Time"), daemon=True).start()
+                continue
+            if t.get("exitBy") and now.strftime("%H:%M:%S") >= t["exitBy"]:
+                threading.Thread(target=self._exit, args=(t, "Time (60 min)"), daemon=True).start()
                 continue
             try:
                 ltp = acc.ltp(t["instrument"])

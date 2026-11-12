@@ -577,3 +577,31 @@ def test_ladder_config_keeps_room_after_each_sale():
     cfg = json.loads((pathlib.Path(__file__).parent / "autopaper.json").read_text())["stLadder"]
     assert [(s["atPct"], s["stopToPct"]) for s in cfg["steps"]] == [(20, 10), (50, 20)]
     assert all(s["stopToPct"] < s["atPct"] for s in cfg["steps"])
+
+
+class FakeGapBook(FakeAccount):
+    key = "gap"
+
+
+def test_big_gap_buy_exits_after_60_minutes(tmp_path):
+    """Owner 12-Nov-2026: Big Gap Buy on its own 'gap' book, stop -20 %, target +80 %, out after 60 minutes."""
+    clock = Clock()
+    gb = FakeGapBook()
+    cfg = {**CFG, "logDir": str(tmp_path),
+           "gapBuy": {"enabled": True, "symbols": ["BANKNIFTY"], "lots": 1, "stopPct": 20, "targetPct": 80, "maxHoldMin": 60}}
+    t = AutoTrader(cfg, [gb], clock=clock, alert=lambda k, m: None, state_path=os.path.join(str(tmp_path), "state.json"))
+    t.set_auto(True)
+    clock.set("09:16")
+    r = {**GO, "rule": "gapBuy", "name": "BIG GAP BUY", "setup": "Big Gap Buy", "side": "CE"}
+    assert t.on_signal(r, STATE) == "Entry sent"
+    wait_idle(t)
+    tr = t.state["trades"][0]
+    assert tr["account"] == "gap" and tr["stop"] == 80.0 and tr["target"] == 180.0 and tr["exitBy"] == "10:16:00"
+    clock.set("10:15")
+    t.tick()
+    wait_idle(t)
+    assert tr["status"] == "open"
+    clock.set("10:16")
+    t.tick()
+    wait_idle(t)
+    assert t.state["trades"][0]["exitReason"] == "Time (60 min)"

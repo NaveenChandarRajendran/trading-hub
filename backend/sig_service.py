@@ -39,6 +39,7 @@ from sig_market import build_state
 from sig_oi import trending_view, votes
 from sig_dharani_v2 import INTERVAL as D2_INTERVAL, build_state_v2, dharani_v2_rule
 from sig_rebound import RULE as RB, SYMBOLS as RB_SYMBOLS, build_state_rebound, rebound_rule
+from sig_gap import RULE as GB, SYMBOLS as GB_SYMBOLS, build_state_gap, gap_rule
 from sig_orb import SYMBOLS as OB_SYMBOLS, VARIANTS as OB_VARIANTS, build_state_orb, orb_rule
 from sig_rules import EXPIRY_GATES, PASS, four_pillar_rule, supertrend_rule, trading_hub_rule
 
@@ -151,6 +152,7 @@ class SignalService:
         self._key_alert_day = None
         self._orb_day = {}  # (rule, symbol) -> date of the day's Box Pullback signal (one a day, as the backtest)
         self._orb_later = set()  # (rule, symbol, signal epoch) of later Box Pullback signals already shadow-logged
+        self._gap_day = {}  # symbol -> date of the day's Big Gap Buy signal (one a day)
         self._rebound_day = {}  # symbol -> date of the day's first Rebound Call signal (one a day, as the backtest)
         self._stop = threading.Event()
         self._thread = None
@@ -194,6 +196,8 @@ class SignalService:
                 results[RB] = prev.get(RB) or self._reading(symbol, now, RB)
             for ob in self.orb_rules():  # evaluated every minute by run_orb: keep its last result
                 results[ob] = prev.get(ob) or self._reading(symbol, now, ob)
+            if symbol in self.gap_symbols():  # evaluated 09:16-09:18 by run_gap: keep its last result
+                results[GB] = prev.get(GB) or self._reading(symbol, now, GB)
         rec = {"at": time.time(), "time": now.strftime("%H:%M:%S"), "state": state, "results": results,
                "problems": problems + v2_problems, "source": source, "v2": v2}
         with self.lock:
@@ -206,6 +210,12 @@ class SignalService:
         """The checklist of a watcher-run rule (Rebound Call, Box Pullback) when the watcher has no result yet, e.g. after a
         restart or after the close (owner 30-Oct-2026: the Rebound card said "No reading yet"). Reading only: never trades."""
         try:
+            if rule == GB:
+                st, _ = build_state_gap(symbol, now, self.src)
+                if not st:
+                    return None
+                st["tradedToday"] = self._gap_day.get(symbol) == now.date()
+                return gap_rule(st)
             if rule == RB:
                 st, _ = build_state_rebound(symbol, now, self.src)
                 if not st:
@@ -248,6 +258,36 @@ class SignalService:
         except Exception as e:
             log.exception("dharani v2 state")
             return None, [f"{symbol} Dharani v2: {e}"]
+
+    def gap_symbols(self):
+        c = self.cfg.get(GB, {})
+        return [x for x in c.get("symbols", list(GB_SYMBOLS)) if x in GB_SYMBOLS] if c.get("enabled", False) else []
+
+    def run_gap(self):
+        """Big Gap Buy (owner 12-Nov-2026), 09:16-09:18: the 09:15 candle after a 0.6 % gap. Exits: premium stop / target,
+        60 minutes (autopaper.json gapBuy) or the 15:14 time exit."""
+        now = self.clock()
+        for symbol in self.gap_symbols():
+            try:
+                st, problems = build_state_gap(symbol, now, self.src, max_age=10)
+            except Exception:
+                log.exception("gap state")
+                continue
+            if not st:
+                continue
+            today = now.date()
+            st["tradedToday"] = self._gap_day.get(symbol) == today
+            r = gap_rule(st)
+            with self.lock:
+                rec = self.last.get(symbol)
+                if rec and rec.get("results") is not None:
+                    rec["results"][GB] = r
+            if r["grade"] and not st["tradedToday"]:
+                self._gap_day[symbol] = today
+                if self.trader and r["go"]:
+                    why = self.trader.on_signal(r, st)
+                    if why != "Entry sent" and not st["positions"].get(GB):
+                        self.trader.add_skip(r, st, "-", f"GO, not sent: {why or 'account not available'}")
 
     def orb_rules(self):
         return [k for k in OB_VARIANTS if self.cfg.get(k, {}).get("enabled", False)]
@@ -780,7 +820,8 @@ class SignalService:
         lines = [f"Auto paper summary {self.clock():%d %b %Y}"]
         for key, name in (("tradingHub", "Trend Rules (app paper, Rs 1 lakh)"), ("fourPillar", "4 Pillar Rules (MegaBull)"),
                           ("superTrend", "SuperTrend Rules (MegaBull)"), ("dharaniV2", "SuperTrend Breakout (app paper, Rs 1 lakh)"), ("stLadder", "SuperTrend Ladder (app paper, 6 lots)"),
-                          (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)")):
+                          (RB, "Rebound Call (app paper, Rs 1 lakh)"), ("orbPullback", "Box Pullback 15/5 (app paper, Rs 1 lakh)"),
+                          (GB, "Big Gap Buy (app paper, Rs 50,000)")):
             ts = [t for t in trades if (t.get("slot") or t["account"]) == key]
             net = sum(t.get("netPnl") or 0 for t in ts)
             lines.append(f"{name}: {len(ts)} trades, net Rs {net:,.2f}")
@@ -836,7 +877,8 @@ class SignalService:
         delay = timedelta(seconds=self.cfg.get("evaluateAfterCloseSeconds", 35))
         nxt = now.replace(second=0, microsecond=0) + delay
         while nxt <= now or not (nxt.minute % 5 == 0 or (self.v2_symbols() and nxt.minute % D2_INTERVAL == 0)
-                                 or self.orb_symbols()):  # Box Pullback runs every minute
+                                 or self.orb_symbols() or (self.gap_symbols() and (nxt.hour, nxt.minute) in ((9, 16), (9, 17), (9, 18)))):
+            # Box Pullback runs every minute; Big Gap Buy at 09:16-09:18
             nxt += timedelta(minutes=1)
         return nxt
 
@@ -861,6 +903,8 @@ class SignalService:
                         self.run_v2()
                     if self.orb_symbols():
                         self.run_orb()
+                    if self.gap_symbols() and hm in ((9, 16), (9, 17), (9, 18)):
+                        self.run_gap()
                     crashes = 0
                     self._hourly(now)
                 self._end_of_day(now)

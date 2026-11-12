@@ -45,6 +45,7 @@ export const BOOKS: BookInfo[] = [
   { key: 'dharani', name: 'SuperTrend Breakout', size: 150000 },
   { key: 'ladder', name: 'SuperTrend Ladder', size: 150000 },
   { key: 'rebound', name: 'Rebound Call', size: 50000 },
+  { key: 'gap', name: 'Big Gap Buy', size: 50000 },
   { key: 'selling', name: 'Selling', size: 1150000 },
   { key: 'futures', name: 'Fear + Calendar', size: 250000 },
   { key: 'orb', name: 'Box Pullback 15/5', size: 100000 },
@@ -67,6 +68,12 @@ export const STRATEGIES: StrategyInfo[] = [
     who: 'Rebound Call', name: 'Rebound Call', section: 'optionBuy', ruleKey: 'reboundCall', book: 'rebound', indices: ['BANKNIFTY'],
     how: 'Bank Nifty 5-minute: after a deep fall below EMA 200, buys a call when price bounces back near VWAP.',
     exits: 'Stop −25% · target +50% · 3:14 PM time exit',
+    capital: 50000,
+  },
+  {
+    who: 'Big Gap Buy', name: 'Big Gap Buy', section: 'optionBuy', ruleKey: 'gapBuy', book: 'gap', indices: ['BANKNIFTY'],
+    how: 'Bank Nifty only, once at 9:16: when it opens 0.6% or more away from yesterday\'s close and the first 1-minute candle closes beyond yesterday\'s high (call) or low (put).',
+    exits: 'Stop −20% · target +80% · out after 60 minutes',
     capital: 50000,
   },
   {
@@ -146,8 +153,8 @@ export const strategyByWho = (who: string) => STRATEGIES.find((s) => whosOfInfo(
 export const sectionCapital = (id: SectionId) =>
   id === 'momentum' ? MOMENTUM_BOOKS.reduce((a, b) => a + b.capital, 0) : inSection(id).filter((s) => !s.endsOn).reduce((a, s) => a + s.capital, 0);
 export const TOTAL_CAPITAL = SECTIONS.reduce((a, s) => a + sectionCapital(s.id), 0);
-/** Kept aside for future tests (owner 2-Nov-2026). */
-export const SPARE_CAPITAL = 50000;
+/** Kept aside for future tests (owner 2-Nov-2026); used by Big Gap Buy from 13-Nov-2026 (owner 12-Nov-2026). */
+export const SPARE_CAPITAL = 0;
 /** ₹34 lakh from 6-Nov-2026 (owner 5-Nov-2026). */
 export const PLAN_CAPITAL = TOTAL_CAPITAL + SPARE_CAPITAL;
 /** Strategies being wound down, outside the plan (the 2-month strangle until 29 Dec). */

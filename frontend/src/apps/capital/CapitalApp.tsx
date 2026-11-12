@@ -118,10 +118,10 @@ export default function CapitalApp() {
         <div className="cap-grid">
           <div className="cap-ring">
             <Donut parts={[...secs.map((x, i) => ({ name: x.section.name, v: x.total.capital, color: COLORS[i] })),
-              { name: 'Spare', v: SPARE_CAPITAL, color: SPARE_COLOR }]} />
+              ...(SPARE_CAPITAL ? [{ name: 'Spare', v: SPARE_CAPITAL, color: SPARE_COLOR }] : [])]} />
             <div className="cap-legend">
               {secs.map((x, i) => <span key={x.section.id}><b style={{ background: COLORS[i] }} />{x.section.name} · {share(x.total.capital).toFixed(0)}%</span>)}
-              <span><b style={{ background: SPARE_COLOR }} />Spare for future tests · {lakhs(SPARE_CAPITAL)}</span>
+              {SPARE_CAPITAL > 0 && <span><b style={{ background: SPARE_COLOR }} />Spare for future tests · {lakhs(SPARE_CAPITAL)}</span>}
             </div>
           </div>
           {secs.map((x, i) => <SectionCard key={x.section.id} name={x.section.name} to={x.section.path} m={x.total} lines={x.lines} color={COLORS[i]} />)}

@@ -3,13 +3,14 @@
 import { DEFAULT_INDICATORS, type IndicatorToggles } from '../config/settings';
 import type { AutoStatus, AutoTrade, OiView, RuleResult, TrendingView } from './signals';
 
-export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub' | 'reboundCall' | 'orbPullback' | 'orbPullback5';
+export type StrategyKey = 'fourPillar' | 'superTrend' | 'dharaniV2' | 'tradingHub' | 'reboundCall' | 'gapBuy' | 'orbPullback' | 'orbPullback5';
 export const BOARD: { key: StrategyKey; name: string; account: string; only?: string[] }[] = [
   { key: 'fourPillar', name: '4 Pillar Rules', account: 'MegaBull · Grade A only' },
   { key: 'superTrend', name: 'SuperTrend Rules', account: 'MegaBull · Grade A only' },
   { key: 'dharaniV2', name: 'SuperTrend Breakout', account: 'App · Nifty only · 3-min', only: ['NIFTY'] },
   { key: 'tradingHub', name: 'Trend Rules', account: 'App · ₹1 lakh · Grade A / B' },
   { key: 'reboundCall', name: 'Rebound Call', account: 'App · ₹1 lakh · BankNifty only', only: ['BANKNIFTY'] },
+  { key: 'gapBuy', name: 'Big Gap Buy', account: 'App · ₹50k · BankNifty only · 9:16', only: ['BANKNIFTY'] },
   { key: 'orbPullback', name: 'Box Pullback 15/5', account: 'App · ₹1 lakh · 15-min box, 5-min close' },
 ];
 
@@ -114,6 +115,8 @@ export const CHART_PRESETS: Record<ChartStrategy, ChartPreset> = {
     bb: { period: 20, mult: 2 }, note: 'SuperTrend, VWAP, EMA 20, Bollinger (20, 2), RSI 14, pivot. Trending OI is on the strategy box.' },
   reboundCall: { interval: 5, indicators: { ...OFF, ema: true, vwap: true }, emaPeriod: 200, bb: { period: 20, mult: 2 }, warm: 10, // the rule's 12 sessions
     note: 'EMA 200 and VWAP. Bank Nifty only.' },
+  gapBuy: { interval: 1, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
+    note: 'Bank Nifty 1-minute. The rule looks only at the 9:15 candle against yesterday\'s high, low and close.' },
   orbPullback: { interval: 5, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
     note: 'Solid lines = the 9:15-9:29 box high and low.' },
   orbPullback5: { interval: 1, indicators: { ...OFF }, emaPeriod: 20, bb: { period: 20, mult: 2 },
