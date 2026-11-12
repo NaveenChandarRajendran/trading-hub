@@ -21,16 +21,16 @@ SYMBOL = "NIFTY"
 
 DEFAULTS = {
     # direction (rule 1) and the no-trade filters (rule 2)
-    "toiStrengthMin": 40.0,       # Trending OI |strength %| on the 5-minute rows
+    "toiStrengthMin": 40.0,       # Trending OI |strength %| on its candleMin-minute rows
     "toiDotsMin": 2,              # strength dots (>= 60 % = 3, >= 40 % = 2, >= 20 % = 1)
-    "flipLookbackMin": 30,        # no trade when the 5-minute sentiment changed within this many minutes
+    "flipLookbackMin": 30,        # no trade when the sentiment changed within this many minutes
     "weakDayFrom": "10:30",       # from this time on: no new entries when the day range is below weakDayRangePct
     "weakDayRangePct": 0.4,       # (day high - day low) / spot, %
     "maxVwapDistPct": 0.8,        # |index - VWAP (index terms)| / spot, %
-    "rsiMaxCE": 80.0,             # RSI(14) of 5-minute closes: no CE above, no PE below rsiMinPE
+    "rsiMaxCE": 80.0,             # RSI(14) of the candle closes: no CE above, no PE below rsiMinPE
     "rsiMinPE": 20.0,
     # indicators
-    "candleMin": 5,
+    "candleMin": 3,               # candle timeframe in minutes (3 or 5), 09:15-aligned; Trending OI rows use it too
     "supertrendPeriod": 10,
     "supertrendMult": 3.0,
     "rsiPeriod": 14,

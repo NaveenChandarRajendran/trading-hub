@@ -50,6 +50,8 @@ def check_settings(changes):
                 if v != int(v):
                     raise HTTPException(400, f"{k}: a whole number")
                 v = int(v)
+        if k == "candleMin" and v not in (3, 5):
+            raise HTTPException(400, "candleMin: 3 or 5 (minutes)")
         out[k] = v
     return out
 
@@ -94,7 +96,8 @@ def register(app, svc):
         return {"meta": {**{k: st[k] for k in ("mode", "asOf", "marketOpen", "stale", "halted", "tokenExpired", "expiry",
                                                "futureLtp")},
                          "future": (st.get("future") or {}).get("expiry"), "spot": st["spot"], "funds": st["funds"],
-                         "entryWindow": f"{s['entryFrom']}-{s['entryTo']}", "squareOff": s["squareOff"], "capital": cfg.CAPITAL},
+                         "entryWindow": f"{s['entryFrom']}-{s['entryTo']}", "squareOff": s["squareOff"], "capital": cfg.CAPITAL,
+                         "candleMin": s["candleMin"]},
                 "direction": state.get("direction"), "noTrade": state.get("noTrade"),
                 "indicators": last and {"time": last["start"], "close": last["close"], "supertrend": last["supertrend"],
                                         "stUp": last["st_up"], "vwap": last["vwap"], "vwapFuture": last["vwap_future"],

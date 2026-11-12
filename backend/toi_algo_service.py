@@ -6,7 +6,7 @@ the OI breakout algo and the Paper Trading page), never to Dhan: this module imp
 (test_toi_algo_service.py checks that).
 
 Market data: the paper service's single Dhan feed (paper.listeners): NIFTY index ticks -> 1-minute candles -> closed
-5-minute candles; the VWAP future's Full packets -> its price and per-minute volume; the candidate options' books
+closed candles of the timeframe (setting candleMin, 3 min by default); the VWAP future's Full packets -> its price and per-minute volume; the candidate options' books
 (1 ITM / ATM / 2 ITM for CE and PE around spot, kept subscribed so a market order always has a book). At the start of
 the day (or after a restart / a late start) the index and future 1-minute candles come from Dhan's intraday history,
 so Supertrend, RSI and VWAP are right at once; candles that closed before the algo was running are not traded
@@ -50,7 +50,7 @@ class ToiData:
     """What the algo reads besides the feed (main.py wires it to the tracker, chain cache and Dhan history)."""
     expiries: Callable[[], list]  # NIFTY option expiries, nearest first
     chain: Callable[[str], dict]  # expiry -> {"spot", "oc": {strike: {"ce": leg, "pe": leg}}, "lotSize"} (Dhan legs)
-    trending_rows: Callable[[], list]  # today's 5-minute NIFTY Trending OI rows, newest first (as /api/trending-oi)
+    trending_rows: Callable[[int], list]  # interval -> today's NIFTY Trending OI rows, newest first (as /api/trending-oi)
     intraday: Callable[[], list]  # NIFTY index 1-minute candles, previous session + today
     future_intraday: Callable[[int], list]  # a future's 1-minute candles with volume, previous session + today
     futures: Callable[[], list]  # index futures (instruments.parse_index_futures rows)
@@ -224,15 +224,16 @@ class ToiAlgoService:
             self._record("info", f"Restart: {o['lots']} lots in the state, {held} in the paper account: using {held}", now=now)
             o["lots"] = held
 
-    @staticmethod
-    def _last_closed_end(now):
-        """End of the newest closed 5-minute candle (= start of the one forming); None before 09:20."""
+    def _last_closed_end(self, now):
+        """End of the newest closed candle of the timeframe (= start of the one forming); None before the first one
+        closes (09:18 for 3-minute candles)."""
+        interval = int(self.settings()["candleMin"])
         t = now.astimezone(IST)
-        if t.time() < dtime(9, 20):
+        if t < t.replace(hour=9, minute=15, second=0, microsecond=0) + timedelta(minutes=interval):
             return None
         if t.time() >= dtime(15, 30):
             return t.replace(hour=15, minute=30, second=0, microsecond=0)
-        return bucket_start(t, 5)
+        return bucket_start(t, interval)
 
     # ------------------------------------------------------------ feed
     def on_packet(self, pkt, now):
@@ -360,11 +361,11 @@ class ToiAlgoService:
             self._record("levels", "Levels locked: " + " ".join(f"{k} {L.fmt(lv[k])}" for k in sorted(lv) if lv.get(k)), now=now)
             self._save(now)
 
-    # ------------------------------------------------------------ a closed 5-minute candle
+    # ------------------------------------------------------------ a closed candle
     def indicators(self, end):
-        """Index 5-minute candles up to `end` and the values at the last one: Supertrend, RSI, VWAP (index terms)."""
+        """Index candles of the timeframe up to `end` and the values at the last one: Supertrend, RSI, VWAP (index terms)."""
         mins = [self.minutes[t] for t in sorted(self.minutes) if t < epoch(end)]
-        five = aggregate(mins, 5)
+        five = aggregate(mins, int(self.settings()["candleMin"]))
         if not five:
             return None
         s = self.settings()
@@ -385,7 +386,7 @@ class ToiAlgoService:
         today = today_only(ind["five"], end.date())
         rows = []
         try:
-            rows = list(reversed(self.data.trending_rows() or []))
+            rows = list(reversed(self.data.trending_rows(int(s["candleMin"])) or []))
         except Exception as e:
             self._error("Trending OI", e)
         o = self.state.get("open")

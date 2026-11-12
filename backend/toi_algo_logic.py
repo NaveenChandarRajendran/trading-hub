@@ -1,6 +1,6 @@
 """
 toi_algo_logic.py - the Trending OI Algo's rules (docs/strategies/trending-oi-algo.md) as a state machine. Pure: no
-clock, no I/O, no orders. The runner (toi_algo_service.py) feeds it closed 5-minute index candles and index ticks with
+clock, no I/O, no orders. The runner (toi_algo_service.py) feeds it closed index candles (3 minutes by default) and index ticks with
 their indicator values, and carries out the actions it returns; every decision also comes back as an event for the
 decision log. `s` is the settings dict (trending_oi_algo_config.merged); NIFTY only.
 
@@ -59,7 +59,7 @@ def _ts(row):
 
 # ---------------------------------------------------------------- rule 1 / 2: direction, no-trade filters
 def direction(rows, now, s):
-    """rows: today's 5-minute Trending OI rows (calc.py), oldest first. Returns {"side": "CE" | "PE" | None,
+    """rows: today's Trending OI rows (calc.py) of the candle timeframe, oldest first. Returns {"side": "CE" | "PE" | None,
     "sentiment", "strength", "dots", "flipAt": "HH:MM" | None, "reason": "" | why there is no direction}."""
     if not rows:
         return {"side": None, "sentiment": None, "strength": None, "dots": 0, "flipAt": None, "reason": "no Trending OI data yet"}
@@ -145,7 +145,7 @@ def choose_strike(strikes, spot, side, why_not, fallback=("ATM", "2ITM")):
 
 # ---------------------------------------------------------------- the candle step
 def on_candle(state, c, s):
-    """A closed 5-minute candle. c: {now (candle close, IST), candle, spot (= close), st {"value", "up"} | None,
+    """A closed candle. c: {now (candle close, IST), candle, spot (= close), st {"value", "up"} | None,
     vwap (index terms) | None, rsi | None, rows (today's Trending OI rows), dayLow, dayHigh, dayPnl, capital,
     stale (feed stale: no entries)}. Returns events and actions."""
     out = []

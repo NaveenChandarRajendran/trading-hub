@@ -66,7 +66,7 @@ export default function TrendingOiAlgoApp() {
             <Pill tone={mode === 'paper' ? 'accent' : mode === 'signals' ? 'warn' : 'neutral'}>
               {mode === 'paper' ? 'PAPER' : mode === 'signals' ? 'SIGNALS ONLY' : mode === 'off' ? 'OFF' : '…'}
             </Pill>
-            <span className="muted">Trending OI Algo · NIFTY · own account ₹{inr(0)(status?.meta.capital ?? 500000)} · no real orders</span>
+            <span className="muted">Trending OI Algo · NIFTY · {status ? `${status.meta.candleMin}-min candles` : ''} · own account ₹{inr(0)(status?.meta.capital ?? 500000)} · no real orders</span>
           </div>
           <div className="toolbar-end">
             <Status kind={RUN_KIND[run]}>{run}</Status>
@@ -121,7 +121,7 @@ function Today({ status, error }: { status: ToiStatus | null; error: unknown }) 
 
       <section className="card">
         <div className="card-head"><h3 className="card-title">Today's direction & market</h3>
-          <span className="muted">{ind ? `as of the ${new Date(ind.time * 1000 + 300000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })} candle close` : 'no closed candle yet'}</span></div>
+          <span className="muted">{ind ? `as of the ${new Date(ind.time * 1000 + meta.candleMin * 60000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })} candle close` : 'no closed candle yet'}</span></div>
         <div className="toi-market">
           <div><span className="muted">Trending OI</span><span><Pill tone={dir.tone}>{dir.text}</Pill> <span className="toi-dots">{dir.dots}</span>
             {status.direction?.flipAt && <span className="muted"> · last flip {status.direction.flipAt}</span>}</span></div>

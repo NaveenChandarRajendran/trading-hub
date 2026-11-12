@@ -63,6 +63,6 @@ def test_records_restart_and_the_strategy_card_on_postgres(pg):
     again.tick(clock.now)
     assert again.state["open"]["securityId"] == sid(23200, "CE") and again.state["trades"] == 1
     svc.set_settings({"maxTrades": 1}, who="naveen")
-    assert toi.settings() == {"maxTrades": 1} and toi.events(DAY)[-1]["details"]["old"] == 2
+    assert toi.settings()["maxTrades"] == 1 and toi.events(DAY)[-1]["details"]["old"] == 2
     row = again.write_summary()
     assert toi.summaries(DAY, DAY)[0]["trades"] == row["trades"] == 1

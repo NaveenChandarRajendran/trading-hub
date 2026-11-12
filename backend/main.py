@@ -234,8 +234,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         from toi_algo_service import ToiAlgoService, ToiData
         from toi_algo_store import PgToiStore
 
-        def toi_trending():
-            return trending_oi_body("NIFTY", get_expiries("NIFTY")[0], 5)["rows"]  # newest first
+        def toi_trending(interval):
+            return trending_oi_body("NIFTY", get_expiries("NIFTY")[0], interval)["rows"]  # newest first
 
         def toi_history(future_id=None):
             sessions = recent_sessions(datetime.now(IST).date())

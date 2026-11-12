@@ -27,7 +27,7 @@ export interface Funds { capital: number; realized: number; charges: number; unr
 export interface ToiStatus {
   meta: { mode: 'paper' | 'signals' | 'off'; asOf: string; marketOpen: boolean; stale: boolean; halted: boolean; tokenExpired: boolean;
     expiry: string | null; future: string | null; futureLtp: number | null; spot: number | null; funds: Funds | null;
-    entryWindow: string; squareOff: string; capital: number };
+    entryWindow: string; squareOff: string; capital: number; candleMin: number };
   direction: Direction | null;
   noTrade: string | null;
   indicators: Indicators | null;

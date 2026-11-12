@@ -4,7 +4,7 @@ import { changedSettings, directionText, filterLog, runState } from './view';
 
 const status = (meta: Partial<ToiStatus['meta']>): ToiStatus => ({
   meta: { mode: 'paper', asOf: '', marketOpen: true, stale: false, halted: false, tokenExpired: false, expiry: null, future: null,
-    futureLtp: null, spot: null, funds: null, entryWindow: '09:45-14:30', squareOff: '15:15', capital: 500000, ...meta },
+    futureLtp: null, spot: null, funds: null, entryWindow: '09:45-14:30', squareOff: '15:15', capital: 500000, candleMin: 3, ...meta },
   direction: null, noTrade: null, indicators: null, levels: null, levelsAt: null, open: null, trades: [], tradesToday: 0, stopped: [],
 });
 

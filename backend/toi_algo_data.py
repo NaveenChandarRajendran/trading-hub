@@ -4,7 +4,7 @@ toi_algo_data.py - which contracts and candles the Trending OI Algo uses. Pure.
 - Option expiry: the nearest weekly NIFTY expiry from today; on an expiry day the next one.
 - VWAP future: the current-month NIFTY future; from the Monday of its expiry week, the next month's (its volume and
   price take over before the current one expires).
-- Candles: 5-minute index candles (candles.aggregate of the 1-minute ones, 09:15-aligned); a candle is used only once
+- Candles: index candles of the timeframe (3 minutes by default; candles.aggregate of the 1-minute ones, 09:15-aligned); a candle is used only once
   closed. Day high / low so far come from today's candles.
 """
 from datetime import date, datetime, timedelta

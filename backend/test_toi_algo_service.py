@@ -62,6 +62,7 @@ class Market:
     def __init__(self):
         self.dead = set()  # (strike, side) with no trades today
         self.rows = [{"ts": f"{DAY} 09:30", "sentiment": "Bullish", "strengthPct": 64.0}]
+        self.asked = []  # Trending OI intervals the algo asked for
 
     def chain(self, expiry):
         def leg(k, side):
@@ -86,9 +87,12 @@ def env():
 
 
 def make(store, toi, paper, market, clock, mode="paper"):
-    data = ToiData(expiries=lambda: [EXP, "2026-11-24"], chain=market.chain, trending_rows=lambda: list(reversed(market.rows)),
+    data = ToiData(expiries=lambda: [EXP, "2026-11-24"], chain=market.chain,
+                   trending_rows=lambda interval: market.asked.append(interval) or list(reversed(market.rows)),
                    intraday=lambda: [], future_intraday=lambda s: [], futures=lambda: [{"securityId": FUT, "symbol": "NIFTY", "expiry": "2026-11-24"}],
                    levels=lambda day: dict(LEVELS), token_expired=lambda: False)
+    if "candleMin" not in toi.settings():
+        toi.save_settings({**toi.settings(), "candleMin": 5}, clock())  # these scenarios are written in 5-minute candles
     svc = ToiAlgoService(store, toi, paper, Instruments(), data, clock, mode=mode)
     real = ToiAlgoService.indicators
 
@@ -369,3 +373,27 @@ def test_routes_are_only_for_the_owner(env):
     c = client(svc, User(2, "wife", "Wife"))
     assert c.get("/api/toi-algo/status").status_code == 404
     assert c.post("/api/toi-algo/stop-exit-all").status_code == 404
+
+
+def test_three_minute_candles_by_default(env):
+    """The default timeframe: 3-minute candles 09:15-aligned (09:15-09:18, 09:18-09:21 ...), each evaluated once,
+    Trending OI asked for 3-minute rows."""
+    _svc, paper, clock, store, _toi, market = env
+    paper.listeners.remove(_svc.on_packet)
+    toi = MemoryToiStore()
+    toi.save_settings({"candleMin": 3}, clock())
+    svc = make(store, toi, paper, market, clock)
+    assert svc.settings()["candleMin"] == 3
+    assert svc._last_closed_end(at("09:17", 59)) is None and svc._last_closed_end(at("09:18", 5)) == at("09:18")
+    assert svc._last_closed_end(at("10:04")) == at("10:03")
+    clock.now = at("09:15", 5)
+    svc.tick(clock.now)
+    for i, px in enumerate((23220, 23230, 23210)):  # 09:15, 09:16, 09:17
+        index(paper, clock, at(f"09:1{5 + i}", 20), px)
+    index(paper, clock, at("09:17", 55), 23225)
+    clock.now = at("09:18", 11)
+    svc.tick(clock.now)
+    svc.tick(at("09:18", 40))  # same candle: not evaluated twice
+    (row,) = toi.candles(DAY)
+    assert row["start"] == int(at("09:15").timestamp()) and (row["open"], row["high"], row["low"], row["close"]) == (23220, 23230, 23210, 23225)
+    assert market.asked == [3]

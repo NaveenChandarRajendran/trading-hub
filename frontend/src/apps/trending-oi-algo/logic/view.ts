@@ -53,7 +53,7 @@ export const SETTING_GROUPS: { title: string; keys: [string, string][] }[] = [
   { title: 'Adds', keys: [['avgAddLots', 'Averaging adds (lots)'], ['avgMaxLots', 'Averaging up to (lots)'], ['pyrAddLots', 'Pyramiding adds (lots)'],
     ['pyrMaxLots', 'Pyramiding up to (lots)'], ['maxLots', 'Never more than (lots)'], ['addRiskMax', 'Risk guard (₹)'], ['deltaFallback', 'Delta without chain data']] },
   { title: 'Exits & indicators', keys: [['partialMinPts', 'Partial level at least (pts)'], ['breakevenAtR', 'Breakeven at (R) without levels'],
-    ['squareOff', 'Square-off'], ['supertrendPeriod', 'Supertrend period'], ['supertrendMult', 'Supertrend factor'], ['rsiPeriod', 'RSI period']] },
+    ['squareOff', 'Square-off'], ['candleMin', 'Candle timeframe (3 or 5 min)'], ['supertrendPeriod', 'Supertrend period'], ['supertrendMult', 'Supertrend factor'], ['rsiPeriod', 'RSI period']] },
 ];
 
 /** The settings changed in a form: typed like their defaults ('' = back to the default). */
