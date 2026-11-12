@@ -118,6 +118,15 @@ market" on Builder legs (numbers and Paper trade blocked), templates move outwar
 30-Oct: option-chain LTP is now the last trade only (`backend/last_trades.py`: Dhan's chain sends the previous close
 for legs with no trade today); "no trades today" strikes are greyed and no market. → LTP = the last trade only.
 
+## Algos hub — in progress 12-Nov-2026 (`feature/algos-hub`, not merged yet)
+Sidebar sections: Trading, Analysis (Live), Analysis (Manual), Planning; one **Algos** entry (Intraday / Positional).
+`#/algos` home (cards with live status, today's / MTD P&L, open position, last event) and `#/algos/:slug/:tab` with tabs
+Overview (the algo's own panel) + shared Rules / Log / Trades / Reports / Settings. Old `#/algo`, `#/trending-oi-algo`
+redirect. Frontend `src/algos/` (registry.ts, routes.ts, AlgosApp.tsx, AlgoTabs.tsx, logic/hub.ts). Rules render
+docs/strategies/<doc>.md with `marked` 12.0.2 (pinned; raw HTML escaped, only http(s)/mailto/relative links).
+Backend `algos_api.py` (/api/algos/*, owner-only, 404 for others) over adapters in `algo_adapters.py`; step 2 has the
+Trending OI adapter. Still to do: OI Breakout adapter + editable settings (step 3), ORB algo (steps 4-5).
+
 ## Trending OI Algo — 12-Nov-2026 (`feature/trending-oi-algo`, ADR 0011)
 Second paper algo on NIFTY: Trending OI direction, pullback to Supertrend(10,3) / futures VWAP, 1-ITM options, adds
 (averaging / pyramiding with a risk guard), partial exits at the locked OI levels, breakeven, Supertrend trail.

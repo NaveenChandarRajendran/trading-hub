@@ -64,5 +64,8 @@ def test_records_restart_and_the_strategy_card_on_postgres(pg):
     assert again.state["open"]["securityId"] == sid(23200, "CE") and again.state["trades"] == 1
     svc.set_settings({"maxTrades": 1}, who="naveen")
     assert toi.settings()["maxTrades"] == 1 and toi.events(DAY)[-1]["details"]["old"] == 2
+    (h,) = toi.settings_history()
+    assert h["details"] == {"key": "maxTrades", "old": 2, "new": 1} and "(by naveen)" in h["message"]
+    assert DAY in toi.states_between("2026-11-01", DAY)
     row = again.write_summary()
     assert toi.summaries(DAY, DAY)[0]["trades"] == row["trades"] == 1

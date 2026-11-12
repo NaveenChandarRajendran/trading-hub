@@ -476,6 +476,10 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         import toi_algo_api
         toi_algo_api.register(app, toi)
         app.state.toi_algo = toi
+    if algo or toi:  # the Algos hub: one API shape over every algo (algos_api.py, adapters in algo_adapters.py)
+        import algo_adapters
+        import algos_api
+        algos_api.register(app, {**({"trending-oi": algo_adapters.ToiAdapter(toi)} if toi else {})})
     if scalper:
         scalper_api.register(app, scalper, strategies)
         app.state.scalper = scalper

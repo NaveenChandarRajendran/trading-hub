@@ -13,3 +13,50 @@
 .ds .algos-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ds .algos-card-head { display: flex; align-items: center; gap: var(--sp-2); }
 .ds .algos-small { font-size: var(--fs-sm); }
+.ds .algos-warn { color: var(--warn); font-size: var(--fs-sm); }
+.ds .algos-card-head .toolbar-end { margin-left: auto; }
+.ds .algos-card-nums { display: flex; gap: var(--sp-4); }
+.ds .algos-last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds .algos-scroll { overflow-x: auto; }
+/* header status bar + kill switch */
+.ds .algos-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); }
+.ds .algos-statusbar .alert { flex-basis: 100%; }
+.ds .algos-open { color: var(--text); }
+.ds .algos-kill { display: inline-flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+/* Log */
+.ds .algos-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+.ds .algos-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: var(--r-lg);
+  padding: 2px var(--sp-2); font-size: var(--fs-xs); cursor: pointer; }
+.ds .algos-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ds .algos-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ds table.t.algos-log td { vertical-align: top; }
+.ds table.t.algos-table th, .ds table.t.algos-table td { text-align: left; }
+.ds table.t.algos-table th.num, .ds table.t.algos-table td.num { text-align: right; white-space: nowrap; }
+.ds table.t td.algos-msg, .ds table.t td.algos-note { white-space: normal; min-width: 280px; }
+.ds .algos-pager { margin-top: var(--sp-2); }
+/* Rules (Markdown) */
+.ds .algos-doc { max-width: 920px; line-height: 1.55; color: var(--text); font-size: var(--fs-md); }
+.ds .algos-doc h1 { font-size: var(--fs-xl); margin: var(--sp-2) 0 var(--sp-3); }
+.ds .algos-doc h1, .ds .algos-doc h2, .ds .algos-doc h3 { color: var(--text); text-transform: none; letter-spacing: normal; font-weight: 600; }
+.ds .algos-doc h2 { font-size: var(--fs-lg); margin: var(--sp-5) 0 var(--sp-2); padding-bottom: var(--sp-1); border-bottom: 1px solid var(--border); }
+.ds .algos-doc h3 { font-size: var(--fs-md); margin: var(--sp-4) 0 var(--sp-2); }
+.ds .algos-doc p, .ds .algos-doc ul, .ds .algos-doc ol { margin: 0 0 var(--sp-3); }
+.ds .algos-doc li { margin: 2px 0; }
+.ds .algos-doc a { color: var(--accent); }
+.ds .algos-doc code { font-family: var(--font-mono); font-size: var(--fs-sm); background: var(--surface-2); padding: 1px 4px; border-radius: var(--r-sm); }
+.ds .algos-doc pre { background: var(--surface-2); padding: var(--sp-3); border-radius: var(--r-md); overflow-x: auto; }
+.ds .algos-doc pre code { padding: 0; background: none; }
+.ds .algos-doc table { border-collapse: collapse; margin: 0 0 var(--sp-3); font-size: var(--fs-sm); display: block; overflow-x: auto; }
+.ds .algos-doc th, .ds .algos-doc td { border: 1px solid var(--border); padding: var(--sp-1) var(--sp-2); text-align: left; vertical-align: top; }
+.ds .algos-doc th { background: var(--surface-2); font-weight: 600; }
+.ds .algos-doc blockquote { margin: 0 0 var(--sp-3); padding-left: var(--sp-3); border-left: 3px solid var(--border-strong); color: var(--text-2); }
+/* Settings */
+.ds .algos-settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-2); }
+.ds .algos-settings fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; }
+.ds .algos-settings legend { font-weight: 600; font-size: var(--fs-sm); padding: 0 var(--sp-1); }
+.ds .algos-settings .field { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 2px var(--sp-2); }
+.ds .algos-settings .algos-err { grid-column: 2; color: var(--down); font-size: var(--fs-xs); }
+.ds .algos-changed { color: var(--accent); font-size: var(--fs-xs); }
+.ds .algos-settings input.algos-edited { border-color: var(--accent); }
+.ds .algos-settings input.algos-bad { border-color: var(--down); }

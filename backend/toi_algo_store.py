@@ -25,6 +25,9 @@ class MemoryToiStore:
     def events(self, day):
         return [dict(e) for e in self._events if e["day"] == day]
 
+    def settings_history(self, limit=100):
+        return [dict(e) for e in reversed(self._events) if e["type"] == "settings"][:limit]
+
     def save_state(self, day, state, now):
         self._states[day] = copy.deepcopy(state)
 
@@ -68,6 +71,14 @@ class PgToiStore:
         with self.pg._cursor() as cur:
             cur.execute("SELECT id, trade_date, ts, type, side, message, details FROM toi_algo_events WHERE trade_date=%s "
                         "ORDER BY id", (day,))
+            return [{"id": r[0], "day": _iso(r[1]), "ts": r[2].astimezone(IST).isoformat(), "type": r[3], "side": r[4],
+                     "message": r[5], "details": r[6] or {}} for r in cur.fetchall()]
+
+    def settings_history(self, limit=100):
+        """Settings changes on every day, newest first."""
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT id, trade_date, ts, type, side, message, details FROM toi_algo_events WHERE type='settings' "
+                        "ORDER BY id DESC LIMIT %s", (limit,))
             return [{"id": r[0], "day": _iso(r[1]), "ts": r[2].astimezone(IST).isoformat(), "type": r[3], "side": r[4],
                      "message": r[5], "details": r[6] or {}} for r in cur.fetchall()]
 
