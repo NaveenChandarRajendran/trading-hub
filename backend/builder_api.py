@@ -9,14 +9,20 @@ builder_api.py - Strategy Builder routes (designs only: nothing here places an o
            -> {total, span, exposure, hedgeBenefit} from Dhan's basket margin calculator (cached 30 s per basket);
               502 "margin unavailable" when Dhan can't answer, 401 when the token expired
     GET    /api/builder/positions?strategy=<id>     open positions of the user's own manual strategy, as legs
+    GET    /api/builder/rules                        {"rules": [...]} the signed-in user's saved rules, newest first
+    POST   /api/builder/rules {name, symbol, spec}   -> {"rule"} (spec: builder.rule_spec)
+    PUT    /api/builder/rules/{id} {name?, spec?}    -> {"rule"}  (someone else's: 404)
+    DELETE /api/builder/rules/{id}
+    GET    /api/builder/checks                       the Review step's thresholds (A max loss / profit, B |delta| per
+    PUT    /api/builder/checks {key: value}          unit, C / D % of capital), per user, defaults until changed
 """
 import threading
 import time
 
-from fastapi import HTTPException, Request
+from fastapi import Body, HTTPException, Request
 from pydantic import BaseModel
 
-from builder import Drafts, public_draft
+from builder import Drafts, Rules, check_thresholds, public_draft, public_rule, save_check_thresholds
 from dhan_client import DhanError, TokenExpired
 from instruments import segment_of
 from paper_api import resolve
@@ -38,6 +44,17 @@ class DraftEdit(BaseModel):
     symbol: str | None = None
     multiplier: int | None = None
     legs: list[dict] | None = None
+
+
+class RuleBody(BaseModel):
+    name: str
+    symbol: str
+    spec: dict
+
+
+class RuleEdit(BaseModel):
+    name: str | None = None
+    spec: dict | None = None
 
 
 class MarginLeg(BaseModel):
@@ -79,6 +96,33 @@ def register(app, drafts: Drafts, paper, strategies, margin_multi=None, clock=ti
     def delete(did: str, request: Request):
         run(drafts.delete, request.state.user, did)
         return {"ok": True}
+
+    rules = Rules(drafts.store, drafts.clock)
+
+    @app.get("/api/builder/rules")
+    def list_rules(request: Request):
+        return {"rules": [public_rule(r) for r in rules.list(request.state.user)]}
+
+    @app.post("/api/builder/rules")
+    def create_rule(body: RuleBody, request: Request):
+        return {"rule": public_rule(run(rules.create, request.state.user, body.name, body.symbol, body.spec))}
+
+    @app.put("/api/builder/rules/{rid}")
+    def update_rule(rid: str, body: RuleEdit, request: Request):
+        return {"rule": public_rule(run(rules.update, request.state.user, rid, body.name, body.spec))}
+
+    @app.delete("/api/builder/rules/{rid}")
+    def delete_rule(rid: str, request: Request):
+        run(rules.delete, request.state.user, rid)
+        return {"ok": True}
+
+    @app.get("/api/builder/checks")
+    def get_checks(request: Request):
+        return check_thresholds(drafts.store, request.state.user)
+
+    @app.put("/api/builder/checks")
+    def put_checks(request: Request, body: dict = Body(...)):
+        return run(save_check_thresholds, drafts.store, request.state.user, body)
 
     def segment(security_id):
         """NSE_FNO / BSE_FNO (SENSEX) from Dhan's instrument list; NSE_FNO when unknown."""

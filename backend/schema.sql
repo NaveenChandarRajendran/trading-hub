@@ -568,3 +568,16 @@ CREATE TABLE IF NOT EXISTS orb_algo_daily_summary (  -- one row per setup and da
     updated_at  timestamptz      NOT NULL,
     PRIMARY KEY (trade_date, setup)
 );
+
+-- Strategy Builder rules ("Save as weekly rule", builder.Rules): a template with its numbers, per user; Strategy Lab
+-- runs them later. spec: strikeMode / wingMode / expiryMode and their numbers (builder.rule_spec).
+CREATE TABLE IF NOT EXISTS th_builder_rules (
+    id          serial      PRIMARY KEY,
+    user_id     integer     NOT NULL REFERENCES th_users(id),
+    name        text        NOT NULL,
+    symbol      text        NOT NULL CHECK (symbol IN ('NIFTY', 'BANKNIFTY', 'SENSEX')),
+    spec        jsonb       NOT NULL,
+    created_at  timestamptz NOT NULL,
+    updated_at  timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS th_builder_rules_user ON th_builder_rules (user_id);

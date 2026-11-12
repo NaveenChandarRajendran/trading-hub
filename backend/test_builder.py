@@ -177,3 +177,45 @@ def test_analyze_loads_open_positions_of_your_own_strategy(env):
                           "strike": 25100.0, "type": "CE", "side": "B", "lots": 2, "lotSize": 65, "price": 100.0}]
     assert b.get(f"/api/builder/positions?strategy={st['id']}").status_code == 404  # not hers
     assert a.get("/api/builder/positions").status_code == 400  # pick a strategy
+
+
+# ---------- rules ("Save as weekly rule") and check thresholds ----------
+IC_A = {"template": "iron-condor-a", "strikeMode": "pct", "shortPutPct": -3.73, "shortCallPct": 4.31, "putRound": "down",
+        "callRound": "up", "wingMode": "pct", "wingPct": 1.1, "wingRoundTo": None, "expiryMode": "nextWeekly", "lots": 1,
+        "targetPct": None, "timeExitDays": None, "minCreditPct": 0.053}
+IC_DELTA = {"template": "ic-monthly-delta", "strikeMode": "delta", "deltaTarget": 0.32, "deltaMin": 0.30, "deltaMax": 0.35,
+            "wingMode": "pct", "wingPct": 2.5, "wingRoundTo": 50, "expiryMode": "nextMonthly", "lots": 1, "targetPct": 50,
+            "timeExitDays": 8, "minCreditPct": None}
+
+
+def test_rules_saved_private_validated_and_edited(env):
+    a, b, *_ = env
+    r = a.post("/api/builder/rules", json={"name": "IC A weekly", "symbol": "NIFTY", "spec": IC_A}).json()["rule"]
+    assert r["spec"]["shortCallPct"] == 4.31 and r["spec"]["minCreditPct"] == 0.053 and r["spec"]["timeExitDays"] is None
+    d = a.post("/api/builder/rules", json={"name": "IC monthly delta", "symbol": "NIFTY", "spec": IC_DELTA}).json()["rule"]
+    assert (d["spec"]["deltaTarget"], d["spec"]["wingRoundTo"], d["spec"]["timeExitDays"]) == (0.32, 50.0, 8)
+    assert [x["name"] for x in a.get("/api/builder/rules").json()["rules"]] == ["IC monthly delta", "IC A weekly"]
+    assert b.get("/api/builder/rules").json()["rules"] == []
+    assert b.put(f"/api/builder/rules/{r['id']}", json={"name": "x"}).status_code == 404
+    assert b.delete(f"/api/builder/rules/{r['id']}").status_code == 404
+    e = a.put(f"/api/builder/rules/{r['id']}", json={"spec": {**IC_A, "lots": 2}}).json()["rule"]
+    assert e["spec"]["lots"] == 2 and e["name"] == "IC A weekly"
+    for bad in ({"template": "calendar"}, {"strikeMode": "atm"}, {"shortPutPct": 2}, {"putRound": "sideways"},
+                {"wingMode": "delta"}, {"wingPct": 0}, {"expiryMode": "nextYearly"}, {"lots": 0}, {"lots": 1.5},
+                {"targetPct": 150}, {"minCreditPct": "x"}):
+        res = a.post("/api/builder/rules", json={"name": "bad", "symbol": "NIFTY", "spec": {**IC_A, **bad}})
+        assert res.status_code == 400, bad
+    assert a.post("/api/builder/rules", json={"name": "d", "symbol": "NIFTY",
+                                              "spec": {**IC_DELTA, "deltaMin": 0.33}}).status_code == 400  # min > target
+    assert a.delete(f"/api/builder/rules/{r['id']}").status_code == 200
+    assert [x["name"] for x in a.get("/api/builder/rules").json()["rules"]] == ["IC monthly delta"]
+
+
+def test_check_thresholds_per_user(env):
+    a, b, *_ = env
+    assert a.get("/api/builder/checks").json() == {"maxLossToProfit": 2.0, "maxDeltaPerUnit": 0.1, "maxLossPct": 6.0, "maxCombinedPct": 10.0}
+    assert a.put("/api/builder/checks", json={"maxLossPct": 5, "maxLossToProfit": 1.5}).json()["maxLossPct"] == 5.0
+    assert a.get("/api/builder/checks").json()["maxLossToProfit"] == 1.5
+    assert b.get("/api/builder/checks").json()["maxLossPct"] == 6.0  # someone else's stay the defaults
+    assert a.put("/api/builder/checks", json={"nope": 1}).status_code == 400
+    assert a.put("/api/builder/checks", json={"maxDeltaPerUnit": 5}).status_code == 400

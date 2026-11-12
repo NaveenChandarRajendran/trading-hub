@@ -1,6 +1,7 @@
 // Strategy Builder templates (pure): standard shapes placed around ATM for one expiry. Distances are % of spot, each
 // snapped to the nearest listed strike; wings are always at least one strike beyond their short leg. Iron Condor A /
-// B (Naveen's 95 % / 90 % rules) are added once their written rules arrive (docs/features/strategy-builder.md).
+// B (Naveen's 95 % / 90 % rules) and IC Monthly Delta are rules (rules.ts). The distances can be changed per build
+// (the guided flow's step 2), lots too; the defaults are TEMPLATE_PCT.
 // With a liquidity check, a strike that is untraded or illiquid moves outward (further out of the money: calls up, puts
 // down, sold and bought legs alike) to the nearest liquid one, and each move is noted ("77,200 CE untraded → using
 // 77,300 CE"). Strategy Lab rules will use the same outwardStrike (shared/dhan/liquidity.ts).
@@ -28,8 +29,10 @@ export interface TemplateLiquidity { why: (strike: number, type: 'CE' | 'PE') =>
 const fmt = (k: number) => k.toLocaleString('en-IN');
 
 /** The legs of a template for `expiry`, or [] without strikes / spot. With `liquidity`, strikes are checked (above). */
+export type TemplatePct = typeof TEMPLATE_PCT;
+
 export function buildTemplate(id: TemplateId, strikes: number[], spot: number | null, expiry: string,
-  liquidity?: TemplateLiquidity): BuilderLeg[] {
+  liquidity?: TemplateLiquidity, pct: Partial<TemplatePct> = {}, lots = 1): BuilderLeg[] {
   if (spot == null || !strikes.length) return [];
   const sorted = [...strikes].sort((a, b) => a - b);
   const atm = nearestStrike(sorted, spot)!;
@@ -45,8 +48,8 @@ export function buildTemplate(id: TemplateId, strikes: number[], spot: number | 
       : `${fmt(k)} ${type} ${why} → using ${fmt(to)} ${type}`);
     return to ?? k;
   };
-  const leg = (side: 'B' | 'S', type: 'CE' | 'PE', strike: number) => newLeg(expiry, liquid(strike, type), { side, type });
-  const P = TEMPLATE_PCT;
+  const leg = (side: 'B' | 'S', type: 'CE' | 'PE', strike: number) => newLeg(expiry, liquid(strike, type), { side, type, lots: Math.max(1, lots) });
+  const P = { ...TEMPLATE_PCT, ...pct };
   switch (id) {
     case 'long-straddle': return [leg('B', 'CE', atm), leg('B', 'PE', atm)];
     case 'short-straddle': return [leg('S', 'CE', atm), leg('S', 'PE', atm)];

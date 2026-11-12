@@ -582,6 +582,33 @@ class PaperJsonStore:
         self.d["builder_drafts"] = [d for d in self.d.get("builder_drafts", []) if d["id"] != did]
         self._write()
 
+    # ---- Strategy Builder rules (th_builder_rules, builder.Rules)
+    def add_builder_rule(self, user_id, name, symbol, spec, now):
+        rows = self.d.setdefault("builder_rules", [])
+        r = {"id": max((x["id"] for x in rows), default=0) + 1, "user_id": user_id, "name": name, "symbol": symbol,
+             "spec": spec, "created_at": now.isoformat(), "updated_at": now.isoformat()}
+        rows.append(r)
+        self._write()
+        return json.loads(json.dumps(r))
+
+    def builder_rules(self, user_id):
+        return [json.loads(json.dumps(r)) for r in self.d.get("builder_rules", []) if r["user_id"] == user_id]
+
+    def builder_rule(self, rid):
+        r = next((r for r in self.d.get("builder_rules", []) if r["id"] == rid), None)
+        return json.loads(json.dumps(r)) if r else None
+
+    def update_builder_rule(self, rid, now, **fields):
+        r = next(r for r in self.d["builder_rules"] if r["id"] == rid)
+        r.update({k: v for k, v in fields.items() if k in ("name", "spec")})
+        r["updated_at"] = now.isoformat()
+        self._write()
+        return json.loads(json.dumps(r))
+
+    def delete_builder_rule(self, rid):
+        self.d["builder_rules"] = [r for r in self.d.get("builder_rules", []) if r["id"] != rid]
+        self._write()
+
     # ---- options strategies (options_service.py, ADR 0010)
     def save_options_fill(self, acc, day, fill):
         self.d.setdefault("op_fills", {}).setdefault(str(acc), {})[fill["id"]] = {**fill, "trade_date": day}
@@ -999,6 +1026,45 @@ class PaperPgStore:
     def delete_builder_draft(self, did):
         with self.pg._cursor() as cur:
             cur.execute("DELETE FROM th_builder_drafts WHERE id=%s", (did,))
+
+    # ---- Strategy Builder rules (th_builder_rules, builder.Rules)
+    _RULE_COLS = "id, user_id, name, symbol, spec, created_at, updated_at"
+
+    @staticmethod
+    def _rule(r):
+        d = dict(zip(("id", "user_id", "name", "symbol", "spec", "created_at", "updated_at"), r))
+        d["spec"] = d["spec"] if isinstance(d["spec"], dict) else json.loads(d["spec"])
+        for k in ("created_at", "updated_at"):
+            d[k] = d[k].astimezone(IST).isoformat()
+        return d
+
+    def add_builder_rule(self, user_id, name, symbol, spec, now):
+        with self.pg._cursor() as cur:
+            cur.execute(f"INSERT INTO th_builder_rules (user_id, name, symbol, spec, created_at, updated_at) "
+                        f"VALUES (%s, %s, %s, %s, %s, %s) RETURNING {self._RULE_COLS}", (user_id, name, symbol, json.dumps(spec), now, now))
+            return self._rule(cur.fetchone())
+
+    def builder_rules(self, user_id):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._RULE_COLS} FROM th_builder_rules WHERE user_id=%s ORDER BY id", (user_id,))
+            return [self._rule(r) for r in cur.fetchall()]
+
+    def builder_rule(self, rid):
+        with self.pg._cursor() as cur:
+            cur.execute(f"SELECT {self._RULE_COLS} FROM th_builder_rules WHERE id=%s", (rid,))
+            r = cur.fetchone()
+            return self._rule(r) if r else None
+
+    def update_builder_rule(self, rid, now, **fields):
+        fields = {k: (json.dumps(v) if k == "spec" else v) for k, v in fields.items() if k in ("name", "spec")}
+        sets = ", ".join([f"{k}=%s" for k in fields] + ["updated_at=%s"])
+        with self.pg._cursor() as cur:
+            cur.execute(f"UPDATE th_builder_rules SET {sets} WHERE id=%s RETURNING {self._RULE_COLS}", (*fields.values(), now, rid))
+            return self._rule(cur.fetchone())
+
+    def delete_builder_rule(self, rid):
+        with self.pg._cursor() as cur:
+            cur.execute("DELETE FROM th_builder_rules WHERE id=%s", (rid,))
 
     # ---- options strategies (op_fills, op_state; options_service.py, ADR 0010)
     def save_options_fill(self, acc, day, fill):
