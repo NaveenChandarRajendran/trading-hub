@@ -20,8 +20,8 @@ describe('paper strategy results', () => {
     expect(lakhText(by('clenow').end)).toBe('₹11.21L');
     expect(by('clenow').perYearPct).toBe(18);
   });
-  it('only the paper strategies, 11 up and 1 down', () => {
-    expect(RESULTS).toHaveLength(12);
-    expect(RESULTS.filter((r) => summarize(r).total > 0)).toHaveLength(11);
+  it('only the paper strategies, 12 up and 1 down (Big Gap Buy added 12-Nov-2026)', () => {
+    expect(RESULTS).toHaveLength(13);
+    expect(RESULTS.filter((r) => summarize(r).total > 0)).toHaveLength(12);
   });
 });
