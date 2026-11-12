@@ -125,10 +125,10 @@ def test_stop_loss_exits_all_and_blocks_that_direction_only():
     st = L.new_state(DAY)
     L.on_candle(st, ctx(), S)
     L.on_filled(st, 23200.0, 70001, 112.4)
-    assert L.on_tick(st, 23151.0, at("10:07")) == []
-    out = L.on_tick(st, 23149.95, at("10:08"))
+    assert L.on_tick(st, 23151.0, at("10:07"), S) == []
+    out = L.on_tick(st, 23149.95, at("10:08"), S)
     assert kinds(out) == ["exit", "do:exit"] and out[-1]["lots"] == 2 and out[-1]["reason"] == "stop loss"
-    assert L.on_tick(st, 23140.0, at("10:08")) == []  # already exiting: one exit only
+    assert L.on_tick(st, 23140.0, at("10:08"), S) == []  # already exiting: one exit only
     L.on_exited(st, 23149.95, -4000.0, at("10:08"))
     assert st["open"] is None and st["stopped"] == ["CE"] and st["closed"][0]["pnl"] == -4000.0
     assert "the CE stop loss was hit today" in L.on_candle(st, ctx("10:30"), S)[-1]["message"]

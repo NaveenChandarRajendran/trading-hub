@@ -9,8 +9,19 @@ State (a plain dict stored as JSON, so a restart resumes exactly where it was):
   was hit today: no new entry that way), noTrade (the current no-trade reason or None = clear, logged when it
   changes; the day's first verdict is always logged), direction
   (the last direction verdict, for the page), open (the open trade or None), closed (today's closed trades).
-Open trade: {side, lots, entrySpot, entryAt, stop: {"dir": "below" | "above", "price"}, strike?, avg?} - the runner
-  fills strike / avg once the paper order fills (on_filled), or undoes the entry (on_entry_failed).
+Open trade: {side, lots, entrySpot, entryAt, stop: {"dir", "price"}, initialStop, risk (index points to the stop),
+  targets [partial-exit levels], partials (done), breakeven / trailing (flags), adds {"avg", "pyr"}, extreme (highest high
+  (CE) / lowest low (PE) since the entry), swing (a new swing high / low waiting for its pullback), strike?, avg?}.
+  The runner fills strike / avg once the paper order fills (on_filled), or undoes the entry (on_entry_failed); adds and
+  partial exits are pending until their fills come back (on_add_filled / on_partial_filled).
+
+Adds (rules 7-11), on a closed candle that holds (rule 3) while Trending OI still gives this direction, before the first
+partial exit and inside the entry hours: averaging when the index is on the losing side of the entry (+avgAddLots up to
+avgMaxLots), pyramiding after a new swing high / low since the entry (+pyrAddLots up to pyrMaxLots), never past maxLots,
+and only when the loss if the stop hits now (new lots included) stays within addRiskMax.
+Exits (rules 12-15): partial exits at the targets (ticks), then breakeven on the option average (ticks) and the
+Supertrend trail (closed candles); with no target, breakeven + trail once the index is breakevenAtR x risk in favour.
+The stop loss and the 15:15 square-off exit everything.
 """
 from datetime import datetime, timedelta
 
@@ -148,7 +159,7 @@ def on_candle(state, c, s):
                          else f"Conditions clear: {d['sentiment']} {abs(d['strength']):.1f}% ({d['dots']} dots) -> {side} only"))
         state["noTrade"] = reason
     if state["open"]:
-        return out  # adds and exits on candles: step 3
+        return out + open_candle(state, c, d, s)
     if not side or reason:
         return out
     ok, near = holds(side, c["candle"], c["st"], c["vwap"], s["touchPts"])
@@ -167,11 +178,16 @@ def on_candle(state, c, s):
                                  f"{fmt(dist)} pts = {dist / c['spot'] * 100:.2f}% away (> {s['maxStopPct']:g}%)", side=side))
         return out
     stop_dir = "below" if side == "CE" else "above"
+    targets = partial_targets(state.get("levels"), side, c["spot"], s["partialMinPts"])
     state["open"] = {"side": side, "lots": s["entryLots"], "entrySpot": c["spot"], "entryAt": c["now"].strftime("%H:%M"),
-                     "stop": {"dir": stop_dir, "price": stop}, "initialStop": stop, "risk": dist}
+                     "stop": {"dir": stop_dir, "price": stop}, "initialStop": stop, "risk": dist, "targets": targets,
+                     "partials": 0, "breakeven": False, "trailing": False, "adds": {"avg": 0, "pyr": 0},
+                     "extreme": c["candle"]["high"] if side == "CE" else c["candle"]["low"], "swing": False}
     state["trades"] += 1
+    tgt = (" / ".join(f"{n} {fmt(v)}" for n, v in targets) if targets
+           else f"none {s['partialMinPts']:g}+ pts beyond: breakeven at {s['breakevenAtR']:g}R")
     out.append(event("entry", f"{what}; enter {side} {s['entryLots']} lots at the next open, stop: index {stop_dir} "
-                              f"{fmt(stop)} ({fmt(dist)} pts)", side=side))
+                              f"{fmt(stop)} ({fmt(dist)} pts); partial exits: {tgt}", side=side))
     out.append(action("enter", side=side, lots=s["entryLots"], spot=c["spot"], stop=state["open"]["stop"]))
     return out
 
@@ -193,21 +209,139 @@ def entry_gate(state, side, c, s):
     return ""
 
 
-# ---------------------------------------------------------------- ticks, fills
-def on_tick(state, spot, now):
-    """Index tick: the stop loss (rule 6 / 14) exits every open lot."""
+# ---------------------------------------------------------------- rule 12: partial-exit targets
+def partial_targets(levels, side, entry, min_pts):
+    """The first two locked levels beyond the entry in the trade direction (CE: R levels above, PE: S levels below),
+    counting only those at least min_pts beyond it: [("R1", 23300.0), ...] nearest first."""
+    if not levels:
+        return []
+    if side == "CE":
+        lv = sorted((v, n) for n, v in levels.items() if n.startswith("R") and v is not None and v >= entry + min_pts)
+    else:
+        lv = sorted(((v, n) for n, v in levels.items() if n.startswith("S") and v is not None and v <= entry - min_pts),
+                    reverse=True)
+    return [(n, v) for v, n in lv[:2]]
+
+
+def favour(side, spot, ref):
+    """Index points in the trade's favour from ref."""
+    return spot - ref if side == "CE" else ref - spot
+
+
+# ---------------------------------------------------------------- rules 7-11: adds (closed candles)
+def open_candle(state, c, d, s):
+    """A closed candle while a trade is open: the Supertrend trail, then an add on a pullback that holds.
+    c also carries optionLtp, delta and lotSize (the open strike's, for the risk guard)."""
+    o = state["open"]
+    if o.get("exiting") or o.get("partialPending") or o.get("adding"):
+        return []
+    side, cd, st = o["side"], c["candle"], c["st"]
+    if o["trailing"] and st and (cd["close"] < st["value"] if side == "CE" else cd["close"] > st["value"]):
+        return _exit_all(o, f"Supertrend trail: close {fmt(cd['close'])} {'below' if side == 'CE' else 'above'} "
+                            f"Supertrend {fmt(st['value'])}: exit the last {o['lots']} lots", "Supertrend trail", c["spot"])
+    out = []
+    swing_before = o["swing"]
+    new_extreme = cd["high"] > o["extreme"] if side == "CE" else cd["low"] < o["extreme"]
+    if c["vwap"] is not None and st is not None:
+        ok, near = holds(side, cd, st, c["vwap"], s["touchPts"])
+        if ok:
+            out += _maybe_add(state, c, d, s, near, swing_before)
+    if new_extreme:
+        o["extreme"] = cd["high"] if side == "CE" else cd["low"]
+        o["swing"] = True
+    return out
+
+
+def _maybe_add(state, c, d, s, near, swing):
+    o, side = state["open"], state["open"]["side"]
+    against = favour(side, c["spot"], o["entrySpot"]) < 0
+    kind = "avg" if against else "pyr" if swing else None
+    if kind is None:
+        return []  # in favour without a new swing high / low since the last add: nothing to add
+    name = "Averaging" if kind == "avg" else "Pyramiding"
+    add = s["avgAddLots"] if kind == "avg" else s["pyrAddLots"]
+    cap = min(s["avgMaxLots"] if kind == "avg" else s["pyrMaxLots"], s["maxLots"])
+    head = f"{name} pullback held at {near} (close {fmt(c['candle']['close'])})"
+    why = ""
+    if o["partials"]:
+        why = "no adds after a partial exit"
+    elif d["side"] != side:
+        why = f"Trending OI no longer supports {side} ({d['reason'] or d['sentiment']})"
+    elif not hhmm(s["entryFrom"]) <= c["now"].time() <= hhmm(s["entryTo"]):
+        why = f"adds only {s['entryFrom']}-{s['entryTo']}"
+    elif o["lots"] + add > cap:
+        why = f"{o['lots']} lots open + {add} would pass the {cap}-lot {name.lower()} cap"
+    elif o.get("avg") is None or c.get("optionLtp") is None:
+        why = "no option price yet"
+    else:
+        loss = loss_at_stop(o, c["optionLtp"], c.get("delta") or s["deltaFallback"], c["spot"], add, c.get("lotSize") or 65)
+        if loss > s["addRiskMax"]:
+            why = f"risk guard: loss if the stop hits now would be {fmt(round(loss))} (> {fmt(s['addRiskMax'])})"
+    if kind == "pyr":
+        o["swing"] = False  # this swing's pullback is used, added or not
+    if why:
+        return [event("skip", f"{head}; no add: {why}", side=side)]
+    o["adding"] = kind
+    return [event("add", f"{head}: add {add} lot{'s' if add > 1 else ''} ({name.lower()}) -> {o['lots'] + add} lots; "
+                         f"stop stays {o['stop']['dir']} {fmt(o['stop']['price'])}", side=side),
+            action("add", side=side, lots=add, kind=kind, spot=c["spot"])]
+
+
+def loss_at_stop(o, ltp, delta, spot, add_lots, lot_size):
+    """Rupees lost if the stop hits now, the add included: option price at the stop = LTP - |delta| x (index points to
+    the stop), at least 0.05; loss = (average after the add - that price) x quantity after the add."""
+    to_stop = abs(spot - o["stop"]["price"])
+    at_stop = max(0.05, ltp - abs(delta) * to_stop)
+    qty_now, qty_add = o["lots"] * lot_size, add_lots * lot_size
+    avg_after = (o["avg"] * qty_now + ltp * qty_add) / (qty_now + qty_add)
+    return (avg_after - at_stop) * (qty_now + qty_add)
+
+
+# ---------------------------------------------------------------- ticks: stop, partial exits, breakeven, 15:15
+def on_tick(state, spot, now, s, option_ltp=None):
+    """Index tick (with the open option's LTP): square-off, stop loss, the breakeven exit, partial exits, the 1R
+    breakeven."""
     o = state["open"]
     if not o or o.get("exiting"):
         return []
+    side = o["side"]
+    if now.time() >= hhmm(s["squareOff"]):
+        return _exit_all(o, f"{s['squareOff']} square-off: exit all {o['lots']} lots", "square-off", spot)
     st = o["stop"]
     if st["dir"] == "below" and spot < st["price"] or st["dir"] == "above" and spot > st["price"]:
-        o["exiting"] = True
-        if o["side"] not in state["stopped"]:
-            state["stopped"].append(o["side"])
-        return [event("exit", f"Stop loss: index {fmt(spot)} {st['dir']} {fmt(st['price'])}: exit all {o['lots']} lots",
-                      side=o["side"]),
-                action("exit", side=o["side"], lots=o["lots"], reason="stop loss", spot=spot)]
+        if side not in state["stopped"]:
+            state["stopped"].append(side)
+        return _exit_all(o, f"Stop loss: index {fmt(spot)} {st['dir']} {fmt(st['price'])}: exit all {o['lots']} lots",
+                         "stop loss", spot)
+    if o["breakeven"] and option_ltp is not None and o.get("avg") is not None and option_ltp <= o["avg"]:
+        return _exit_all(o, f"Breakeven: option {fmt(option_ltp)} back to the average {fmt(o['avg'])}: exit the last "
+                            f"{o['lots']} lots", "breakeven", spot)
+    if o.get("partialPending") or o.get("adding"):
+        return []
+    if o["partials"] < len(o["targets"]):
+        name, level = o["targets"][o["partials"]]
+        if favour(side, spot, level) >= 0:
+            n = max(1, o["lots"] // 2)
+            if n >= o["lots"]:  # half of the last lot is the last lot: an ordinary exit closes the trade
+                return _exit_all(o, f"{name} {fmt(level)} reached (index {fmt(spot)}): exit the last {o['lots']} lot",
+                                 f"{name} partial", spot)
+            o["partialPending"] = n
+            first = o["partials"] == 0
+            return [event("partial", f"{name} {fmt(level)} reached (index {fmt(spot)}): sell {n} of {o['lots']} lots"
+                                     + ("; the stop for the rest moves to breakeven, then the Supertrend trail" if first else ""),
+                          side=side),
+                    action("partial", side=side, lots=n, level=name, spot=spot)]
+    elif not o["targets"] and not o["breakeven"] and favour(side, spot, o["entrySpot"]) >= s["breakevenAtR"] * o["risk"]:
+        o["breakeven"] = o["trailing"] = True
+        return [event("stopMove", f"{s['breakevenAtR']:g}R in favour (index {fmt(spot)}, R = {fmt(o['risk'])} pts) with no "
+                                  f"level to book: stop to breakeven {fmt(o.get('avg'))}, then the Supertrend trail", side=side)]
     return []
+
+
+def _exit_all(o, message, reason, spot):
+    o["exiting"] = True
+    return [event("exit", message, side=o["side"]),
+            action("exit", side=o["side"], lots=o["lots"], reason=reason, spot=spot)]
 
 
 def on_filled(state, strike, security_id, avg, note=""):
@@ -215,6 +349,41 @@ def on_filled(state, strike, security_id, avg, note=""):
     o.update(strike=strike, securityId=security_id, avg=avg)
     return [event("info", f"Entry filled: {o['lots']} lots {fmt(strike)} {o['side']} @ {fmt(avg)}" + (f" ({note})" if note else ""),
                   side=o["side"])]
+
+
+def on_add_filled(state, lots, price):
+    o = state["open"]
+    kind = o.pop("adding")
+    qty_old = o["lots"]
+    o["avg"] = round((o["avg"] * qty_old + price * lots) / (qty_old + lots), 4)
+    o["lots"] += lots
+    o["adds"][kind] += 1
+    return [event("info", f"Add filled: {lots} lot{'s' if lots > 1 else ''} @ {fmt(price)}; {o['lots']} lots, average "
+                          f"{fmt(o['avg'])}", side=o["side"])]
+
+
+def on_add_failed(state, why):
+    o = state["open"]
+    o.pop("adding", None)
+    return [event("skip", f"Add not placed: {why}", side=o["side"])]
+
+
+def on_partial_filled(state, lots, price, pnl):
+    """Sold `lots` at a partial exit. The first one moves the stop to breakeven and starts the Supertrend trail."""
+    o = state["open"]
+    o.pop("partialPending", None)
+    o["lots"] -= lots
+    o["partials"] += 1
+    o["booked"] = round(o.get("booked", 0.0) + pnl, 2)
+    o["breakeven"] = o["trailing"] = True
+    return [event("info", f"Partial exit filled: {lots} lot{'s' if lots > 1 else ''} @ {fmt(price)} ({fmt(pnl)}); "
+                          f"{o['lots']} lots left, stop at breakeven {fmt(o['avg'])}", side=o["side"])]
+
+
+def on_partial_failed(state, why):
+    o = state["open"]
+    o.pop("partialPending", None)
+    return [event("skip", f"Partial exit not filled: {why} (tried again on the next tick)", side=o["side"])]
 
 
 def on_entry_failed(state, why):
