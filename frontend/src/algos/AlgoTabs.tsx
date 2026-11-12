@@ -1,14 +1,14 @@
 // The shared tabs of every algo page (Rules, Log, Trades, Reports, Settings) and its header (status, today's P&L,
 // kill switch). Everything comes from /api/algos/:slug/* (backend algos_api.py), so a new algo needs no UI of its own here.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../shared/api';
 import { downloadCsv } from '../shared/csv';
 import { Alert, EmptyState, Heatmap, Pill, Segmented, Stat, Status } from '../shared/ui';
 import { buildCalendar, istToday } from '../apps/paper-trade/logic/calendar';
 import { hubApi, type AlgoSummary, type FieldValue, type SettingField } from './api';
 import {
-  REPORT_PRESETS, STATE_DOT, daysCsv, eventsCsv, hhmm, hhmmss, money, parseField, presetRange, renderMarkdown, sameValue,
-  showValue, toneOf, tradesCsv, type ReportPreset,
+  EVENT_TONE, REPORT_PRESETS, STATE_DOT, daysCsv, eventsCsv, hhmm, hhmmss, money, parseField, presetRange, renderMarkdown, sameValue,
+  fieldText, showValue, toneOf, tradesCsv, type ReportPreset,
 } from './logic/hub';
 import { useLoad } from './useLoad';
 
@@ -83,23 +83,37 @@ const PAGE = 50;
 export function LogTab({ slug }: { slug: string }) {
   const [date, setDate] = useState(istToday());
   const [types, setTypes] = useState<string[]>([]);
-  const [variant, setVariant] = useState('');
+  const [variant, setVariant] = useState<string | null>(null); // null: the live variant once the first page says which
+  const [scope, setScope] = useState('');
   const [page, setPage] = useState(1);
-  const q = { date, type: types.join(','), variant, page, size: PAGE };
-  const r = useLoad((sig) => hubApi.events(slug, q, sig), [slug, date, types.join(','), variant, page], date === istToday() ? 20000 : 0);
+  const q = { date, type: types.join(','), variant: variant ?? '', scope, page, size: PAGE };
+  const r = useLoad((sig) => hubApi.events(slug, q, sig), [slug, date, q.type, q.variant, scope, page], date === istToday() ? 20000 : 0);
   const d = r.data;
+  useEffect(() => { if (variant === null && d?.liveVariant) setVariant(d.liveVariant); }, [d, variant]);
   const pages = d ? Math.max(1, Math.ceil(d.total / PAGE)) : 1;
-  const toggle = (t: string) => { setPage(1); setTypes((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t])); };
-  const csv = () => hubApi.events(slug, { date, type: types.join(','), variant, size: 500 })
+  const go = (f: () => void) => { setPage(1); f(); };
+  const toggle = (t: string) => go(() => setTypes((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t])));
+  const csv = () => hubApi.events(slug, { ...q, page: 1, size: 500 })
     .then((all) => downloadCsv(`${slug}-log-${date}.csv`, eventsCsv(all.rows))).catch(() => undefined);
+  const scopes = (d?.scopes ?? []).filter((x) => x !== 'ALL');
+  const showScope = scopes.length > 0;
+  const showVariant = !!d?.variants.length && !variant;
   return (
     <section className="card">
       <div className="toolbar">
-        <label className="field">Date<input type="date" value={date} max={istToday()} onChange={(e) => { setPage(1); setDate(e.target.value || istToday()); }} /></label>
+        <label className="field">Date<input type="date" value={date} max={istToday()} onChange={(e) => go(() => setDate(e.target.value || istToday()))} /></label>
+        {showScope && (
+          <label className="field">Index
+            <select value={scope} onChange={(e) => go(() => setScope(e.target.value))}>
+              <option value="">All</option>{scopes.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </label>
+        )}
         {!!d?.variants.length && (
           <label className="field">Variant
-            <select value={variant} onChange={(e) => { setPage(1); setVariant(e.target.value); }}>
-              <option value="">All</option>{d.variants.map((v) => <option key={v} value={v}>{v}</option>)}
+            <select value={variant ?? ''} onChange={(e) => go(() => setVariant(e.target.value))}>
+              {d.variants.map((v) => <option key={v} value={v}>{v}{v === d.liveVariant ? ' (live)' : ' (shadow)'}</option>)}
+              <option value="">All variants</option>
             </select>
           </label>
         )}
@@ -107,7 +121,7 @@ export function LogTab({ slug }: { slug: string }) {
           {(d?.types ?? []).map((t) => (
             <button key={t} type="button" className={`algos-chip${types.includes(t) ? ' on' : ''}`} aria-pressed={types.includes(t)} onClick={() => toggle(t)}>{t}</button>
           ))}
-          {!!types.length && <button type="button" className="btn ghost" onClick={() => { setPage(1); setTypes([]); }}>Clear</button>}
+          {!!types.length && <button type="button" className="btn ghost" onClick={() => go(() => setTypes([]))}>Clear</button>}
         </div>
         <span className="toolbar-end"><button className="btn" disabled={!d?.total} onClick={csv}>CSV</button></span>
       </div>
@@ -118,13 +132,13 @@ export function LogTab({ slug }: { slug: string }) {
         <>
           <div className="algos-scroll">
             <table className="t algos-table algos-log">
-              <thead><tr><th className="num">Time</th><th>Type</th>{!!d.variants.length && <th>Variant</th>}<th>Side</th><th>Message</th></tr></thead>
+              <thead><tr><th className="num">Time</th><th>Type</th>{showScope && <th>Index</th>}{showVariant && <th>Variant</th>}<th>Side</th><th>Message</th></tr></thead>
               <tbody>
                 {d.rows.map((e) => (
-                  <tr key={e.id}>
-                    <td className="num">{hhmmss(e.ts)}</td><td><Pill tone="neutral">{e.type}</Pill></td>
-                    {!!d.variants.length && <td>{e.variant}</td>}
-                    <td>{e.side ?? ''}</td><td className="algos-msg">{e.message}</td>
+                  <tr key={`${e.id}-${e.ts}`}>
+                    <td className="num">{hhmmss(e.ts)}</td><td><Pill tone={EVENT_TONE[e.type] ?? 'neutral'}>{e.type}</Pill></td>
+                    {showScope && <td>{e.scope}</td>}{showVariant && <td>{e.variant}</td>}
+                    <td>{e.side ?? ''}</td><td className="algos-msg">{e.setup && <b>{e.setup}: </b>}{e.message}</td>
                   </tr>
                 ))}
               </tbody>
@@ -307,14 +321,27 @@ export function SettingsTab({ slug }: { slug: string }) {
             <fieldset key={g}>
               <legend>{g}</legend>
               {fields.map((f) => {
-                const text = f.key in draft ? draft[f.key] : showValue(f.value);
+                const text = f.key in draft ? draft[f.key] : fieldText(f.value);
                 const bad = parsed.bad[f.key];
-                const changed = f.key in parsed.ok;
+                const cls = bad ? 'algos-bad' : f.key in parsed.ok ? 'algos-edited' : '';
+                const set = (t: string) => setDraft((p) => ({ ...p, [f.key]: t }));
+                const range = f.min != null || f.max != null ? ` · ${f.min ?? 0}${f.max != null ? `–${f.max}` : '+'}` : '';
                 return (
-                  <label key={f.key} className="field" title={`${f.key} · default ${showValue(f.default)}`}>
-                    <span>{f.label}{!sameValue(f.value, f.default) && <span className="algos-changed"> (default {showValue(f.default)})</span>}</span>
-                    <input value={text} disabled={!v.editable} aria-invalid={!!bad} className={bad ? 'algos-bad' : changed ? 'algos-edited' : ''}
-                      onChange={(e) => setDraft((p) => ({ ...p, [f.key]: e.target.value }))} />
+                  <label key={f.key} className="field" title={f.readOnly ? 'Set in code' : `default ${showValue(f.default)}${range}`}>
+                    <span>{f.label}{!f.readOnly && !sameValue(f.value, f.default) && <span className="algos-changed"> (default {showValue(f.default)})</span>}</span>
+                    {f.readOnly ? <b className="algos-fixed">{showValue(f.value)}</b>
+                      : f.kind === 'bool' ? (
+                        <select value={text} className={cls} onChange={(e) => set(e.target.value)}><option value="true">On</option><option value="false">Off</option></select>
+                      ) : f.kind !== 'list' && f.choices?.length ? (
+                        <select value={text} className={cls} onChange={(e) => set(e.target.value)}>
+                          {f.choices.map((c) => <option key={String(c)} value={String(c)}>{String(c)}</option>)}
+                        </select>
+                      ) : (
+                        <input value={text} disabled={!v.editable} aria-invalid={!!bad} className={cls}
+                          inputMode={f.kind === 'number' || f.kind === 'int' ? 'decimal' : undefined}
+                          placeholder={f.kind === 'time' ? 'HH:MM' : f.kind === 'list' ? (f.choices ?? []).join(', ') : undefined}
+                          onChange={(e) => set(e.target.value)} />
+                      )}
                     {bad && <span className="algos-err">{bad}</span>}
                   </label>
                 );

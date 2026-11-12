@@ -847,7 +847,8 @@ class AlgoService:
         o.update(securityId=opt["securityId"] if opt else None, option=opt["name"] if opt else None,
                  strike=opt["strike"] if opt else None, entryAt=now.strftime("%H:%M:%S"), entrySpotLive=spot,
                  entryPrice=self.broker.ltp(opt["securityId"]) if opt and self.broker else None,
-                 qty=cfg.LOTS * inst.get("lotSize", 0) or None)
+                 qty=cfg.LOTS * inst.get("lotSize", 0) or None, lots=cfg.LOTS,
+                 stopPct=cfg.PREMIUM_STOP_PCT, targetPct=cfg.PREMIUM_TARGET_PCT)  # kept if the settings change
         self.record(sym, "entry", f"SHADOW {v} would BUY {o.get('option') or a['side']} @ {fmt(o['entryPrice'])} · "
                                   f"spot {fmt(spot)} · target {fmt(o['target'])} · stop: spot {a['data']['spotStop']} "
                                   f"or premium -{cfg.PREMIUM_STOP_PCT:g}% · premium target +{cfg.PREMIUM_TARGET_PCT:g}%. Why: {a['reason']}", setup=a["setup"],
@@ -891,7 +892,8 @@ class AlgoService:
             return
         opt = pick[0]
         o.update(securityId=opt["securityId"], option=opt["name"], strike=opt["strike"], expiry=opt["expiry"],
-                 entryAt=now.strftime("%H:%M:%S"), entrySpotLive=spot)
+                 entryAt=now.strftime("%H:%M:%S"), entrySpotLive=spot, lots=cfg.LOTS,
+                 stopPct=cfg.PREMIUM_STOP_PCT, targetPct=cfg.PREMIUM_TARGET_PCT)  # kept if the settings change
         if self.mode == "paper":
             try:
                 order = self.broker.buy(opt["securityId"], cfg.LOTS, now, a["setup"])
@@ -956,7 +958,7 @@ class AlgoService:
         self._save_state(sym)
 
     # ------------------------------------------------------------ kill switch
-    def stop(self, exit_all=False):
+    def stop(self, exit_all=False, who=""):
         now = self.clock()
         with self.lock:
             self._ensure_day(now)
@@ -964,22 +966,22 @@ class AlgoService:
                 st["stopped"] = True
                 st["setup"] = None
                 self._save_state(sym)
-            self.record("*", "info", "Kill switch: no new entries" + (" and exit all positions" if exit_all else ""),
-                        now=now)
+            self.record("*", "info", "Kill switch: no new entries" + (" and exit all positions" if exit_all else "")
+                        + (f" (by {who})" if who else ""), now=now)
             if exit_all:
                 for sym, st in self.states.items():
                     if st["open"] and not st["open"].get("exiting"):
                         st["open"]["exiting"] = True
                         self._exit(sym, "Kill switch: stop and exit all", now)
 
-    def resume(self):
+    def resume(self, who=""):
         now = self.clock()
         with self.lock:
             self._ensure_day(now)
             for sym, st in self.states.items():
                 st["stopped"] = False
                 self._save_state(sym)
-            self.record("*", "info", "Resumed: new entries allowed", now=now)
+            self.record("*", "info", "Resumed: new entries allowed" + (f" (by {who})" if who else ""), now=now)
 
     # ------------------------------------------------------------ status
     def status(self):

@@ -5,7 +5,7 @@ Only the owner of an algo's strategy (naveen) gets its routes; anyone else gets 
 
     GET  /api/algos                                every algo the user owns: the card summary (status, P&L, open, last event)
     GET  /api/algos/{slug}/status                  the same summary for one algo (the page header)
-    GET  /api/algos/{slug}/events?date=&type=&variant=&page=&size=
+    GET  /api/algos/{slug}/events?date=&type=&variant=&scope=&page=&size=
                                                    decision log of a day, newest first, filtered and paged
     GET  /api/algos/{slug}/trades?date=            closed trades of a day (+ the open one today)
     GET  /api/algos/{slug}/reports?from=&to=       day rows, tiles, holidays (the P&L calendar)
@@ -78,21 +78,25 @@ def register(app, adapters):
         return {"slug": slug, **get(request, slug).summary()}
 
     @app.get("/api/algos/{slug}/events")
-    def events(slug: str, request: Request, date: str = "", type: str = "", variant: str = "", page: int = 1, size: int = PAGE_SIZE):
+    def events(slug: str, request: Request, date: str = "", type: str = "", variant: str = "", scope: str = "",
+               page: int = 1, size: int = PAGE_SIZE):
         a = get(request, slug)
         day = parse_day(date, a.today())
-        rows = a.events(day)  # newest first, each {id, ts, type, side, variant, setup, message}
+        rows = a.events(day)  # newest first, each {id, ts, type, side, scope, variant, setup, message}
         types = sorted({r["type"] for r in rows})
         variants = sorted({r["variant"] for r in rows if r.get("variant")})
+        scopes = sorted({r["scope"] for r in rows if r.get("scope")})
         if type:
             want = set(type.split(","))
             rows = [r for r in rows if r["type"] in want]
-        if variant:
-            rows = [r for r in rows if r.get("variant") == variant]
+        if variant:  # rows for every variant (scope ALL: kill switch, settings) stay
+            rows = [r for r in rows if r.get("variant") in (variant, "")]
+        if scope:
+            rows = [r for r in rows if r.get("scope") in (scope, "ALL")]
         size = max(1, min(int(size), 500))
         page = max(1, int(page))
         return {"date": day, "total": len(rows), "page": page, "size": size, "types": types, "variants": variants,
-                "rows": rows[(page - 1) * size: page * size]}
+                "scopes": scopes, "liveVariant": getattr(a, "live_variant", ""), "rows": rows[(page - 1) * size: page * size]}
 
     @app.get("/api/algos/{slug}/trades")
     def trades(slug: str, request: Request, date: str = ""):

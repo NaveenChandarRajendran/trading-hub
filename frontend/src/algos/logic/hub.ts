@@ -1,6 +1,7 @@
 // Pure helpers of the Algos hub template: date presets, safe Markdown, CSV files, setting parsing, status tones.
 import { Marked, Renderer } from 'marked';
 import { toCsv } from '../../shared/csv';
+import type { Tone } from '../../shared/ui';
 import type { AlgoEvent, AlgoState, AlgoTrade, DayRow, FieldKind, FieldValue } from '../api';
 
 // ------------------------------------------------------------------ dates (IST 'YYYY-MM-DD' strings, UTC arithmetic)
@@ -62,6 +63,12 @@ export const STATE_DOT: Record<AlgoState, 'live' | 'stale' | 'error' | 'idle'> =
   running: 'live', stopped: 'stale', stale: 'stale', closed: 'idle', off: 'idle', token: 'error', error: 'error',
 };
 
+/** Pill tone of a decision-log type (every algo's types). */
+export const EVENT_TONE: Record<string, Tone> = {
+  entry: 'accent', add: 'accent', exit: 'accent', partial: 'up', stopMove: 'up', signal: 'up', clear: 'up',
+  skip: 'warn', noTrade: 'warn', feed: 'warn', error: 'down', settings: 'neutral', levels: 'neutral', info: 'neutral', heartbeat: 'neutral',
+};
+
 export const money = (v: number | null | undefined) =>
   v == null ? '–' : `${v > 0 ? '+' : v < 0 ? '−' : ''}₹${Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const toneOf = (v: number | null | undefined) => (!v ? '' : v > 0 ? 'up' : 'down');
@@ -73,17 +80,24 @@ export const daysCsv = (days: DayRow[]) =>
   toCsv(['date', 'trades', 'wins', 'losses', 'realized', 'charges', 'net'],
     days.map((d) => [d.date, d.trades, d.wins ?? '', d.losses ?? '', d.realized, d.charges, d.net]));
 export const eventsCsv = (rows: AlgoEvent[]) =>
-  toCsv(['time', 'type', 'side', 'variant', 'setup', 'message'], rows.map((e) => [e.ts, e.type, e.side ?? '', e.variant, e.setup, e.message]));
+  toCsv(['time', 'type', 'index', 'side', 'variant', 'setup', 'message'],
+    rows.map((e) => [e.ts, e.type, e.scope, e.side ?? '', e.variant, e.setup, e.message]));
 export const tradesCsv = (rows: AlgoTrade[]) =>
   toCsv(['setup', 'side', 'instrument', 'lots', 'entry_at', 'entry_price', 'exit_at', 'exit_price', 'spot_in', 'spot_out', 'pnl', 'note'],
     rows.map((t) => [t.setup, t.side, t.instrument, t.lots, t.entryAt, t.entryPrice, t.exitAt, t.exitPrice, t.spotIn, t.spotOut, t.pnl, t.note]));
 
 // ------------------------------------------------------------------ settings
-export const showValue = (v: unknown) => (Array.isArray(v) ? v.join(', ') : v == null ? '–' : String(v));
+export const showValue = (v: unknown) =>
+  Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'on' : 'off') : v == null ? '–' : String(v);
+
+/** The text a field's input starts with (bool: 'true' / 'false'). */
+export const fieldText = (v: FieldValue) => (typeof v === 'boolean' ? String(v) : showValue(v));
 
 /** Text from an input -> the value for the API, or an error message (the backend validates again). */
 export function parseField(kind: FieldKind, text: string): { value: FieldValue } | { error: string } {
   const t = text.trim();
+  if (kind === 'bool') return t === 'true' || t === 'false' ? { value: t === 'true' } : { error: 'on or off' };
+  if (kind === 'text') return { error: 'fixed' };
   if (kind === 'list') {
     const items = t.split(',').map((s) => s.trim()).filter(Boolean);
     return { value: items };

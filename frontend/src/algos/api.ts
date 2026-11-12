@@ -16,8 +16,11 @@ export interface AlgoSummary {
   lastEvent?: { ts: string; text: string } | null;
 }
 
-export interface AlgoEvent { id: number; ts: string; type: string; side: string | null; variant: string; setup: string; message: string }
-export interface EventsPage { date: string; total: number; page: number; size: number; types: string[]; variants: string[]; rows: AlgoEvent[] }
+export interface AlgoEvent { id: number; ts: string; type: string; side: string | null; scope: string; variant: string; setup: string; message: string }
+export interface EventsPage {
+  date: string; total: number; page: number; size: number; types: string[]; variants: string[]; scopes: string[];
+  liveVariant: string; rows: AlgoEvent[];
+}
 
 export interface AlgoTrade {
   setup: string; side: string; instrument: string; lots: number | null;
@@ -33,10 +36,13 @@ export interface ReportTiles {
 }
 export interface AlgoReport { from: string; to: string; days: DayRow[]; tiles: ReportTiles; holidays: string[] }
 
-export type FieldKind = 'number' | 'int' | 'time' | 'list';
-export type FieldValue = number | string | string[];
-export interface SettingField { key: string; label: string; group: string; kind: FieldKind; value: FieldValue; default: FieldValue }
-export interface SettingChange { ts: string; key: string; old: unknown; new: unknown; user: string; message: string }
+export type FieldKind = 'number' | 'int' | 'time' | 'bool' | 'list' | 'text';
+export type FieldValue = number | string | boolean | string[];
+export interface SettingField {
+  key: string; label: string; group: string; kind: FieldKind; value: FieldValue; default: FieldValue;
+  min?: number; max?: number; choices?: (string | number)[]; readOnly?: boolean;
+}
+export interface SettingChange { ts: string; key: string; old: unknown; new: unknown; user: string }
 export interface SettingsView { editable: boolean; fields: SettingField[]; history: SettingChange[]; note?: string }
 
 const base = (slug: string) => `/api/algos/${encodeURIComponent(slug)}`;
@@ -48,7 +54,7 @@ const qs = (q: Record<string, string | number | undefined>) => {
 export const hubApi = {
   list: (signal?: AbortSignal) => requestJson<{ rows: AlgoSummary[] }>(API_BASE, '/api/algos', { signal }),
   status: (slug: string, signal?: AbortSignal) => requestJson<AlgoSummary>(API_BASE, `${base(slug)}/status`, { signal }),
-  events: (slug: string, q: { date?: string; type?: string; variant?: string; page?: number; size?: number }, signal?: AbortSignal) =>
+  events: (slug: string, q: { date?: string; type?: string; variant?: string; scope?: string; page?: number; size?: number }, signal?: AbortSignal) =>
     requestJson<EventsPage>(API_BASE, `${base(slug)}/events${qs(q)}`, { signal }),
   trades: (slug: string, date: string, signal?: AbortSignal) =>
     requestJson<{ date: string; rows: AlgoTrade[] }>(API_BASE, `${base(slug)}/trades${qs({ date })}`, { signal }),

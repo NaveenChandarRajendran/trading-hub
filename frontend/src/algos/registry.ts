@@ -10,7 +10,6 @@ export interface AlgoEntry {
   category: AlgoCategory;
   description: string; // one line on the card
   instruments: string;
-  schedule: string; // "Intraday 09:45-14:30, square-off 15:15"
   strategyName: string; // its paper strategy ("OI Breakout Algo"): the card's P&L and the Strategies page link
   rulesDoc: string; // docs/strategies/<rulesDoc>.md (the Rules tab)
   overview: LazyExoticComponent<ComponentType>; // the algo's own Overview panel
@@ -23,10 +22,9 @@ export const ALGOS: AlgoEntry[] = [
     category: 'intraday',
     description: 'Breakouts and range bounces at the 09:30 OI support / resistance levels, confirmed by OI filters.',
     instruments: 'NIFTY, BANKNIFTY options',
-    schedule: 'Intraday · entries 09:35-14:30 · square-off 15:15',
     strategyName: 'OI Breakout Algo',
     rulesDoc: 'oi-breakout',
-    overview: lazy(() => import('../apps/algo/AlgoApp')),
+    overview: lazy(() => import('./oi-breakout/Overview')),
   },
   {
     slug: 'trending-oi',
@@ -34,10 +32,9 @@ export const ALGOS: AlgoEntry[] = [
     category: 'intraday',
     description: 'Trending OI direction, pullbacks to Supertrend / VWAP, adds, partial exits at OI levels.',
     instruments: 'NIFTY options (1 ITM)',
-    schedule: 'Intraday · entries 09:45-14:30 · square-off 15:15',
     strategyName: 'Trending OI Algo',
     rulesDoc: 'trending-oi-algo',
-    overview: lazy(() => import('../apps/trending-oi-algo/TrendingOiAlgoApp')),
+    overview: lazy(() => import('./trending-oi/Overview')),
   },
 ];
 

@@ -517,3 +517,22 @@ CREATE TABLE IF NOT EXISTS toi_algo_settings (
     settings    jsonb       NOT NULL,
     updated_at  timestamptz NOT NULL
 );
+
+-- Every algo's editable settings (algo_settings.py, the Algos hub's Settings tab). Defaults stay in each algo's config
+-- file; a row holds only the overrides. Every change is logged with old -> new, the time and the user.
+CREATE TABLE IF NOT EXISTS th_algo_settings (
+    slug        text        PRIMARY KEY,    -- oi-breakout | trending-oi | orb ...
+    overrides   jsonb       NOT NULL,
+    updated_at  timestamptz NOT NULL,
+    updated_by  text        NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS th_algo_settings_log (
+    id          bigserial   PRIMARY KEY,
+    slug        text        NOT NULL,
+    ts          timestamptz NOT NULL,
+    key         text        NOT NULL,
+    old_value   jsonb,
+    new_value   jsonb,
+    changed_by  text        NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS th_algo_settings_log_slug ON th_algo_settings_log (slug, id);

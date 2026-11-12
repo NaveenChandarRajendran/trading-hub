@@ -60,3 +60,6 @@
 .ds .algos-changed { color: var(--accent); font-size: var(--fs-xs); }
 .ds .algos-settings input.algos-edited { border-color: var(--accent); }
 .ds .algos-settings input.algos-bad { border-color: var(--down); }
+.ds .algos-settings select { height: var(--control-h); }
+.ds .algos-settings select.algos-edited { border-color: var(--accent); }
+.ds .algos-fixed { font-weight: 500; text-align: right; padding-right: var(--sp-2); }

@@ -16,7 +16,7 @@ caches (ToiData, wired in main.py).
 Records (Postgres, toi_algo_store.py): every decision (toi_algo_events), the state after every change
 (toi_algo_state: a restart resumes the open trade, its adds and the day's counts, never entering a candle twice),
 each evaluated candle with its indicator values (toi_algo_candles), the 15:35 daily summary. Settings: the config's
-DEFAULTS + the page's overrides (toi_algo_settings); each change is logged with old -> new.
+DEFAULTS + the page's overrides (th_algo_settings, algo_settings.py); each change is logged with old -> new.
 """
 import logging
 import threading
@@ -96,7 +96,7 @@ class ToiAlgoService:
             if not diff:
                 return cur
             saved = {**self.toi.settings(), **changes}
-            self.toi.save_settings(saved, now)
+            self.toi.save_settings(saved, now, changes=diff, who=who)
             for k, (old, new) in diff.items():
                 self._record("settings", f"Setting {k}: {old} -> {new}" + (f" (by {who})" if who else "")
                              + "; open trades keep their stop and lots", now=now, key=k, old=old, new=new)

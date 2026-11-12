@@ -298,10 +298,10 @@ def test_daily_summary_at_1535(env):
 
 # ---------------------------------------------------------------- safety: no real orders
 MODULES = ("trending_oi_algo_config.py", "indicators.py", "toi_algo_data.py", "toi_algo_logic.py", "toi_algo_service.py",
-           "toi_algo_store.py")
+           "toi_algo_store.py", "algo_settings.py")
 ALLOWED = {"copy", "json", "logging", "os", "threading", "dataclasses", "datetime", "typing", "toi_algo_logic",
            "trending_oi_algo_config", "algo_filters", "algo_service", "candles", "dhan_feed", "holidays", "indicators",
-           "sr_levels", "store", "toi_algo_data"}
+           "sr_levels", "store", "toi_algo_data", "algo_settings", "re"}
 ORDER_WORDS = ("/orders", "/super/orders", "/forever", "placeorder", "modify_order", "cancel_order", "/v2/orders", "dhan_client")
 
 

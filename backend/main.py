@@ -479,7 +479,14 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if algo or toi:  # the Algos hub: one API shape over every algo (algos_api.py, adapters in algo_adapters.py)
         import algo_adapters
         import algos_api
-        algos_api.register(app, {**({"trending-oi": algo_adapters.ToiAdapter(toi)} if toi else {})})
+        from algo_settings import MemorySettings, PgSettings
+        pg = getattr(paper.store, "pg", None)
+        adapters = {}
+        if algo:  # its saved settings are applied to algo_config here, before the algo's thread starts
+            adapters["oi-breakout"] = algo_adapters.OiBreakoutAdapter(algo, PgSettings(pg) if pg is not None else MemorySettings())
+        if toi:
+            adapters["trending-oi"] = algo_adapters.ToiAdapter(toi)
+        algos_api.register(app, adapters)
     if scalper:
         scalper_api.register(app, scalper, strategies)
         app.state.scalper = scalper

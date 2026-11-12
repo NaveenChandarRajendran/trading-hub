@@ -1,6 +1,6 @@
 """
 toi_algo_store.py - the Trending OI Algo's records: decision log, state per day, evaluated candles, daily summary and
-the page's settings (tables toi_algo_*, schema.sql). PgToiStore is the live one (Postgres is the source of truth, as
+the page's settings (tables toi_algo_*, schema.sql; settings in the shared th_algo_settings, algo_settings.py). PgToiStore is the live one (Postgres is the source of truth, as
 for the OI breakout algo); MemoryToiStore has the same methods for tests and JSON-only setups (nothing survives a
 restart there).
 """
@@ -8,7 +8,10 @@ import copy
 import json
 from datetime import datetime
 
+from algo_settings import MemorySettings, PgSettings
 from store import IST
+
+SLUG = "trending-oi"
 
 
 def _iso(v):
@@ -17,7 +20,8 @@ def _iso(v):
 
 class MemoryToiStore:
     def __init__(self):
-        self._events, self._states, self._candles, self._summaries, self._settings = [], {}, {}, {}, None
+        self._events, self._states, self._candles, self._summaries = [], {}, {}, {}
+        self.settings_store = MemorySettings()
 
     def add_event(self, ev):
         self._events.append({**copy.deepcopy(ev), "id": len(self._events) + 1})
@@ -26,7 +30,7 @@ class MemoryToiStore:
         return [dict(e) for e in self._events if e["day"] == day]
 
     def settings_history(self, limit=100):
-        return [dict(e) for e in reversed(self._events) if e["type"] == "settings"][:limit]
+        return self.settings_store.history(SLUG, limit)
 
     def save_state(self, day, state, now):
         self._states[day] = copy.deepcopy(state)
@@ -50,10 +54,10 @@ class MemoryToiStore:
         return [dict(r) for d, r in sorted(self._summaries.items()) if from_day <= d <= to_day]
 
     def settings(self):
-        return copy.deepcopy(self._settings) or {}
+        return self.settings_store.overrides(SLUG)
 
-    def save_settings(self, settings, now):
-        self._settings = copy.deepcopy(settings)
+    def save_settings(self, settings, now, changes=None, who=""):
+        self.settings_store.save(SLUG, settings, changes or {}, who, now)
 
 
 class PgToiStore:
@@ -61,6 +65,7 @@ class PgToiStore:
 
     def __init__(self, pg):
         self.pg = pg
+        self.settings_store = PgSettings(pg)
 
     def add_event(self, ev):
         with self.pg._cursor() as cur:
@@ -75,12 +80,7 @@ class PgToiStore:
                      "message": r[5], "details": r[6] or {}} for r in cur.fetchall()]
 
     def settings_history(self, limit=100):
-        """Settings changes on every day, newest first."""
-        with self.pg._cursor() as cur:
-            cur.execute("SELECT id, trade_date, ts, type, side, message, details FROM toi_algo_events WHERE type='settings' "
-                        "ORDER BY id DESC LIMIT %s", (limit,))
-            return [{"id": r[0], "day": _iso(r[1]), "ts": r[2].astimezone(IST).isoformat(), "type": r[3], "side": r[4],
-                     "message": r[5], "details": r[6] or {}} for r in cur.fetchall()]
+        return self.settings_store.history(SLUG, limit)
 
     def save_state(self, day, state, now):
         with self.pg._cursor() as cur:
@@ -132,13 +132,7 @@ class PgToiStore:
             return [{"day": _iso(r[0]), **dict(zip(self.SUM, r[1:]))} for r in cur.fetchall()]
 
     def settings(self):
-        with self.pg._cursor() as cur:
-            cur.execute("SELECT settings FROM toi_algo_settings WHERE id=1")
-            r = cur.fetchone()
-            return r[0] if r else {}
+        return self.settings_store.overrides(SLUG)
 
-    def save_settings(self, settings, now):
-        with self.pg._cursor() as cur:
-            cur.execute("INSERT INTO toi_algo_settings (id, settings, updated_at) VALUES (1, %s, %s) "
-                        "ON CONFLICT (id) DO UPDATE SET settings=EXCLUDED.settings, updated_at=EXCLUDED.updated_at",
-                        (json.dumps(settings), now))
+    def save_settings(self, settings, now, changes=None, who=""):
+        self.settings_store.save(SLUG, settings, changes or {}, who, now)

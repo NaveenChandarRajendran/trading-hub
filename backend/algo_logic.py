@@ -549,12 +549,14 @@ def on_tick(state, spot, ltp, ltp_high=None):
                                               f"{fmt(t)}", "data": {"spot": spot}}
     entry = o.get("entryPrice")
     high = ltp if ltp_high is None else ltp_high
-    if entry and high is not None and high >= entry * (1 + cfg.PREMIUM_TARGET_PCT / 100):
+    # the % the trade was opened with (a settings change applies to new trades only); replays: the config's
+    tgt_pct, stop_pct = o.get("targetPct", cfg.PREMIUM_TARGET_PCT), o.get("stopPct", cfg.PREMIUM_STOP_PCT)
+    if entry and high is not None and high >= entry * (1 + tgt_pct / 100):
         o["exiting"] = True
         return {"type": "exit", "reason": f"Premium target: LTP {fmt(high)} >= entry {fmt(entry)} + "
-                                          f"{cfg.PREMIUM_TARGET_PCT:g}%", "data": {"ltp": high}}
-    if entry and ltp is not None and ltp <= entry * (1 - cfg.PREMIUM_STOP_PCT / 100):
+                                          f"{tgt_pct:g}%", "data": {"ltp": high}}
+    if entry and ltp is not None and ltp <= entry * (1 - stop_pct / 100):
         o["exiting"] = True
-        return {"type": "exit", "reason": f"Premium stop: LTP {fmt(ltp)} <= entry {fmt(entry)} - {cfg.PREMIUM_STOP_PCT:g}%",
+        return {"type": "exit", "reason": f"Premium stop: LTP {fmt(ltp)} <= entry {fmt(entry)} - {stop_pct:g}%",
                 "data": {"ltp": ltp}}
     return None

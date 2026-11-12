@@ -117,7 +117,7 @@ def test_settings_view_validation_and_history(env):
 
 def test_every_setting_is_on_the_page():
     import trending_oi_algo_config as cfg
-    keys = [k for _, k, _ in algo_adapters.TOI_FIELDS]
+    keys = [f["key"] for f in algo_adapters.toi_fields()]
     assert len(keys) == len(set(keys)) and set(keys) <= set(cfg.DEFAULTS)
     missing = set(cfg.DEFAULTS) - set(keys)
     assert not missing, missing
@@ -127,3 +127,80 @@ def test_rules_markdown(env):
     svc, *_ = env
     r = client(svc).get("/api/algos/trending-oi/rules").json()
     assert r["doc"] == "docs/strategies/trending-oi-algo.md" and r["markdown"].startswith("#")
+
+
+# ---------------------------------------------------------------- OI Breakout Algo (algo_adapters.OiBreakoutAdapter)
+import pytest  # noqa: E402
+
+import algo_config as oib_cfg  # noqa: E402
+from algo_settings import MemorySettings  # noqa: E402
+from test_algo_service import DAY as OIB_DAY, at as oat, books as obooks, breakout_entry, ce  # noqa: E402
+from test_algo_service import env as oib_env  # noqa: E402,F401  (fixture)
+
+
+@pytest.fixture
+def oib(oib_env):  # noqa: F811
+    algo, paper, clock, store, tmp = oib_env
+    settings = MemorySettings()
+    a = algo_adapters.OiBreakoutAdapter(algo, settings)
+    from test_algo_service import signed_in
+    app = signed_in(FastAPI())
+    algos_api.register(app, {"oi-breakout": a})
+    yield a, algo, paper, clock, settings, TestClient(app)
+    algo_adapters.apply_oib(algo_adapters.OIB_DEFAULTS)  # algo_config is a module: put the written values back
+
+
+def test_oib_settings_validated_applied_and_logged(oib):
+    a, algo, _paper, _clock, settings, c = oib
+    v = c.get("/api/algos/oi-breakout/settings").json()
+    f = {x["key"]: x for x in v["fields"]}
+    assert f["premiumStopPct"]["value"] == 10.0 and f["stopAfterWin"]["kind"] == "bool" and f["entryFrom"]["value"] == "09:35"
+    assert all(x["readOnly"] for x in v["fields"] if x["group"] == "Fixed (set in code)")
+    bad = [({"fixed0": "C"}, "fixed"), ({"stopAfterWin": 1}, "on or off"), ({"premiumStopPct": 95}, "from 1 to 90"),
+           ({"lots": 1.5}, "whole number"), ({"entryFrom": "15:00"}, "before"), ({"rsiCeMin": 85}, "RSI"), ({"x": 1}, "unknown")]
+    for body, why in bad:
+        r = c.put("/api/algos/oi-breakout/settings", json=body)
+        assert r.status_code == 400 and why in r.json()["detail"], (body, r.json())
+    assert settings.history("oi-breakout") == [] and oib_cfg.PREMIUM_STOP_PCT == 10.0
+    r = c.put("/api/algos/oi-breakout/settings", json={"premiumStopPct": 5, "bufferNifty": 15, "stopAfterWin": False}).json()
+    assert (oib_cfg.PREMIUM_STOP_PCT, oib_cfg.BUFFER["NIFTY"], oib_cfg.STOP_AFTER_WIN) == (5, 15, False)
+    assert {(h["key"], h["old"], h["new"], h["user"]) for h in r["history"]} == {
+        ("premiumStopPct", 10.0, 5, "naveen"), ("bufferNifty", 10, 15, "naveen"), ("stopAfterWin", True, False, "naveen")}
+    logged = [e["message"] for e in algo.store.algo_events(OIB_DAY) if e["type"] == "settings"]
+    assert "Setting Premium stop %: 10.0 -> 5 (by naveen); open trades keep their stop and lots" in logged
+    # a restart reads the saved values back into algo_config
+    algo_adapters.apply_oib(algo_adapters.OIB_DEFAULTS)
+    algo_adapters.OiBreakoutAdapter(algo, settings)
+    assert oib_cfg.PREMIUM_STOP_PCT == 5 and oib_cfg.BUFFER["NIFTY"] == 15
+
+
+def test_oib_open_trade_keeps_its_stop_after_a_change(oib):
+    a, algo, paper, clock, _s, c = oib
+    breakout_entry(algo, paper, clock)
+    o = algo.states["NIFTY"]["open"]
+    assert (o["stopPct"], o["targetPct"], o["lots"]) == (10.0, 20.0, 1)
+    c.put("/api/algos/oi-breakout/settings", json={"premiumStopPct": 5})
+    obooks(paper, clock, oat("10:10"), {ce(22800): 113.0})  # below entry 120.05 - 5%, above - 10%
+    assert algo.states["NIFTY"]["open"] is not None
+    obooks(paper, clock, oat("10:11"), {ce(22800): 108.0})
+    assert algo.states["NIFTY"]["closed"][0]["exitReason"].startswith("Premium stop: LTP 108 <= entry 120.05 - 10%")
+
+
+def test_oib_summary_events_trades_and_kill_switch(oib):
+    a, algo, paper, clock, _s, c = oib
+    breakout_entry(algo, paper, clock)
+    (row,) = c.get("/api/algos").json()["rows"]
+    assert row["slug"] == "oi-breakout" and row["state"] == "stale" and row["stateText"] == "Feed stale" and row["open"].startswith("NIFTY ") and "NIFTY NIFTY" not in row["open"]  # BANKNIFTY never ticks here
+    ev = c.get(f"/api/algos/oi-breakout/events?date={OIB_DAY}&size=500").json()
+    assert ev["liveVariant"] == "A" and "NIFTY" in ev["scopes"] and ev["rows"][0]["type"] == "entry"
+    assert all(r["scope"] in ("NIFTY", "ALL") for r in c.get(f"/api/algos/oi-breakout/events?date={OIB_DAY}&scope=NIFTY").json()["rows"])
+    (t,) = c.get(f"/api/algos/oi-breakout/trades?date={OIB_DAY}").json()["rows"]
+    assert t["note"] == "open" and t["lots"] == 1 and t["entryPrice"] == 120.05
+    assert c.post("/api/algos/oi-breakout/stop").json()["state"] == "stopped"
+    after = c.post("/api/algos/oi-breakout/stop-exit-all").json()
+    assert after["open"] is None
+    (t,) = c.get(f"/api/algos/oi-breakout/trades?date={OIB_DAY}").json()["rows"]
+    assert t["pnl"] is not None and "Kill switch" in t["note"]
+    assert any("(by naveen)" in e["message"] for e in algo.store.algo_events(OIB_DAY) if e["index"] == "*")
+    assert c.get(f"/api/algos/oi-breakout/reports?from={OIB_DAY}&to={OIB_DAY}").status_code == 200
+    assert c.get("/api/algos/oi-breakout/rules").json()["doc"] == "docs/strategies/oi-breakout.md"

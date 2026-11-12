@@ -29,7 +29,7 @@ export default function AlgosApp() {
       <section className="card algos-head">
         <div className="algos-title">
           <span className="algos-name">{algo.name}</span><Pill tone="neutral">{algo.category.toUpperCase()}</Pill><Pill tone="accent">PAPER</Pill>
-          <span className="muted algos-small">{algo.instruments} · {algo.schedule}</span>
+          <span className="muted algos-small">{algo.instruments}</span>
         </div>
         <AlgoStatusBar slug={algo.slug} />
         <nav className="algos-tabs" aria-label={`${algo.name} tabs`}>
@@ -96,7 +96,7 @@ function AlgoCard({ slug, s, loading }: { slug: string; s?: AlgoSummary; loading
           {s.lastEvent && <span className="muted algos-small algos-last" title={s.lastEvent.text}>{hhmm(s.lastEvent.ts)} · {s.lastEvent.text}</span>}
         </>
       )}
-      <span className="muted algos-small">{a.instruments} · {a.schedule}</span>
+      <span className="muted algos-small">{a.instruments}</span>
     </NavLink>
   );
 }

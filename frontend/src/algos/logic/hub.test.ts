@@ -64,7 +64,7 @@ describe('csv + money', () => {
   it('builds files with raw numbers', () => {
     expect(daysCsv([{ date: '2026-11-12', realized: 1200, charges: 80.5, net: 1119.5, trades: 2, wins: 1, losses: 1 }]))
       .toBe('date,trades,wins,losses,realized,charges,net\n2026-11-12,2,1,1,1200,80.5,1119.5\n');
-    expect(eventsCsv([{ id: 1, ts: '2026-11-12T09:50:11+05:30', type: 'entry', side: 'CE', variant: '', setup: '', message: 'a, b' }]))
+    expect(eventsCsv([{ id: 1, ts: '2026-11-12T09:50:11+05:30', type: 'entry', side: 'CE', scope: 'NIFTY', variant: '', setup: '', message: 'a, b' }]))
       .toContain('"a, b"');
   });
   it('money', () => {
@@ -72,5 +72,13 @@ describe('csv + money', () => {
     expect(money(-80)).toBe('−₹80.00');
     expect(money(0)).toBe('₹0.00');
     expect(money(null)).toBe('–');
+  });
+});
+
+describe('settings fields', () => {
+  it('bool and fixed fields', () => {
+    expect(parseField('bool', 'false')).toEqual({ value: false });
+    expect(parseField('bool', 'x')).toEqual({ error: 'on or off' });
+    expect(parseField('text', 'B')).toEqual({ error: 'fixed' });
   });
 });
