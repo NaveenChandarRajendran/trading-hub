@@ -1,0 +1,15 @@
+/* Algos hub (src/algos). Layout only; colours and sizes are tokens. */
+.ds.algos { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ds .algos-head { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4) 0; }
+.ds .algos-title { display: flex; align-items: center; gap: var(--sp-2); }
+.ds .algos-name { font-size: var(--fs-lg); font-weight: 600; color: var(--text); }
+.ds .algos-tabs { display: flex; gap: var(--sp-1); border-top: 1px solid var(--border); margin: 0 calc(-1 * var(--sp-4)); padding: 0 var(--sp-3); }
+.ds .algos-tab { padding: var(--sp-2) var(--sp-3); color: var(--text-2); text-decoration: none; border-bottom: 2px solid transparent; font-size: var(--fs-md); }
+.ds .algos-tab:hover { color: var(--text); }
+.ds .algos-tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.ds .algos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--sp-3); }
+.ds .algos-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); color: var(--text); text-decoration: none; }
+.ds .algos-card:hover { border-color: var(--border-strong); }
+.ds .algos-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ds .algos-card-head { display: flex; align-items: center; gap: var(--sp-2); }
+.ds .algos-small { font-size: var(--fs-sm); }

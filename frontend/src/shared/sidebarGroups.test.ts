@@ -10,11 +10,19 @@ describe('sidebar groups', () => {
 
   it('groups apps in section order, keeping registry order inside a section', () => {
     const g = groupApps();
-    expect(g.map((x) => x.label)).toEqual(['', 'Manual (Paste)', 'Live (Dhan)']); // '' = top section, no header
-    expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard', 'strategies', 'growth-plan']);
+    expect(g.map((x) => x.label)).toEqual(['', 'Trading', 'Analysis (Live)', 'Analysis (Manual)', 'Planning']); // '' = no header
+    expect(g[0].apps.map((a) => a.id)).toEqual(['dashboard', 'strategies', 'algos']);
     expect(apps[0].id).toBe('dashboard'); // landing page
-    expect(g[1].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
-    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components', 'paper-trade', 'algo', 'trending-oi-algo', 'scalper', 'trade-window', 'strategy-builder']);
+    expect(g[1].apps.map((a) => a.id)).toEqual(['paper-trade', 'scalper', 'trade-window', 'strategy-builder']);
+    expect(g[2].apps.map((a) => a.id)).toEqual(['trending-oi', 'oi-change-live', 'sensibull-oi-live', 'oi-support-resistance-live', 'index-components']);
+    expect(g[3].apps.map((a) => a.id)).toEqual(['option-strategy', 'sensibull-oi', 'oi-support-resistance', 'premium-analysis', 'pcr-trend']);
+    expect(g[4].apps.map((a) => a.id)).toEqual(['growth-plan']);
+  });
+
+  it('Algos is one entry with Intraday / Positional; no single algo is in the sidebar', () => {
+    const algos = apps.find((a) => a.id === 'algos')!;
+    expect(algos.children).toEqual([{ name: 'Intraday', path: '/algos/intraday' }, { name: 'Positional', path: '/algos/positional' }]);
+    expect(apps.some((a) => a.id === 'algo' || a.id === 'trending-oi-algo')).toBe(false);
   });
 
   it('drops empty sections', () => {

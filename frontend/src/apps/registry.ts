@@ -1,12 +1,14 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-export type AppGroup = 'home' | 'manual' | 'live';
+export type AppGroup = 'home' | 'trading' | 'live' | 'manual' | 'planning';
 
 /** Sidebar sections, in display order. A section without a label has no header (always open). */
 export const GROUPS: { id: AppGroup; label: string }[] = [
   { id: 'home', label: '' },
-  { id: 'manual', label: 'Manual (Paste)' },
-  { id: 'live', label: 'Live (Dhan)' },
+  { id: 'trading', label: 'Trading' },
+  { id: 'live', label: 'Analysis (Live)' },
+  { id: 'manual', label: 'Analysis (Manual)' },
+  { id: 'planning', label: 'Planning' },
 ];
 
 export interface AppEntry {
@@ -16,6 +18,7 @@ export interface AppEntry {
   path: string;
   icon: string; // single glyph; swap for an icon library later
   component: LazyExoticComponent<ComponentType>;
+  children?: { name: string; path: string }[]; // sub-items under it in the sidebar (Algos: Intraday, Positional)
 }
 
 // Add the next app here: one folder under src/apps + one entry below. `group` picks its sidebar section.
@@ -38,8 +41,17 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./strategies/StrategiesApp')),
   },
   {
-    id: 'growth-plan',
+    id: 'algos',
     group: 'home',
+    name: 'Algos',
+    path: '/algos',
+    icon: '⚙',
+    component: lazy(() => import('../algos/AlgosApp')),
+    children: [{ name: 'Intraday', path: '/algos/intraday' }, { name: 'Positional', path: '/algos/positional' }],
+  },
+  {
+    id: 'growth-plan',
+    group: 'planning',
     name: 'Growth Plan',
     path: '/growth-plan',
     icon: '↗',
@@ -127,31 +139,15 @@ export const apps: AppEntry[] = [
   },
   {
     id: 'paper-trade',
-    group: 'live',
+    group: 'trading',
     name: 'Paper Trading',
     path: '/paper-trade',
     icon: '⇄',
     component: lazy(() => import('./paper-trade/PaperTradeApp')),
   },
   {
-    id: 'algo',
-    group: 'live',
-    name: 'Algo (paper)',
-    path: '/algo',
-    icon: '⚙',
-    component: lazy(() => import('./algo/AlgoApp')),
-  },
-  {
-    id: 'trending-oi-algo',
-    group: 'live',
-    name: 'Trending OI Algo',
-    path: '/trending-oi-algo',
-    icon: '⇡',
-    component: lazy(() => import('./trending-oi-algo/TrendingOiAlgoApp')),
-  },
-  {
     id: 'scalper',
-    group: 'live',
+    group: 'trading',
     name: 'Power Scalper',
     path: '/scalper',
     icon: '↯',
@@ -159,7 +155,7 @@ export const apps: AppEntry[] = [
   },
   {
     id: 'trade-window',
-    group: 'live',
+    group: 'trading',
     name: 'Trade Window',
     path: '/trade-window',
     icon: '⊞',
@@ -167,7 +163,7 @@ export const apps: AppEntry[] = [
   },
   {
     id: 'strategy-builder',
-    group: 'live',
+    group: 'trading',
     name: 'Strategy Builder',
     path: '/strategy-builder',
     icon: '⧉',

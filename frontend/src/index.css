@@ -23,6 +23,8 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 Int
 .nav-item:hover { background: var(--bg); }
 .nav-item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 500; }
 .nav-icon { width: 18px; text-align: center; }
+.nav-item.nav-sub { padding: 5px 10px 5px 38px; font-size: var(--fs-sm); color: var(--text-2); } /* Algos: Intraday / Positional */
+.nav-item.nav-sub.active { color: var(--accent); }
 .nav-group + .nav-group { margin-top: var(--sp-3); }
 .nav-group-head { display: flex; align-items: center; gap: var(--sp-1); width: 100%; padding: var(--sp-1) 10px; margin-bottom: var(--sp-1); border: 0; border-radius: var(--r-md); background: none; color: var(--text-3); font: inherit; font-size: var(--fs-xs); font-weight: 600; text-align: left; cursor: pointer; transition: background-color 120ms, color 120ms; }
 .nav-group-head:hover { background: var(--surface-2); color: var(--text-2); }

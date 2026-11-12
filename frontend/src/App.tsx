@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { OLD_PATHS } from './algos/routes';
 import { apps, groupApps } from './apps/registry';
 import { initials } from './shared/auth/auth';
 import { useSession } from './shared/auth/AuthGate';
@@ -7,8 +8,8 @@ import { loadClosed, saveClosed } from './shared/sidebarGroups';
 import { strategyApi } from './shared/strategy/api';
 import { useTheme } from './shared/theme';
 
-/** Apps only some users see: the algo's pages belong to the owner of its strategy ("OI Breakout Algo"). */
-const OWNER_ONLY = new Set(['algo']);
+/** Apps only some users see: the algos belong to the owner of their strategies (naveen). */
+const OWNER_ONLY = new Set(['algos']);
 
 export default function App() {
   const { mode, toggle } = useTheme();
@@ -53,10 +54,17 @@ export default function App() {
                 )}
                 {open &&
                   s.apps.map((a) => (
-                    <NavLink key={a.id} to={a.path} className="nav-item" title={a.name}>
-                      <span className="nav-icon">{a.icon}</span>
-                      {!collapsed && <span>{a.name}</span>}
-                    </NavLink>
+                    <div key={a.id}>
+                      <NavLink to={a.path} className="nav-item" title={a.name}>
+                        <span className="nav-icon">{a.icon}</span>
+                        {!collapsed && <span>{a.name}</span>}
+                      </NavLink>
+                      {!collapsed && a.children?.map((c) => (
+                        <NavLink key={c.path} to={c.path} end className="nav-item nav-sub" title={`${a.name}: ${c.name}`}>
+                          <span>{c.name}</span>
+                        </NavLink>
+                      ))}
+                    </div>
                   ))}
               </div>
             );
@@ -79,6 +87,9 @@ export default function App() {
           <Suspense fallback={<p className="muted">Loading…</p>}>
             <Routes>
               <Route path="/" element={<Navigate to={apps[0].path} replace />} />
+              {Object.entries(OLD_PATHS).map(([from, to]) => (
+                <Route key={from} path={`${from}/*`} element={<Navigate to={to} replace />} />
+              ))}
               {visible.map((a) => (
                 <Route key={a.id} path={`${a.path}/*`} element={<a.component />} />
               ))}

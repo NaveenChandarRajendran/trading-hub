@@ -1,6 +1,8 @@
 // Strategies home: the signed-in user's strategies as cards (or a list) with Total / Unbooked / Booked P&L, open
 // positions and capital; create a strategy; archived ones read-only under the Archived filter. Trading happens in
 // Paper Trading and Power Scalper ("Trading into"); the algo's strategy is its owner's only.
+import { ALGOS } from '../../algos/registry';
+import { algoPath } from '../../algos/routes';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ApiError } from '../../shared/api';
@@ -31,8 +33,11 @@ function save(k: string, v: string) {
   }
 }
 
-/** Each algo strategy's own page (the Trending OI Algo has its own; the rest is the OI breakout algo's). */
-const algoPage = (name: string) => (name === 'Trending OI Algo' ? '/trending-oi-algo' : '/algo');
+/** Each algo strategy's page in the Algos hub (by its strategy name), else the Algos home. */
+const algoPage = (name: string) => {
+  const a = ALGOS.find((x) => x.strategyName === name);
+  return a ? algoPath(a.slug) : '/algos';
+};
 
 export default function StrategiesApp() {
   const m = useLocation().pathname.match(/^\/strategies\/(\d+)/);
