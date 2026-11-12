@@ -42,6 +42,12 @@ export const RESULTS: PaperResult[] = [
     years: { 2021: 999, 2022: 60596, 2023: 12301, 2024: 39486, 2025: 17533, 2026: 42610 }, worst: '−₹36k', verdict: 'good', verdictText: 'Positive',
   },
   {
+    // research/shiva-gap/shiva.json: gap 0.6, first candle, target +80 %, stop -20 %, 60 minutes, no index stop (owner 12-Nov-2026)
+    id: 'gap', section: 'Option Buy', name: 'Big Gap Buy', index: 'BankNifty', capital: 50000, kind: 'rupees',
+    what: '1 lot, once at 9:16 on a 0.6% gap day. Stop 20%, target 80%, out after 60 minutes.',
+    years: { 2021: 9542, 2022: 17894, 2023: 18874, 2024: 2782, 2025: 36114, 2026: 23132 }, worst: '−₹21k', verdict: 'new', verdictText: 'New',
+  },
+  {
     id: 'weekly', section: 'Option Sell', name: 'Weekly Strangle', index: 'Nifty', capital: 400000, kind: 'rupees',
     what: '2 lots. Sells a call and a put 200 points away 3 days before expiry. Buys back a leg if it doubles.',
     years: { 2021: -22171, 2022: 199595, 2023: 39921, 2024: 176180, 2025: 153938, 2026: 189394 }, worst: '−₹48k', verdict: 'new', verdictText: 'New · strong',
