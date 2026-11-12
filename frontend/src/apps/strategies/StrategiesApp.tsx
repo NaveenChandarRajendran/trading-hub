@@ -31,6 +31,9 @@ function save(k: string, v: string) {
   }
 }
 
+/** Each algo strategy's own page (the Trending OI Algo has its own; the rest is the OI breakout algo's). */
+const algoPage = (name: string) => (name === 'Trending OI Algo' ? '/trending-oi-algo' : '/algo');
+
 export default function StrategiesApp() {
   const m = useLocation().pathname.match(/^\/strategies\/(\d+)/);
   return m ? <StrategyView key={m[1]} id={Number(m[1])} /> : <StrategiesHome />;
@@ -137,7 +140,7 @@ function StrategyCard({ c, onChanged }: { c: Card; onChanged: () => void }) {
         <span className="muted">{n?.open ?? 0} open · capital {rupees(c.capital, 0)}</span>
         <span className="sts-card-actions">
           {c.kind === 'options' && !c.archivedAt && <Link className="btn ghost" to="/strategy-builder" title="Open the Strategy Builder (paper trade, positions)">Builder</Link>}
-          {c.kind === 'algo' ? <Link className="btn ghost" to="/algo">Algo page</Link>
+          {c.kind === 'algo' ? <Link className="btn ghost" to={algoPage(c.name)}>Algo page</Link>
             : <button className="btn ghost" disabled={arch.busy} onClick={arch.run}>{c.archivedAt ? 'Unarchive' : 'Archive'}</button>}
         </span>
       </div>
@@ -168,7 +171,7 @@ function TableRow({ c, onChanged }: { c: Card; onChanged: () => void }) {
       <td><Money v={c.numbers?.booked} /></td>
       <td className="num">{c.numbers?.open ?? 0}</td>
       <td className="num">{rupees(c.capital, 0)}</td>
-      <td>{c.kind === 'algo' ? <Link className="btn ghost" to="/algo">Algo page</Link>
+      <td>{c.kind === 'algo' ? <Link className="btn ghost" to={algoPage(c.name)}>Algo page</Link>
         : <button className="btn ghost" disabled={arch.busy} onClick={arch.run}>{c.archivedAt ? 'Unarchive' : 'Archive'}</button>}</td>
     </tr>
   );

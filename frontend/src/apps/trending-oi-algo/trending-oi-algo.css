@@ -1,0 +1,20 @@
+/* Trending OI Algo page: the Algo page's layout (algo.css) plus these. Tokens only. */
+.ds.toi .toi-market { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--sp-2) var(--sp-5); }
+.ds.toi .toi-market > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ds.toi .toi-market > div > .muted:first-child { font-size: var(--fs-sm); }
+.ds.toi .toi-dots { color: var(--accent); letter-spacing: 1px; }
+.ds.toi .toi-warn { color: var(--warn); }
+.ds.toi .toi-open { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ds.toi .toi-open-main { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; font-size: var(--fs-md); }
+.ds.toi .toi-open-main > b:last-child { margin-left: auto; font-size: var(--fs-lg); }
+.ds.toi .toi-open-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.ds.toi .toi-open-grid > span { color: var(--text-3); }
+.ds.toi .toi-open-grid > b { font-weight: 500; }
+.ds.toi .toi-settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-3); }
+.ds.toi .toi-settings fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; }
+.ds.toi .toi-settings legend { font-weight: 600; font-size: var(--fs-sm); padding: 0 var(--sp-1); }
+.ds.toi .toi-settings .field { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: var(--sp-2); }
+.ds.toi .toi-changed { color: var(--accent); font-size: var(--fs-xs); }
+.ds.toi .toi-save { margin-left: auto; display: inline-flex; gap: var(--sp-2); align-items: center; }
+.ds.toi .toi-small { font-size: var(--fs-sm); margin: 0 0 var(--sp-3); }

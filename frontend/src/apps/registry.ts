@@ -142,6 +142,14 @@ export const apps: AppEntry[] = [
     component: lazy(() => import('./algo/AlgoApp')),
   },
   {
+    id: 'trending-oi-algo',
+    group: 'live',
+    name: 'Trending OI Algo',
+    path: '/trending-oi-algo',
+    icon: '⇡',
+    component: lazy(() => import('./trending-oi-algo/TrendingOiAlgoApp')),
+  },
+  {
     id: 'scalper',
     group: 'live',
     name: 'Power Scalper',

@@ -118,6 +118,13 @@ market" on Builder legs (numbers and Paper trade blocked), templates move outwar
 30-Oct: option-chain LTP is now the last trade only (`backend/last_trades.py`: Dhan's chain sends the previous close
 for legs with no trade today); "no trades today" strikes are greyed and no market. → LTP = the last trade only.
 
+## Trending OI Algo — 12-Nov-2026 (`feature/trending-oi-algo`, ADR 0011)
+Second paper algo on NIFTY: Trending OI direction, pullback to Supertrend(10,3) / futures VWAP, 1-ITM options, adds
+(averaging / pyramiding with a risk guard), partial exits at the locked OI levels, breakeven, Supertrend trail.
+Rules: docs/strategies/trending-oi-algo.md; numbers: backend/trending_oi_algo_config.py (+ the page's Settings).
+Backend: toi_algo_logic.py (rules), indicators.py, toi_algo_data.py, toi_algo_service.py (runner), toi_algo_store.py
+(own toi_algo_* tables), toi_algo_api.py (/api/toi-algo/*). Page: Live -> Trending OI Algo. Env TOI_ALGO_MODE.
+
 ## Power Scalper (branch `feature/scalper`, spec `docs/features/scalper.md`, ADR 0007)
 PAPER ONLY, phase 1 built (steps 1-5, 27-Oct-2026); step 4 TP / SL drag still needs a market-hours check; phase 2 (Option Chain, Depth, OI Insights tabs) not started. Backend: a third paper account "Scalper" (`scalper_service.py`,
 own engine, `source='scalper'`, default capital ₹1,00,000), `/api/scalper/*` (`scalper_api.py`), reports from fills

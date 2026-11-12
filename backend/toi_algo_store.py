@@ -31,6 +31,9 @@ class MemoryToiStore:
     def state(self, day):
         return copy.deepcopy(self._states.get(day))
 
+    def states_between(self, from_day, to_day):
+        return {d: copy.deepcopy(st) for d, st in sorted(self._states.items()) if from_day <= d <= to_day}
+
     def save_candle(self, row):
         self._candles[(row["day"], row["start"])] = dict(row)
 
@@ -79,6 +82,12 @@ class PgToiStore:
             cur.execute("SELECT state FROM toi_algo_state WHERE trade_date=%s", (day,))
             r = cur.fetchone()
             return r[0] if r else None
+
+    def states_between(self, from_day, to_day):
+        with self.pg._cursor() as cur:
+            cur.execute("SELECT trade_date, state FROM toi_algo_state WHERE trade_date BETWEEN %s AND %s ORDER BY trade_date",
+                        (from_day, to_day))
+            return {_iso(r[0]): r[1] for r in cur.fetchall()}
 
     COLS = ("open", "high", "low", "close", "supertrend", "st_up", "vwap", "vwap_future", "basis", "rsi", "toi_strength",
             "toi_sentiment", "no_trade")

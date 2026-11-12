@@ -473,6 +473,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         algo_api.register(app, algo)
         app.state.algo = algo
     if toi:
+        import toi_algo_api
+        toi_algo_api.register(app, toi)
         app.state.toi_algo = toi
     if scalper:
         scalper_api.register(app, scalper, strategies)

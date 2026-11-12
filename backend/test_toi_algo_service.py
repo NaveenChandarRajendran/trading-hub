@@ -319,3 +319,53 @@ def test_cannot_reach_a_real_order_endpoint():
     from algo_service import AlgoBroker
     assert "PaperEngine(" in open(os.path.join(HERE, "algo_service.py"), encoding="utf-8").read()
     assert "engine" in AlgoBroker.buy.__code__.co_names and "engine" in AlgoBroker.sell.__code__.co_names
+
+
+# ---------------------------------------------------------------- routes (toi_algo_api.py)
+def client(svc, user=None):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import toi_algo_api
+    from test_algo_service import signed_in
+    app = signed_in(FastAPI(), user)
+    toi_algo_api.register(app, svc)
+    return TestClient(app)
+
+
+def test_routes_status_kill_switch_settings_and_reports(env):
+    svc, paper, clock, store, toi, _ = env
+    entry(svc, paper, clock)
+    c = client(svc)
+    st = c.get("/api/toi-algo/status").json()
+    assert st["direction"]["side"] == "CE" and st["direction"]["dots"] == 3 and st["levels"] == LEVELS
+    o = st["open"]
+    assert (o["side"], o["lots"], o["strike"], o["next"], o["caps"]) == ("CE", 2, 23200.0, "R1 23,300", {"avg": 6, "pyr": 4, "max": 6})
+    assert st["indicators"]["supertrend"] == 23200.0 and st["indicators"]["basis"] == 120.0
+    assert st["meta"]["entryWindow"] == "09:45-14:30" and st["meta"]["mode"] == "paper"
+    rows = c.get("/api/toi-algo/events").json()["rows"]
+    assert rows[0]["type"] == "info" and rows[0]["message"].startswith("Entry filled")  # newest first
+    assert c.post("/api/toi-algo/stop").json()["meta"]["halted"] is True
+    assert c.post("/api/toi-algo/resume").json()["meta"]["halted"] is False
+    assert c.put("/api/toi-algo/settings", json={"entryLots": 2.5}).status_code == 400
+    assert c.put("/api/toi-algo/settings", json={"entryFrom": "9:45"}).status_code == 400
+    assert c.put("/api/toi-algo/settings", json={"nope": 1}).status_code == 400
+    r = c.put("/api/toi-algo/settings", json={"maxTrades": 1, "entryTo": "14:00"})
+    assert r.status_code == 200 and r.json()["settings"]["maxTrades"] == 1
+    assert [e["message"] for e in events(toi, "settings")] == [
+        "Setting maxTrades: 2 -> 1 (by naveen); open trades keep their stop and lots",
+        "Setting entryTo: 14:30 -> 14:00 (by naveen); open trades keep their stop and lots"]
+    assert c.post("/api/toi-algo/stop-exit-all").json()["open"] is None
+    svc.write_summary(at("15:35"))
+    rep = c.get(f"/api/toi-algo/reports?from={DAY}&to={DAY}").json()
+    assert rep["tiles"]["trades"] == 1 and len(rep["rows"]) == 1 and rep["tiles"]["winRate"] is not None
+    day = c.get(f"/api/toi-algo/day?date={DAY}").json()
+    assert day["trades"] and day["candles"]
+
+
+def test_routes_are_only_for_the_owner(env):
+    from auth import User
+    svc, *_ = env
+    c = client(svc, User(2, "wife", "Wife"))
+    assert c.get("/api/toi-algo/status").status_code == 404
+    assert c.post("/api/toi-algo/stop-exit-all").status_code == 404
