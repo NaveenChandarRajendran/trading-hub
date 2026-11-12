@@ -129,11 +129,14 @@ Settings. Old `#/algo`, `#/trending-oi-algo` redirect. Positional: empty state, 
 - Settings of every algo: `algo_settings.py`, tables `th_algo_settings` + `th_algo_settings_log` (old -> new, time, user);
   defaults stay in algo_config.py / trending_oi_algo_config.py. Both algos' settings are editable; changes apply to new
   decisions, open trades keep their stop / target % and lots. `toi_algo_settings` is no longer used.
-- ORB Algo (step 4 done, not wired into main.py yet): rules docs/strategies/orb.md; backend orb_config.py, orb_logic.py
-  (pure rules + replay_day), orb_service.py (runner), orb_store.py (orb_algo_events / _state / _daily_summary, settings
-  slug "orb"); ADR 0013: per-account square-off (PaperEngine square_off, AlgoBroker square_off), ORB = 15:25.
-  Tests: test_orb_logic.py, test_orb_service.py, test_orb_db.py (Postgres).
-- Next (step 5): wire ORB into main.py + the hub (adapter, Overview panel), replay over Dhan's 1-minute history.
+- ORB Algo (built 12-Nov, not merged yet): rules docs/strategies/orb.md; backend orb_config.py, orb_logic.py (pure rules
+  + replay_day), orb_service.py (runner, own "ORB Algo" account, 15:25 square-off, ADR 0013), orb_store.py
+  (orb_algo_events / _state / _daily_summary; settings slug "orb"); wired in main.py (env ORB_ALGO_MODE, default paper;
+  the strategy is created at startup). Hub: OrbAdapter, `GET /api/algos/orb/overview`, Reports "By setup".
+  Frontend: src/algos/orb/ (Overview: the three ORs, setup states, open positions).
+- ORB replay: `python orb_replay.py` (read-only Dhan 1-minute history, cached in data/orb_history/; Dhan's goes back to
+  Apr 2017) -> docs/strategies/orb-replay.md. Over the video's period the results are close to the video's numbers.
+  Note: Dhan's /charts/intraday drops the first day's 09:15 candle when fromDate is 09:15:00: ask from 09:00.
 
 ## Trending OI Algo — 12-Nov-2026 (`feature/trending-oi-algo`, ADR 0011)
 Second paper algo on NIFTY: Trending OI direction, pullback to Supertrend(10,3) / futures VWAP, 1-ITM options, adds

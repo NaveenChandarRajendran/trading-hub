@@ -34,7 +34,8 @@ export interface ReportTiles {
   winRate: number | null; avgWin: number | null; avgLoss: number | null;
   bestDay: { date: string; net: number } | null; worstDay: { date: string; net: number } | null;
 }
-export interface AlgoReport { from: string; to: string; days: DayRow[]; tiles: ReportTiles; holidays: string[] }
+export interface SetupResult { key: string; name: string; trades: number; wins: number; losses: number; points: number; net: number }
+export interface AlgoReport { from: string; to: string; days: DayRow[]; tiles: ReportTiles; holidays: string[]; breakdown?: SetupResult[] }
 
 export type FieldKind = 'number' | 'int' | 'time' | 'bool' | 'list' | 'text';
 export type FieldValue = number | string | boolean | string[];
@@ -63,6 +64,7 @@ export const hubApi = {
   settings: (slug: string, signal?: AbortSignal) => requestJson<SettingsView>(API_BASE, `${base(slug)}/settings`, { signal }),
   saveSettings: (slug: string, changes: Record<string, FieldValue>) =>
     requestJson<SettingsView>(API_BASE, `${base(slug)}/settings`, { method: 'PUT', body: changes }),
+  overview: <T,>(slug: string, signal?: AbortSignal) => requestJson<T>(API_BASE, `${base(slug)}/overview`, { signal }),
   rules: (slug: string, signal?: AbortSignal) => requestJson<{ doc: string; markdown: string }>(API_BASE, `${base(slug)}/rules`, { signal }),
   kill: (slug: string, action: 'stop' | 'stop-exit-all' | 'resume') =>
     requestJson<AlgoSummary>(API_BASE, `${base(slug)}/${action}`, { method: 'POST' }),

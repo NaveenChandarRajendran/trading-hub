@@ -12,6 +12,7 @@ Only the owner of an algo's strategy (naveen) gets its routes; anyone else gets 
     GET  /api/algos/{slug}/settings                fields (value, default, kind, group, label), editable, change history
     PUT  /api/algos/{slug}/settings {changes}      validated, logged old -> new (time, user); new decisions only
     GET  /api/algos/{slug}/rules                   docs/strategies/<doc>.md (rendered by the page, raw HTML escaped there)
+    GET  /api/algos/{slug}/overview                the algo's own Overview panel data (adapters that have one)
     POST /api/algos/{slug}/stop | stop-exit-all | resume
 """
 import os
@@ -113,8 +114,18 @@ def register(app, adapters):
         if from_day > to_day:
             raise HTTPException(400, "from must not be after to")
         days, pnls = a.reports(from_day, to_day)
-        return {"from": from_day, "to": to_day, "days": days, "tiles": tiles(days, pnls),
-                "holidays": sorted(d for d in NSE_HOLIDAYS if from_day <= d <= to_day)}
+        out = {"from": from_day, "to": to_day, "days": days, "tiles": tiles(days, pnls),
+               "holidays": sorted(d for d in NSE_HOLIDAYS if from_day <= d <= to_day)}
+        if hasattr(a, "breakdown"):  # P&L per setup (ORB): [{key, name, trades, wins, losses, points, net}]
+            out["breakdown"] = a.breakdown(from_day, to_day)
+        return out
+
+    @app.get("/api/algos/{slug}/overview")
+    def overview(slug: str, request: Request):
+        a = get(request, slug)
+        if not hasattr(a, "overview"):
+            raise HTTPException(404, "This algo's Overview uses its own route")
+        return a.overview()
 
     @app.get("/api/algos/{slug}/settings")
     def settings(slug: str, request: Request):

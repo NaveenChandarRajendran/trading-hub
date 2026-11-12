@@ -191,3 +191,15 @@ def test_square_off_exits_every_open_trade():
     st, _ = run(morning() + [cd("10:20", 24060)])
     outs = L.square_off(st, 24100, datetime.fromtimestamp(t("15:25"), IST), S)
     assert [(a["setup"], a["reason"], a["spot"]) for a in actions(outs)] == [("b60", "15:25 exit", 24100)]  # r30 / v5 only armed
+
+
+def test_replay_summary_per_setup():
+    import orb_replay as R
+    day = morning() + [cd("10:20", 24060)] + [cd(hm(i), 24100) for i in range(66, 370)]
+    days = R.by_day(day)
+    trades = R.replay(days)
+    res = R.summarize(trades)
+    assert res["b60"] == {"trades": 1, "wins": 1, "losses": 0, "points": 40.0, "winRate": 100.0, "perTrade": 40.0}
+    assert res["v5"]["trades"] == 0 and res["v5"]["winRate"] is None
+    text, _ = R.report(days, trades)
+    assert "| 60m Breakout | 1 | 100.0% | +40.00 | +40.00 | 648 | +7,021 | +10.83 |" in text and "Shorter than" in text

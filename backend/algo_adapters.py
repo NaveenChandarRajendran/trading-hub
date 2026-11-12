@@ -372,3 +372,140 @@ class OiBreakoutAdapter:
 
     def resume(self, user):
         self.algo.resume(who=user)
+
+
+# ===================================================================== ORB Algo
+def orb_fields():
+    import orb_config as orb_cfg
+    d = orb_cfg.DEFAULTS
+    rows = [
+        _f("Setups", "b60On", "60m Breakout", kind="bool"),
+        _f("Setups", "r30On", "30m Retest", kind="bool"),
+        _f("Setups", "v5On", "5m Reversal", kind="bool"),
+        _f("Rules", "orSizePct", "OR size limit (% of the open)", kind="number", min=0.05, max=5),
+        _f("Rules", "entryBefore", "60m / 5m: signal before", kind="time"),
+        _f("Rules", "retestWithinMin", "30m: retest within (min)", kind="int", min=1, max=300),
+        _f("Orders & risk", "lots", "Lots per setup", kind="int", min=1, max=20),
+        _f("Orders & risk", "dayLossStopPct", "Day loss stop % of capital", kind="number", min=0.1, max=50),
+        _f("Orders & risk", "squareOff", "Exit everything at", kind="time"),
+        _f("Orders & risk", "strikeFallback", "1 ITM not liquid: try", kind="list", choices=["ATM", "2ITM"]),
+    ]
+    for r in rows:
+        r["default"] = d[r["key"]]
+    fixed = [("Instrument", "NIFTY weekly options"), ("Candles", "1 min, on closes"),
+             ("Capital (₹)", orb_cfg.CAPITAL), ("Account", orb_cfg.ACCOUNT_NAME)]
+    rows += [_f("Fixed (set in code)", f"fixed{i}", label, kind="text", default=v, readOnly=True) for i, (label, v) in enumerate(fixed)]
+    return rows
+
+
+def orb_cross(v):
+    if not "09:20" <= v["entryBefore"] <= v["squareOff"]:
+        return "the signal limit must be between 09:20 and the exit time"
+    if not "10:16" <= v["squareOff"] <= "15:29":
+        return "Exit everything at: between 10:16 and 15:29"
+    return None
+
+
+class OrbAdapter:
+    slug, name, category, rules_doc = "orb", "ORB Algo", "intraday", "orb"
+    live_variant = ""
+
+    def __init__(self, svc):
+        import orb_config as orb_cfg
+        self.svc, self.cfg = svc, orb_cfg
+        self.settings = AlgoSettings(svc.orb.settings_store, self.slug, orb_fields(), orb_cross)
+
+    def today(self):
+        return self.svc.clock().date().isoformat()
+
+    def owner_id(self):
+        acc = self.svc.broker.account if self.svc.broker else self.svc.store.active_account(self.cfg.ACCOUNT_NAME)
+        st = self.svc.store.strategy(acc["strategy_id"]) if acc and acc.get("strategy_id") else None
+        return st["user_id"] if st else None
+
+    def summary(self):
+        s = self.svc.status()
+        state, text = state_of(s["mode"], s["marketOpen"], s["halted"], s["stale"], s["tokenExpired"])
+        today = (s.get("funds") or {}).get("dayPnl") or 0.0
+        before = sum(r["net_pnl"] for r in self.svc.orb.summaries(self.today()[:7] + "-01", self.today()) if r["day"] < self.today())
+        opens = [f"{o['name']}: {o['side']} {TL.fmt(o.get('strike'))} × {lots_text(o['lots'])} · stop {TL.fmt(o['stop'])}"
+                 for o in s["open"]]
+        last = next((e for e in self.events(self.today()) if e["type"] != "heartbeat"), None)
+        return {"name": self.name, "category": self.category, "state": state, "stateText": text, "halted": s["halted"],
+                "todayPnl": round(today, 2), "mtdPnl": round(before + today, 2), "open": " · ".join(opens) or None,
+                "lastEvent": last and {"ts": last["ts"], "text": last["message"]}}
+
+    def events(self, day):
+        names = {k: n for k, (n, _m) in self.cfg.SETUPS.items()}
+        rows = [{"id": e["id"], "ts": iso(e["ts"]), "type": e["type"], "side": e.get("side"), "scope": "", "variant": "",
+                 "setup": names.get(e.get("setup") or "", ""), "message": e["message"]} for e in self.svc.orb.events(day)]
+        return sorted(rows, key=lambda r: (r["ts"], r["id"]), reverse=True)
+
+    def trades(self, day):
+        st = self.svc.orb.state(day) or (self.svc.state if day == self.today() else None) or {}
+        rows = [self._trade(t, True) for t in st.get("closed", [])]
+        if day == self.today():
+            rows += [self._trade(o, False) for o in self.svc.open_view()]
+        return sorted(rows, key=lambda r: r["entryAt"] or "")
+
+    @staticmethod
+    def _trade(t, closed):
+        pts = t.get("points") if closed else t.get("pointsNow")
+        return {"setup": t.get("name") or t.get("setup"), "side": t["side"],
+                "instrument": f"NIFTY {TL.fmt(t.get('strike'))} {t['side']}", "lots": t.get("lots"), "entryAt": t.get("entryAt"),
+                "entryPrice": t.get("entryPrice"), "exitAt": t.get("exitAt") if closed else None,
+                "exitPrice": t.get("exitPrice") if closed else None, "spotIn": t.get("entrySpot"),
+                "spotOut": t.get("exitSpot") if closed else None, "pnl": t.get("pnl") if closed else None,
+                "note": (f"{pts:+.2f} pts" if pts is not None else "– pts") + (f" · {t.get('exitReason')}" if closed else " · open")}
+
+    def reports(self, from_day, to_day):
+        days = {}
+        for r in self.svc.orb.summaries(from_day, to_day):
+            d = days.setdefault(r["day"], {"date": r["day"], "realized": 0.0, "charges": 0.0, "net": 0.0, "trades": 0, "wins": 0, "losses": 0})
+            d["realized"] += r["gross_pnl"]
+            d["charges"] += r["charges"]
+            d["net"] += r["net_pnl"]
+            for k in ("trades", "wins", "losses"):
+                d[k] += r[k]
+        rows = [{**d, **{k: round(d[k], 2) for k in ("realized", "charges", "net")}} for d in sorted(days.values(), key=lambda x: x["date"])]
+        pnls = [round((t.get("pnl") or 0) - (t.get("charges") or 0), 2) for st in self.svc.orb.states_between(from_day, to_day).values()
+                for t in st.get("closed", []) if t.get("pnl") is not None]
+        return rows, pnls
+
+    def breakdown(self, from_day, to_day):
+        """Each setup's own result over the range (trades, wins, losses, spot points, net P&L)."""
+        out = {k: {"key": k, "name": n, "trades": 0, "wins": 0, "losses": 0, "points": 0.0, "net": 0.0}
+               for k, (n, _m) in self.cfg.SETUPS.items()}
+        for r in self.svc.orb.summaries(from_day, to_day):
+            b = out.get(r["setup"])
+            if b:
+                for k in ("trades", "wins", "losses"):
+                    b[k] += r[k]
+                b["points"] = round(b["points"] + r["points"], 2)
+                b["net"] = round(b["net"] + r["net_pnl"], 2)
+        return list(out.values())
+
+    def overview(self):
+        s = self.svc.status()
+        st = s.get("state") or {}
+        return {"asOf": s["asOf"], "spot": s["spot"], "expiry": s["expiry"], "dayOpen": st.get("dayOpen"),
+                "ors": st.get("ors") or {}, "setups": [{k: v for k, v in x.items() if k != "open"} for x in (st.get("setups") or {}).values()],
+                "open": s["open"], "closed": st.get("closed", []), "trades": st.get("trades", 0),
+                "settings": s["settings"], "funds": s["funds"], "mode": s["mode"], "stale": s["stale"],
+                "tokenExpired": s["tokenExpired"]}
+
+    def settings_view(self):
+        return self.settings.view(KEEP_NOTE + " A setup switched off stops at its next candle.")
+
+    def save_settings(self, changes, user):
+        clean = check(self.settings.fields, changes)
+        err = orb_cross({**self.settings.values(), **clean})
+        if err:
+            raise ValueError(err)
+        self.svc.set_settings(clean, who=user)
+
+    def stop(self, exit_all, user):
+        self.svc.stop(exit_all=exit_all, who=user)
+
+    def resume(self, user):
+        self.svc.resume(who=user)

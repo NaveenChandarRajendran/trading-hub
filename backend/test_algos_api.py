@@ -204,3 +204,54 @@ def test_oib_summary_events_trades_and_kill_switch(oib):
     assert any("(by naveen)" in e["message"] for e in algo.store.algo_events(OIB_DAY) if e["index"] == "*")
     assert c.get(f"/api/algos/oi-breakout/reports?from={OIB_DAY}&to={OIB_DAY}").status_code == 200
     assert c.get("/api/algos/oi-breakout/rules").json()["doc"] == "docs/strategies/oi-breakout.md"
+
+
+# ---------------------------------------------------------------- ORB Algo (algo_adapters.OrbAdapter)
+from test_orb_service import DAY as ORB_DAY, at as orb_at, minute as orb_minute, morning as orb_morning  # noqa: E402
+from test_orb_service import env as orb_env  # noqa: E402,F401  (fixture)
+
+
+@pytest.fixture
+def orb(orb_env):  # noqa: F811
+    svc, paper, clock, store, orb_store, market = orb_env
+    from test_algo_service import signed_in
+    app = signed_in(FastAPI())
+    algos_api.register(app, {"orb": algo_adapters.OrbAdapter(svc)})
+    yield svc, paper, clock, orb_store, TestClient(app)
+
+
+def test_orb_card_log_trades_overview_and_setup_breakdown(orb):
+    svc, paper, clock, orb_store, c = orb
+    orb_morning(svc, paper, clock)
+    orb_minute(svc, paper, clock, "10:20", 24040, 24065, 24040, 24060)
+    (row,) = c.get("/api/algos").json()["rows"]
+    assert row["slug"] == "orb" and row["state"] == "running" and row["open"].startswith("60m Breakout: CE 24,000 × 1 lot · stop 23,900")
+    ov = c.get("/api/algos/orb/overview").json()
+    assert ov["ors"]["60"]["high"] == 24050 and [s["status"] for s in ov["setups"]] == ["in trade", "armed", "armed"]
+    assert ov["open"][0]["pointsNow"] is not None and ov["open"][0]["stop"] == 23900
+    ev = c.get(f"/api/algos/orb/events?date={ORB_DAY}&type=entry").json()
+    assert ev["rows"][0]["setup"] == "60m Breakout"
+    orb_minute(svc, paper, clock, "10:40", 23950, 23950, 23880, 23890)
+    (t,) = c.get(f"/api/algos/orb/trades?date={ORB_DAY}").json()["rows"]
+    assert t["setup"] == "60m Breakout" and t["spotIn"] == 24060 and t["note"].startswith("-170.00 pts · Stop")
+    svc.write_summary(orb_at("15:35"))
+    rep = c.get(f"/api/algos/orb/reports?from={ORB_DAY}&to={ORB_DAY}").json()
+    b = {x["key"]: x for x in rep["breakdown"]}
+    assert (b["b60"]["trades"], b["b60"]["points"], b["r30"]["trades"]) == (1, -170.0, 0) and b["b60"]["net"] < 0
+    assert rep["tiles"]["trades"] == 1 and rep["tiles"]["losses"] == 1
+
+
+def test_orb_settings_validated_and_switches(orb):
+    svc, paper, clock, orb_store, c = orb
+    f = {x["key"]: x for x in c.get("/api/algos/orb/settings").json()["fields"]}
+    assert f["b60On"]["kind"] == "bool" and f["squareOff"]["value"] == "15:25"
+    for body, why in (({"squareOff": "15:31"}, "15:29"), ({"entryBefore": "09:10"}, "09:20"), ({"lots": 0}, "from 1"),
+                      ({"strikeFallback": ["OTM"]}, "ATM, 2ITM"), ({"fixed0": "x"}, "fixed")):
+        r = c.put("/api/algos/orb/settings", json=body)
+        assert r.status_code == 400 and why in r.json()["detail"], (body, r.json())
+    r = c.put("/api/algos/orb/settings", json={"b60On": False}).json()
+    assert r["history"][0]["key"] == "b60On" and svc.settings()["b60On"] is False
+    orb_morning(svc, paper, clock)
+    orb_minute(svc, paper, clock, "10:20", 24040, 24065, 24040, 24060)
+    assert svc.state["setups"]["b60"]["status"] == "off" and svc.state["setups"]["b60"]["open"] is None
+    assert c.get("/api/algos/orb/rules").json()["doc"] == "docs/strategies/orb.md"

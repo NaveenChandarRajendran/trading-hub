@@ -234,6 +234,28 @@ export function ReportsTab({ slug }: { slug: string }) {
           <Stat label="Worst day" value={<span className={toneOf(t.worstDay?.net)}>{money(t.worstDay?.net)}</span>} delta={t.worstDay?.date} />
         </div>
       )}
+      {!!d?.breakdown?.length && (
+        <section className="card">
+          <div className="card-head"><h3 className="card-title">By setup</h3><span className="muted">each setup's own trades, spot points and P&amp;L</span></div>
+          <div className="algos-scroll">
+            <table className="t algos-table">
+              <thead><tr><th>Setup</th><th className="num">Trades</th><th className="num">Won</th><th className="num">Lost</th>
+                <th className="num">Win rate</th><th className="num">Spot points</th><th className="num">Pts / trade</th><th className="num">Net P&amp;L</th></tr></thead>
+              <tbody>
+                {d.breakdown.map((b) => (
+                  <tr key={b.key}>
+                    <td>{b.name}</td><td className="num">{b.trades}</td><td className="num">{b.wins}</td><td className="num">{b.losses}</td>
+                    <td className="num">{b.wins + b.losses ? `${Math.round((b.wins / (b.wins + b.losses)) * 1000) / 10}%` : '–'}</td>
+                    <td className={`num ${toneOf(b.points)}`}>{b.points > 0 ? '+' : ''}{b.points.toFixed(2)}</td>
+                    <td className="num">{b.trades ? (b.points / b.trades).toFixed(2) : '–'}</td>
+                    <td className={`num ${toneOf(b.net)}`}>{money(b.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       {cal && (
         <section className="card">
           <div className="card-head"><h3 className="card-title">P&amp;L calendar</h3></div>
@@ -339,7 +361,7 @@ export function SettingsTab({ slug }: { slug: string }) {
                       ) : (
                         <input value={text} disabled={!v.editable} aria-invalid={!!bad} className={cls}
                           inputMode={f.kind === 'number' || f.kind === 'int' ? 'decimal' : undefined}
-                          placeholder={f.kind === 'time' ? 'HH:MM' : f.kind === 'list' ? (f.choices ?? []).join(', ') : undefined}
+                          placeholder={f.kind === 'time' ? 'HH:MM' : f.kind === 'list' ? `none (or ${(f.choices ?? []).join(', ')})` : undefined}
                           onChange={(e) => set(e.target.value)} />
                       )}
                     {bad && <span className="algos-err">{bad}</span>}

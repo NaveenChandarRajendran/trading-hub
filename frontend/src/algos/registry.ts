@@ -27,6 +27,16 @@ export const ALGOS: AlgoEntry[] = [
     overview: lazy(() => import('./oi-breakout/Overview')),
   },
   {
+    slug: 'orb',
+    name: 'ORB Algo',
+    category: 'intraday',
+    description: 'Opening range breakouts on 1-minute closes: 60m Breakout, 30m Retest and 5m Reversal, exit 15:25.',
+    instruments: 'NIFTY options (1 ITM)',
+    strategyName: 'ORB Algo',
+    rulesDoc: 'orb',
+    overview: lazy(() => import('./orb/Overview')),
+  },
+  {
     slug: 'trending-oi',
     name: 'Trending OI Algo',
     category: 'intraday',

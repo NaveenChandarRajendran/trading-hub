@@ -1,0 +1,9 @@
+/* ORB Algo Overview: the OI Breakout overview layout (oi-breakout/overview.css) plus these. Tokens only. */
+.ds.orb .orb-ors { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
+.ds.orb .orb-or { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.ds.orb .orb-or-head { display: flex; align-items: center; gap: var(--sp-2); }
+.ds.orb .orb-or-head .pill { margin-left: auto; }
+.ds.orb .orb-or-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.ds.orb .orb-or-grid > span { color: var(--text-3); }
+.ds.orb .orb-or-grid > b { font-weight: 500; }
+.ds.orb .orb-filter { font-size: var(--fs-sm); }

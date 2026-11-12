@@ -54,6 +54,7 @@ import algo_api
 import auth_api
 import scalper_api
 import algo_config
+import orb_config as orb_cfg
 import trending_oi_algo_config as toi_cfg
 import dashboard_api
 import dashboard_levels_api
@@ -75,7 +76,7 @@ from envfile import load_env_file
 from store import IST, PaperPgStore, PgStore
 from builder import Drafts
 from growth_plans import Plans
-from strategies import Strategies, bootstrap, ensure_toi_strategy
+from strategies import Strategies, bootstrap, ensure_algo_strategy, ensure_toi_strategy
 from tracker import Tracker
 
 ALLOWED_INTERVALS = (1, 3, 5, 10, 15, 30)
@@ -94,17 +95,18 @@ class TokenBody(BaseModel):
     accessToken: str
 
 
-def strategy_live(paper, algo, st, options=None, toi=None):
-    """(unbooked P&L, open positions) of a strategy today: its paper Book, an algo's broker (the Trending OI Algo's
-    for its own account, else the OI breakout algo's), or its options engine."""
+def strategy_live(paper, algo, st, options=None, toi=None, orb=None):
+    """(unbooked P&L, open positions) of a strategy today: its paper Book, an algo's broker (the Trending OI Algo's or
+    the ORB Algo's for its own account, else the OI breakout algo's), or its options engine."""
     if st["kind"] == "options":
         return options.live(st) if options else (0.0, 0)
     if st["kind"] == "algo":
-        own = toi is not None and toi.broker is not None and toi.broker.account.get("strategy_id") == st["id"]
-        if toi is not None and not own and st["name"] == toi_cfg.STRATEGY_NAME:
-            return 0.0, 0
-        if own:
-            algo = toi
+        for svc, name in ((toi, toi_cfg.STRATEGY_NAME), (orb, orb_cfg.STRATEGY_NAME)):
+            if svc is not None and svc.broker is not None and svc.broker.account.get("strategy_id") == st["id"]:
+                algo = svc
+                break
+            if st["name"] == name:  # that algo's strategy, but the algo isn't placing orders here
+                return 0.0, 0
         broker = algo.broker if algo else None
         if broker is None or broker.engine is None:
             return 0.0, 0
@@ -116,10 +118,11 @@ def strategy_live(paper, algo, st, options=None, toi=None):
 
 
 def create_app(tracker, track=(), security_ids=None, paper=None, instruments=None, algo_mode=None, scalper=None, *, auth,
-               ui_dir=None, toi_mode=None):
+               ui_dir=None, toi_mode=None, orb_mode=None):
     """paper: optional paper_api.PaperService; its routes and feed are added when given.
     algo_mode: "paper" | "signals" | "off" runs the OI breakout algo (needs paper; None = not created, as in tests).
     toi_mode: the same for the Trending OI Algo (toi_algo_service.py; Postgres only).
+    orb_mode: the same for the ORB Algo (orb_service.py; Postgres only).
     scalper: True creates the Power Scalper service (needs paper), or pass a ScalperService (tests).
     instruments: OptionInstruments for lot sizes (defaults to the paper service's; a fallback table without either).
     auth: auth.Auth (required): AuthMiddleware puts every route except the login call and the UI page behind a session.
@@ -256,6 +259,24 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             futures=lambda: paper.instruments.futures() if hasattr(paper.instruments, "futures") else [],
             levels=toi_levels, token_expired=lambda: tracker.client.token_expired), clock=paper.clock, mode=toi_mode)
 
+    orb = None
+    if paper and orb_mode in ("paper", "signals") and getattr(paper.store, "pg", None) is not None:
+        from orb_service import OrbAlgoService, OrbData
+        from orb_store import PgOrbStore
+
+        def orb_history():  # from 09:00: from 09:15:00 Dhan leaves out the first day's 09:15 candle; toDate is exclusive
+            sessions = recent_sessions(datetime.now(IST).date())
+            frm, to = f"{sessions[0]} 09:00:00", f"{sessions[-1] + timedelta(days=1)} 09:00:00"
+            return parse_intraday(tracker.client.intraday("NIFTY", frm, to))
+
+        def orb_chain(expiry):
+            entry, _cached = tracker.chains.get("NIFTY", expiry)
+            return {"spot": entry.chain["spot"], "oc": entry.chain["oc"], "lotSize": lot_size("NIFTY", expiry)}
+
+        orb = OrbAlgoService(paper.store, PgOrbStore(paper.store.pg), paper, paper.instruments, OrbData(
+            expiries=lambda: get_expiries("NIFTY"), chain=orb_chain, intraday=orb_history,
+            token_expired=lambda: tracker.client.token_expired), clock=paper.clock, mode=orb_mode)
+
     def start_default_tracking():
         tracker.restore_today()  # resume whatever was tracked earlier today (backend restarted mid-session)
         for sym in track:
@@ -274,6 +295,8 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             algo.start()
         if toi:
             toi.start()
+        if orb:
+            orb.start()
         if scalper:
             scalper.start()
         if options:
@@ -285,8 +308,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         yield
         if scalper:
             scalper.stop()
-        if algo:
-            algo.stop_thread()
+        for svc in (algo, toi, orb):
+            if svc:
+                svc.stop_thread()
         if paper:
             paper.stop()
         tracker.stop()
@@ -461,7 +485,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
     if paper:
         strategies = Strategies(paper.store, paper.clock, books=paper)
         paper_api.register(app, paper, strategies)
-        live = lambda st: strategy_live(paper, algo, st, options, toi)  # noqa: E731
+        live = lambda st: strategy_live(paper, algo, st, options, toi, orb)  # noqa: E731
         strategies_api.register(app, strategies, live=live)
         growth_plans_api.register(app, Plans(paper.store, strategies, paper.clock), live=live)
         builder_api.register(app, Drafts(paper.store, paper.clock), paper, strategies,
@@ -476,7 +500,7 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
         import toi_algo_api
         toi_algo_api.register(app, toi)
         app.state.toi_algo = toi
-    if algo or toi:  # the Algos hub: one API shape over every algo (algos_api.py, adapters in algo_adapters.py)
+    if algo or toi or orb:  # the Algos hub: one API shape over every algo (algos_api.py, adapters in algo_adapters.py)
         import algo_adapters
         import algos_api
         from algo_settings import MemorySettings, PgSettings
@@ -486,6 +510,9 @@ def create_app(tracker, track=(), security_ids=None, paper=None, instruments=Non
             adapters["oi-breakout"] = algo_adapters.OiBreakoutAdapter(algo, PgSettings(pg) if pg is not None else MemorySettings())
         if toi:
             adapters["trending-oi"] = algo_adapters.ToiAdapter(toi)
+        if orb:
+            adapters["orb"] = algo_adapters.OrbAdapter(orb)
+            app.state.orb_algo = orb
         algos_api.register(app, adapters)
     if scalper:
         scalper_api.register(app, scalper, strategies)
@@ -543,10 +570,13 @@ def main():
     if toi_cfg.MODE != "off":
         ensure_toi_strategy(store, toi_cfg.STRATEGY_NAME, toi_cfg.CAPITAL, datetime.now(IST), log=logging.getLogger("main").info)
     logging.getLogger("main").info("Trending OI Algo: TOI_ALGO_MODE=%s (paper orders only, never real orders)", toi_cfg.MODE)
+    if orb_cfg.MODE != "off":
+        ensure_algo_strategy(store, orb_cfg.STRATEGY_NAME, orb_cfg.CAPITAL, datetime.now(IST), log=logging.getLogger("main").info)
+    logging.getLogger("main").info("ORB Algo: ORB_ALGO_MODE=%s (paper orders only, never real orders)", orb_cfg.MODE)
     auth = Auth(AuthPgStore(store))
     logging.getLogger("main").info("Open http://%s:%s and log in (users: scripts/create_user.py)", a.host, a.port)
     uvicorn.run(create_app(tracker, track, paper=paper, algo_mode=algo_config.MODE, scalper=True, auth=auth,
-                           ui_dir=UI_DIR, toi_mode=toi_cfg.MODE), host=a.host, port=a.port, log_level="info")
+                           ui_dir=UI_DIR, toi_mode=toi_cfg.MODE, orb_mode=orb_cfg.MODE), host=a.host, port=a.port, log_level="info")
 
 
 if __name__ == "__main__":
