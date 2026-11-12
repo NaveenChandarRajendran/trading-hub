@@ -28,7 +28,8 @@ const condorShape = (inner: number, outer: number) => (x: number) => {
   const d = Math.abs(x - 0.5);
   return d <= inner ? 0.6 : d >= outer ? -0.8 : 0.6 - (1.4 * (d - inner)) / (outer - inner);
 };
-const ruleDefaults = (r: RuleSpec): Record<string, number> => r.strikeMode === 'pct'
+/** Step 2 numbers from a rule spec (a built-in rule, or a saved one from "My rules"). */
+export const ruleDefaults = (r: RuleSpec): Record<string, number> => r.strikeMode === 'pct'
   ? { shortPutPct: r.shortPutPct!, shortCallPct: r.shortCallPct!, wingPct: r.wingPct!, minCreditPct: r.minCreditPct ?? 0, lots: r.lots }
   : { deltaTarget: r.deltaTarget!, deltaMin: r.deltaMin!, deltaMax: r.deltaMax!, wingPct: r.wingPct!, targetPct: r.targetPct ?? 0,
       timeExitDays: r.timeExitDays ?? 0, lots: r.lots };

@@ -96,7 +96,7 @@ export function PaperTradeDialog({ legs, multiplier, quoteOf, securityOf, net, c
             </div>
           </div>
         ) : (
-          <label className="field">Into strategy
+          <label className="field">Trading into:
             <select value={pick ?? ''} onChange={(e) => setPick(Number(e.target.value))}>
               {list.map((s) => <option key={s.id} value={s.id}>{s.name} · capital {rupees(s.capital, 0)}</option>)}
             </select>

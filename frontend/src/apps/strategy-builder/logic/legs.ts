@@ -3,6 +3,7 @@
 import { lastTradeText } from '../../../shared/dhan/liquidity';
 import type { Draft, DraftLeg, OptionPosition, PositionLeg } from './api';
 import type { OptionType } from './blackScholes';
+import type { FlowState } from './flow';
 import type { Leg, Side } from './payoff';
 
 export const MAX_LEGS = 8;
@@ -35,6 +36,7 @@ export interface Tab {
   draftId?: number | null; // saved to the account as this draft
   saved?: string | null; // tabSnapshot() at the last save / open: unsaved changes = it differs
   source?: string | null; // "Positions of Manual" (Analyze positions)
+  flow?: FlowState | null; // the guided template flow in progress (logic/flow.ts); null = free editing
 }
 
 /** One strike's market: last price, best bid / ask and implied volatility (%) — live ticks over the chain cache.

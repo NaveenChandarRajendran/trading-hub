@@ -57,3 +57,5 @@ export { Heatmap } from './Heatmap';
 export type { HeatCell, HeatLevel } from './Heatmap';
 export { Toasts, useToasts } from './Toast';
 export type { ToastItem } from './Toast';
+export { Dialog, Menu, Popover, PopoverClose, Tip } from './radix';
+export type { MenuItem } from './radix';

@@ -2,7 +2,9 @@
 import { requestJson } from '../../../shared/api';
 import { BUILDER_API } from '../config/settings';
 import type { OptionType } from './blackScholes';
+import type { Thresholds } from './checks';
 import type { Side } from './payoff';
+import type { RuleSpec } from './rules';
 
 export interface DraftLeg { side: Side; type: OptionType; expiry: string; strike: number; lots: number; include: boolean; priceOverride: number | null }
 export interface Draft { id: number; name: string; symbol: string; multiplier: number; legs: DraftLeg[]; createdAt: string; updatedAt: string }
@@ -64,6 +66,9 @@ export const optionsApi = {
       { method: 'POST', body: securityId != null ? { securityId } : {} }),
 };
 
+/** A saved rule ("Save as weekly rule", backend th_builder_rules): Strategy Lab will run it. */
+export interface SavedRule { id: number; name: string; symbol: string; spec: RuleSpec; createdAt: string; updatedAt: string }
+
 export const builderApi = {
   drafts: (signal?: AbortSignal) => requestJson<{ drafts: Draft[] }>(BUILDER_API, '/api/builder/drafts', { signal }).then((r) => r.drafts),
   saveDraft: (body: { name: string; symbol: string; multiplier: number; legs: DraftLeg[] }) =>
@@ -75,4 +80,10 @@ export const builderApi = {
     requestJson<Margin>(BUILDER_API, '/api/builder/margin', { method: 'POST', body: { legs }, signal }),
   positions: (strategyId: number) =>
     requestJson<{ strategy: { id: number; name: string }; legs: PositionLeg[] }>(BUILDER_API, `/api/builder/positions?strategy=${strategyId}`),
+  rules: (signal?: AbortSignal) => requestJson<{ rules: SavedRule[] }>(BUILDER_API, '/api/builder/rules', { signal }).then((r) => r.rules),
+  saveRule: (body: { name: string; symbol: string; spec: RuleSpec }) =>
+    requestJson<{ rule: SavedRule }>(BUILDER_API, '/api/builder/rules', { method: 'POST', body }).then((r) => r.rule),
+  deleteRule: (id: number) => requestJson<{ ok: boolean }>(BUILDER_API, `/api/builder/rules/${id}`, { method: 'DELETE' }),
+  checks: (signal?: AbortSignal) => requestJson<Thresholds>(BUILDER_API, '/api/builder/checks', { signal }),
+  saveChecks: (body: Partial<Thresholds>) => requestJson<Thresholds>(BUILDER_API, '/api/builder/checks', { method: 'PUT', body }),
 };

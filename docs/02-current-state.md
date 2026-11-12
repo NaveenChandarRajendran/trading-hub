@@ -82,6 +82,13 @@ Landing page (`/`), at the top of the sidebar above Manual / Live. Run the backe
   feed. Trending OI is empty after midnight until the first snapshot (the tracker starts fresh each day).
   Backend refactor: `/api/quotes`, `/api/history` and `/api/trending-oi` bodies moved into shared helpers in `main.py`.
 
+## Strategy Builder: create-a-strategy UX — 13-Nov-2026 (`feature/builder-ux`, ADR 0014; not merged yet)
+Start screen (template / option chain / draft or portfolio), template gallery with thumbnails and tags, guided flow
+Choose → Adjust → Review with checks A–F (+G) and GO / SKIP, Naveen's rules (IC A 95 %, IC B 90 %, IC Monthly Delta),
+"Save as weekly rule" (th_builder_rules, /api/builder/rules), check thresholds per user (/api/builder/checks), sticky
+summary bar, warning chips, docked chain, "Trading into:". Radix primitives in shared/ui/radix.tsx. Details in
+docs/features/strategy-builder.md. No change to the maths, pricing, margin or paper engine.
+
 ## Strategy Builder (spec `docs/features/strategy-builder.md`) — live from 28-Oct-2026
 Split A (Builder) / B (options paper engine: short legs, margin, overnight, expiry) / C (Strategy Lab weekly rules).
 Step 1 of A done (28-Oct): maths library `src/apps/strategy-builder/logic/` — Black–Scholes + Greeks + implied vol,

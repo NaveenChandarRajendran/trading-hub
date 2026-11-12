@@ -138,3 +138,29 @@
   padding: 2px var(--sp-2); border-radius: var(--r-sm); background: var(--text); color: var(--bg);
   font-size: var(--fs-xs); font-weight: 500; line-height: 16px; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-pop);
 }
+
+/* Radix primitives (radix.tsx, ADR 0014): tooltip, popover, dialog, menu. Tokens only. */
+.ds.rx-tip { z-index: 80; max-width: 280px; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); background: var(--text); color: var(--bg);
+  font-size: var(--fs-sm); line-height: 1.35; box-shadow: var(--shadow-pop); }
+.ds .rx-tip-arrow { fill: var(--text); }
+.ds .rx-tip-wrap { display: inline-flex; }
+.ds .rx-tip-wrap:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+.ds.rx-pop { z-index: 70; min-width: 260px; max-width: min(420px, calc(100vw - 32px)); padding: var(--sp-3); box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column; gap: var(--sp-2); }
+.ds.rx-overlay { position: fixed; inset: 0; z-index: 60; background: var(--backdrop); }
+.ds.rx-dialog { position: fixed; z-index: 61; top: 8vh; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 32px));
+  max-height: 84vh; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); box-shadow: var(--shadow-pop); }
+.ds.rx-dialog.wide { width: min(1080px, calc(100vw - 32px)); }
+.ds .rx-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.ds .rx-small { font-size: var(--fs-sm); margin: 0; }
+.ds .rx-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ds.rx-menu { z-index: 70; min-width: 200px; padding: var(--sp-1); box-shadow: var(--shadow-pop); }
+.ds .rx-item { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm);
+  font-size: var(--fs-md); color: var(--text); cursor: pointer; outline: none; }
+.ds .rx-item[data-highlighted] { background: var(--surface-2); }
+.ds .rx-item[data-disabled] { color: var(--text-3); cursor: default; }
+.ds .rx-sep { height: 1px; margin: var(--sp-1) 0; background: var(--border); }
+@media (prefers-reduced-motion: no-preference) {
+  .ds.rx-dialog, .ds.rx-pop, .ds.rx-menu, .ds.rx-tip { animation: rx-in 120ms ease-out; }
+}
+@keyframes rx-in { from { opacity: 0; } to { opacity: 1; } }

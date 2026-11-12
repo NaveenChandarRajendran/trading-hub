@@ -119,6 +119,39 @@ feed sent nothing after hours (no packet to log); the quote API carries the same
   4.75 (an earlier session)"; no change %, no IV. Builder: no market unless a live bid / ask; templates move outward
   ("76,900 CE no trades today → using 77,000 CE"). Set `TEMPLATE_LIQUIDITY.minVolume` to 0 to allow such strikes.
 
+## Create-a-strategy experience (13-Nov-2026, branch `feature/builder-ux`, ADR 0014)
+- **Start screen** (a tab without legs): three cards: Start from a template (gallery), Pick strikes from the option chain
+  (the chain drawer), Open a draft or portfolio (drafts + what each options strategy holds).
+- **Template gallery** (`TemplateGallery.tsx`, `logic/catalog.ts`): cards with a payoff-shape thumbnail, a description and a
+  tag (Neutral / Bullish / Bearish / Volatility), filter + search (name matches first), "My rules" first, and the rules
+  you saved ("Save as weekly rule").
+- **Guided flow** (`GuidedFlow.tsx`, state `logic/flow.ts`, kept per tab): ① Choose template, index, expiry ("29 Dec ·
+  monthly · 46d", `logic/expiries.ts`) → ② Adjust the template's numbers, legs and payoff live → ③ Review: key numbers,
+  CHECKS with GO / SKIP, then Paper trade / Save draft / Save as weekly rule. Back / Next keep everything.
+- **Naveen's rules** (`logic/rules.ts`, 12-Nov-2026), every number editable in step 2:
+  - Iron Condor A (95 %), next weekly: short PE = spot × (1 − 3.73 %) rounded down to a listed strike, short CE =
+    spot × (1 + 4.31 %) rounded up; wings 1.1 % of spot rounded to the strike step (NIFTY ≈ 250, SENSEX ≈ 800), equal;
+    minimum credit 0.053 % of spot (check G).
+  - Iron Condor B (90 %): the same with −3.03 % / +3.01 %.
+  - IC Monthly Delta, next month's monthly expiry (≈ 56–57 DTE): shorts at |Δ| closest to 0.32 (allowed 0.30–0.35, a
+    short outside is reported), wings 2.5 % of spot rounded to 50, equal; target 50 % of credit, time exit 8 days before.
+  - Every strike passes the liquidity rule, else it moves outward to the nearest liquid one (and its wing follows).
+  - (The 3 Nov IC 21,950 / 23,800 came from an example spot of 22,800; these rules are the correct ones.)
+- **Checks** (`logic/checks.ts`, thresholds per user in th_user_prefs "builder.checks", ⚙ on the panel):
+  A max loss ÷ max profit ≤ 2.0 · B |position Δ| per unit ≤ 0.10 · C worst case ≤ 6 % of the "Trading into:" strategy's
+  capital · D every open iron condor in all your options strategies + this one ≤ 10 % (with the breakdown) · E every leg
+  liquid · F wings equal within one strike step · G (rules) credit ≥ the rule's minimum. Iron condors get all; other
+  shapes A, C, E. Anything not known yet (no strategy, IV missing, condors loading) is SKIP, never GO.
+  Check (2 Nov 2026 IC, NIFTY 23,440.80, 29 Dec, lot 65, fixture capital ₹5,00,000, IV 13 %): B 22,500 PE @184.25 /
+  S 23,100 PE @321.95 / S 24,000 CE @292.00 / B 24,600 CE @116.25 → credit 313.45 (₹20,374), max loss ₹18,626,
+  breakevens 22,787 / 24,313, POP ≈ 47 % (Sensibull 46 %), Δ ≈ −0.02 per unit (Sensibull −0.04 with per-strike IV): GO.
+- **Rules** saved by "Save as weekly rule": `th_builder_rules` (spec: strikeMode pct with rounding | delta target and
+  band, wingMode pct with rounding | points, expiryMode nextWeekly | nextMonthly, lots, targetPct, timeExitDays,
+  minCreditPct), `/api/builder/rules`. Strategy Lab will run them.
+- **Working layout**: a sticky summary bar (net, max profit / loss, reward : risk, breakevens, POP, margin, charges,
+  GO / SKIP), legs + warning chips (no market, uneven wings, IV missing) left, payoff right; the option chain docks as a
+  column so legs stay editable; disabled buttons explain why in a tooltip. "Trading into:" labels the strategy picker.
+
 ## Open questions
 - Iron Condor A (95 %) / B (90 %): short-strike rule (% from spot for CE / PE), rounding direction, wing width, expiry.
   The 3 Nov IC (21950 / 23800) does not match +4.31 % / −3.73 % of 28-Oct spot: need the spot used or the written rule.

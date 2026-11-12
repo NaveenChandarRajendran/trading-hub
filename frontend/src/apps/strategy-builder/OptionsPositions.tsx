@@ -65,9 +65,11 @@ export function OptionsPositions({ show, onOpenInTab, onMessage }: {
     <section className="card sb-op">
       <div className="card-head">
         <span className="card-title">Paper positions</span>
-        <select value={pick ?? ''} onChange={(e) => setPick(Number(e.target.value))} aria-label="Options strategy">
-          {list.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <label className="field sb-into">Trading into:
+          <select value={pick ?? ''} onChange={(e) => setPick(Number(e.target.value))}>
+            {list.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
         {book && (
           <span className="sb-op-nums">
             <span>Live P&amp;L <b className={`num ${toneOf(book.unrealized)}`}>{signedRupees(book.unrealized)}</b></span>
