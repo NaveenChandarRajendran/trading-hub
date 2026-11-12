@@ -467,3 +467,53 @@ CREATE INDEX IF NOT EXISTS th_builder_drafts_user ON th_builder_drafts (user_id)
 -- SENSEX (BSE) designs from 29-Oct-2026: the inline check above only allowed NIFTY / BANKNIFTY.
 ALTER TABLE th_builder_drafts DROP CONSTRAINT IF EXISTS th_builder_drafts_symbol_check;
 ALTER TABLE th_builder_drafts ADD CONSTRAINT th_builder_drafts_symbol_check CHECK (symbol IN ('NIFTY', 'BANKNIFTY', 'SENSEX'));
+
+-- Trending OI Algo (toi_algo_service.py, docs/strategies/trending-oi-algo.md). Its own tables, so the OI breakout
+-- algo's algo_* tables, keys and readers stay exactly as they are (both trade NIFTY).
+CREATE TABLE IF NOT EXISTS toi_algo_events (
+    id          bigserial   PRIMARY KEY,
+    trade_date  date        NOT NULL,
+    ts          timestamptz NOT NULL,
+    type        text        NOT NULL,       -- noTrade | clear | skip | entry | add | partial | stopMove | exit | info | settings | feed | heartbeat | error | levels
+    side        text,                       -- CE | PE
+    message     text        NOT NULL,
+    details     jsonb       NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS toi_algo_events_day ON toi_algo_events (trade_date, id);
+CREATE TABLE IF NOT EXISTS toi_algo_state (
+    trade_date  date        PRIMARY KEY,
+    state       jsonb       NOT NULL,
+    updated_at  timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS toi_algo_candles (
+    trade_date   date             NOT NULL,
+    candle_start timestamptz      NOT NULL,
+    open double precision, high double precision, low double precision, close double precision,
+    supertrend   double precision,
+    st_up        boolean,
+    vwap         double precision,  -- index terms
+    vwap_future  double precision,
+    basis        double precision,  -- future - index at the candle's close
+    rsi          double precision,
+    toi_strength double precision,
+    toi_sentiment text,
+    no_trade     text,
+    PRIMARY KEY (trade_date, candle_start)
+);
+CREATE TABLE IF NOT EXISTS toi_algo_daily_summary (
+    trade_date  date             PRIMARY KEY,
+    trades      integer          NOT NULL,
+    wins        integer          NOT NULL,
+    losses      integer          NOT NULL,
+    adds        integer          NOT NULL,
+    partials    integer          NOT NULL,
+    gross_pnl   double precision NOT NULL,
+    charges     double precision NOT NULL,
+    net_pnl     double precision NOT NULL,
+    updated_at  timestamptz      NOT NULL
+);
+CREATE TABLE IF NOT EXISTS toi_algo_settings (
+    id          integer     PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    settings    jsonb       NOT NULL,
+    updated_at  timestamptz NOT NULL
+);

@@ -34,7 +34,7 @@ from candles import aggregate, bucket_start, epoch, in_session
 from dhan_client import SCRIP as INDEX_IDS
 from dhan_feed import to_book
 from holidays import NSE_HOLIDAYS
-from paper_engine import BUY, FILLED, MARKET, OrderError, PaperEngine
+from paper_engine import BUY, FILLED, MARKET, SELL, OrderError, PaperEngine
 from sr_levels import rank_levels, side_oi
 from store import IST
 
@@ -59,13 +59,14 @@ class AlgoData:
 
 
 class AlgoBroker:
-    """The Algo account's paper engine for the day. Every order is stored with source="algo" and its setup."""
+    """An algo account's paper engine for the day. Every order is stored with source="algo" and its setup.
+    account_name / capital: the OI breakout algo's "Algo" account by default (the Trending OI Algo passes its own)."""
 
-    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS, variant=None):
+    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS, variant=None, account_name=None, capital=None):
         self.store, self.instruments, self.clock, self.holidays = store, instruments, clock, holidays
         self.variant = variant or cfg.RULE_VARIANT
-        self.account = store.active_account(cfg.ACCOUNT_NAME) or store.create_account(cfg.CAPITAL, clock(),
-                                                                                       name=cfg.ACCOUNT_NAME)
+        name, cap = account_name or cfg.ACCOUNT_NAME, cfg.CAPITAL if capital is None else capital
+        self.account = store.active_account(name) or store.create_account(cap, clock(), name=name)
         self.engine, self.day, self.tags, self._unsaved = None, None, {}, []
         self.ensure_day(clock())
 
@@ -118,6 +119,13 @@ class AlgoBroker:
         self._save(events, setup)
         fills = [e.data for e in events if e.kind == "trade"]
         return fills[-1]["price"] if fills else None
+
+    def sell(self, security_id, lots, now, setup):
+        """Market sell of `lots` lots of an open long (a partial exit). Returns the fill price, or None."""
+        inst = self.instruments.get(security_id)
+        order, events = self.engine.place_order(security_id, SELL, lots, inst["lotSize"], MARKET, now)
+        self._save(events, setup)
+        return order.avg_price if order.status == FILLED else None
 
     def charges_since(self, security_id, order_id):
         """Charges of every fill in security_id from the order order_id on (the entry and its exit)."""

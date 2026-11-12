@@ -193,7 +193,10 @@ def on_candle(state, c, s):
 
 
 def entry_gate(state, side, c, s):
-    """Why no new entry now ('' = allowed): entry hours, trades today, a stopped direction, the day loss, the feed."""
+    """Why no new entry now ('' = allowed): the kill switch, entry hours, trades today, a stopped direction, the day
+    loss, the feed."""
+    if c.get("halted"):
+        return "stopped by the kill switch"
     t = c["now"].time()
     if not hhmm(s["entryFrom"]) <= t <= hhmm(s["entryTo"]):
         return f"entries only {s['entryFrom']}-{s['entryTo']}"
@@ -263,7 +266,9 @@ def _maybe_add(state, c, d, s, near, swing):
     cap = min(s["avgMaxLots"] if kind == "avg" else s["pyrMaxLots"], s["maxLots"])
     head = f"{name} pullback held at {near} (close {fmt(c['candle']['close'])})"
     why = ""
-    if o["partials"]:
+    if c.get("halted"):
+        why = "stopped by the kill switch"
+    elif o["partials"]:
         why = "no adds after a partial exit"
     elif d["side"] != side:
         why = f"Trending OI no longer supports {side} ({d['reason'] or d['sentiment']})"

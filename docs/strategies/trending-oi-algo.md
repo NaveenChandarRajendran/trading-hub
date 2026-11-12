@@ -50,3 +50,17 @@ next weekly on an expiry day. CE side below; PE mirrors (highs ↔ lows, above �
 ## Daily limits
 Entries 09:45–14:30. At most 2 trades a day (adds are not trades). After a stop loss, no new entry in that direction
 that day. No new entries once the day's P&L (realized + unrealized − charges) reaches −2 % of capital.
+
+## Running it (step 4, `backend/toi_algo_service.py`)
+- Env `TOI_ALGO_MODE` = paper (default) | signals | off. Postgres only (like the OI breakout algo).
+- Strategy "Trending OI Algo" (kind algo, naveen) and its paper account of the same name are created at startup
+  (`strategies.ensure_toi_strategy`); orders go to that account's paper engine (`algo_service.AlgoBroker`).
+- Its own tables `toi_algo_events / _state / _candles / _daily_summary / _settings`: the OI breakout algo's `algo_*`
+  tables (keyed by index, read whole by its pages and reports) stay untouched. It reads that algo's locked NIFTY
+  levels when they exist (same ranking), else ranks them itself at 09:30.
+- Feed: NIFTY index ticks, the VWAP future (Full: price and volume), the 1 ITM / ATM / 2 ITM options of both sides
+  around spot (so a market order always has a book). Index + future 1-minute history from Dhan at start.
+- A candle is evaluated 10 s after it closes. Restart: the day's state (open trade, adds, counts, last candle) comes
+  back from Postgres and is checked against the paper account; candles that closed while it was down are not traded.
+- Stale feed (no index tick for 120 s): no entries. Heartbeat every 15 min. Kill switch: stop (no entries, no adds) /
+  stop + exit all / resume. Daily summary at 15:35.

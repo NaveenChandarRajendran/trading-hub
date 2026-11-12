@@ -205,6 +205,10 @@ class OptionInstruments:
             live = [f for f in self._futures if f["symbol"] == symbol and f["expiry"] >= today]
             return min(live, key=lambda f: f["expiry"]) if live else None
 
+    def futures(self):
+        """The cached index futures (parse_index_futures rows); never downloads."""
+        return list(self._futures)
+
     def future_ids(self):
         """Security IDs of the cached index futures (never downloads: called for every feed packet)."""
         return {f["securityId"] for f in self._futures}

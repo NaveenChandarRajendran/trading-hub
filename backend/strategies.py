@@ -198,6 +198,28 @@ OWNER = ("naveen", "Naveen")  # owns the algo's strategy (docs/users-and-strateg
 ALGO_NAME, ALGO_ACCOUNT = "OI Breakout Algo", "Algo"
 
 
+def ensure_toi_strategy(pg, name, capital, now, log=print):
+    """The Trending OI Algo's strategy (kind algo, naveen) and its paper account of the same name, created once
+    (toi_algo_service.py). bootstrap's "the algo's strategy" stays the oldest algo strategy, the OI breakout one."""
+    with pg._cursor() as cur:
+        cur.execute("SELECT id FROM th_users WHERE username=%s", (OWNER[0],))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cur.execute("SELECT id FROM th_strategies WHERE kind='algo' AND name=%s", (name,))
+        st = cur.fetchone()
+        if st is None:
+            cur.execute("INSERT INTO th_strategies (user_id, name, capital, kind, created_at, updated_at) "
+                        "VALUES (%s, %s, %s, 'algo', %s, %s) RETURNING id", (row[0], name, capital, now, now))
+            st = cur.fetchone()
+            log(f"Created the strategy \"{name}\" for {OWNER[0]} (paper, ₹{capital:,.0f})")
+        cur.execute("SELECT id FROM pt_accounts WHERE strategy_id=%s AND archived_at IS NULL", (st[0],))
+        if cur.fetchone() is None:
+            cur.execute("INSERT INTO pt_accounts (capital, created_at, name, strategy_id) VALUES (%s, %s, %s, %s)",
+                        (capital, now, name, st[0]))
+        return st[0]
+
+
 def bootstrap(pg, capital, now, log=print):
     """First start on users and strategies (Postgres, main.py): user naveen (no password until
     scripts/create_user.py sets one) and his algo strategy "OI Breakout Algo" on the 'Algo' paper account. Paper
