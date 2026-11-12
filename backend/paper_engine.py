@@ -217,14 +217,19 @@ class Event:
 
 class PaperEngine:
     """One trading day of one account. `capital` is the money available at the start of the day.
-    With `day` set, order / trade IDs carry the date (PT20261021-0001), so they stay unique across days."""
+    With `day` set, order / trade IDs carry the date (PT20261021-0001), so they stay unique across days.
+    `square_off`: the account's last-order / auto square-off time, 15:15 for every account except an algo that asks
+    for another one (the ORB Algo: 15:25, ADR 0013). Never after the 15:30 close."""
 
-    def __init__(self, capital, holidays=NSE_HOLIDAYS, day=None):
+    def __init__(self, capital, holidays=NSE_HOLIDAYS, day=None, square_off=SQUARE_OFF):
         if capital <= 0:
             raise ValueError("capital must be positive")
         self.capital = float(capital)
         self.holidays = holidays
         self.day = day
+        if not SESSION_OPEN < square_off <= time(15, 30):
+            raise ValueError("square-off must be inside the session (09:15-15:30)")
+        self.square_off_at = square_off
         self.orders = {}      # id -> Order
         self.trades = []      # [Trade]
         self.positions = {}   # security_id -> Position
@@ -237,7 +242,10 @@ class PaperEngine:
         return now.weekday() < 5 and now.date().isoformat() not in self.holidays
 
     def accepting_orders(self, now):
-        return self.is_trading_day(now) and SESSION_OPEN <= now.time() < SQUARE_OFF
+        return self.is_trading_day(now) and SESSION_OPEN <= now.time() < self.square_off_at
+
+    def _closed_text(self):
+        return f"Market closed: orders are accepted 09:15-{self.square_off_at:%H:%M} IST on trading days."
 
     def funds(self):
         realized = sum(p.realized for p in self.positions.values())
@@ -321,7 +329,7 @@ class PaperEngine:
     def _business_reject(self, o, now, book, triggered=False):
         """Reason the order can't be accepted right now, or ''."""
         if not self.accepting_orders(now):
-            return "Market closed: orders are accepted 09:15-15:15 IST on trading days."
+            return self._closed_text()
         if book is None:
             return "No live price for this instrument yet."
         if o.side == SELL:
@@ -432,7 +440,7 @@ class PaperEngine:
         return self.square_off(now) if self._square_off_due(now) else []
 
     def _square_off_due(self, now):
-        return (self.is_trading_day(now) and now.time() >= SQUARE_OFF and self.squared_off_on != now.date())
+        return (self.is_trading_day(now) and now.time() >= self.square_off_at and self.squared_off_on != now.date())
 
     def _evaluate(self, o, book, now):
         if o.order_type in (SL, SLM) and o.status == PENDING:
@@ -510,7 +518,7 @@ class PaperEngine:
         if pos is None or pos.open_qty <= 0:
             raise OrderError("No open position to protect.")
         if not self.accepting_orders(now):
-            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+            raise OrderError(self._closed_text())
         book = self.books.get(security_id)
         if book is None:
             raise OrderError("No live price for this instrument yet.")
@@ -568,7 +576,7 @@ class PaperEngine:
             stop.updated_at = now
             return [Event("order", stop.to_dict())]
         if not self.accepting_orders(now):
-            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+            raise OrderError(self._closed_text())
         book = self.books.get(security_id)
         if book is None:
             raise OrderError("No live price for this instrument yet.")
@@ -624,7 +632,7 @@ class PaperEngine:
         if lots >= open_lots or pos.open_qty % pos.lot_size:
             return self.exit_position(security_id, now)
         if not self.accepting_orders(now):
-            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+            raise OrderError(self._closed_text())
         o, events = self.place_order(security_id, SELL, lots, pos.lot_size, MARKET, now)
         if o.status == REJECTED:
             raise OrderError(o.reason)
@@ -637,7 +645,7 @@ class PaperEngine:
         if pos is None or pos.open_qty <= 0:
             raise OrderError("No open position to exit.")
         if not self.accepting_orders(now):
-            raise OrderError("Market closed: orders are accepted 09:15-15:15 IST on trading days.")
+            raise OrderError(self._closed_text())
         book = self.books.get(security_id)
         if book is None or not book.bids:
             raise OrderError("No buyers in the market depth; try again in a moment.")
@@ -657,11 +665,11 @@ class PaperEngine:
     def square_off(self, now):
         """15:15 auto square-off: cancel every pending order, then sell every open position at market."""
         self.squared_off_on = now.date()
-        events = [self._cancel(o, now, "Cancelled at the 15:15 auto square-off.")
+        events = [self._cancel(o, now, f"Cancelled at the {self.square_off_at:%H:%M} auto square-off.")
                   for o in self.orders.values() if o.status in OPEN_STATES]
         for pos in self.positions.values():
             if pos.open_qty > 0:
-                events += self._exit(pos, now, "Auto square-off 15:15", self.books.get(pos.security_id))
+                events += self._exit(pos, now, f"Auto square-off {self.square_off_at:%H:%M}", self.books.get(pos.security_id))
         return events
 
     def _exit(self, pos, now, reason, book):

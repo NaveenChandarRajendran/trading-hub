@@ -536,3 +536,35 @@ CREATE TABLE IF NOT EXISTS th_algo_settings_log (
     changed_by  text        NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS th_algo_settings_log_slug ON th_algo_settings_log (slug, id);
+
+-- ORB Algo (orb_service.py, docs/strategies/orb.md; ADR 0013 for its 15:25 square-off). Its own tables; settings in
+-- th_algo_settings (slug "orb").
+CREATE TABLE IF NOT EXISTS orb_algo_events (
+    id          bigserial   PRIMARY KEY,
+    trade_date  date        NOT NULL,
+    ts          timestamptz NOT NULL,
+    type        text        NOT NULL,       -- or | signal | skip | entry | exit | info | settings | feed | heartbeat | error
+    setup       text        NOT NULL DEFAULT '',  -- b60 | r30 | v5 | '' (the whole algo)
+    side        text,                       -- CE | PE
+    message     text        NOT NULL,
+    details     jsonb       NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS orb_algo_events_day ON orb_algo_events (trade_date, id);
+CREATE TABLE IF NOT EXISTS orb_algo_state (
+    trade_date  date        PRIMARY KEY,
+    state       jsonb       NOT NULL,
+    updated_at  timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS orb_algo_daily_summary (  -- one row per setup and day (each setup has its own P&L)
+    trade_date  date             NOT NULL,
+    setup       text             NOT NULL,
+    trades      integer          NOT NULL,
+    wins        integer          NOT NULL,
+    losses      integer          NOT NULL,
+    points      double precision NOT NULL,  -- NIFTY spot points (entry / exit index levels)
+    gross_pnl   double precision NOT NULL,
+    charges     double precision NOT NULL,
+    net_pnl     double precision NOT NULL,
+    updated_at  timestamptz      NOT NULL,
+    PRIMARY KEY (trade_date, setup)
+);

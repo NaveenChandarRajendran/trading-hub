@@ -220,6 +220,9 @@ def ensure_toi_strategy(pg, name, capital, now, log=print):
         return st[0]
 
 
+ensure_algo_strategy = ensure_toi_strategy  # any later algo (the ORB Algo): its strategy + paper account, created once
+
+
 def bootstrap(pg, capital, now, log=print):
     """First start on users and strategies (Postgres, main.py): user naveen (no password until
     scripts/create_user.py sets one) and his algo strategy "OI Breakout Algo" on the 'Algo' paper account. Paper

@@ -62,8 +62,10 @@ class AlgoBroker:
     """An algo account's paper engine for the day. Every order is stored with source="algo" and its setup.
     account_name / capital: the OI breakout algo's "Algo" account by default (the Trending OI Algo passes its own)."""
 
-    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS, variant=None, account_name=None, capital=None):
+    def __init__(self, store, instruments, clock, holidays=NSE_HOLIDAYS, variant=None, account_name=None, capital=None,
+                 square_off=None):
         self.store, self.instruments, self.clock, self.holidays = store, instruments, clock, holidays
+        self.square_off = square_off  # None: the engine's 15:15 (the ORB Algo passes 15:25, ADR 0013)
         self.variant = variant or cfg.RULE_VARIANT
         name, cap = account_name or cfg.ACCOUNT_NAME, cfg.CAPITAL if capital is None else capital
         self.account = store.active_account(name) or store.create_account(cap, clock(), name=name)
@@ -75,7 +77,8 @@ class AlgoBroker:
             return
         acc, day = self.account["id"], now.date().isoformat()
         opening = self.account["capital"] + self.store.net_before(acc, day)
-        engine = PaperEngine(max(opening, 0.01), holidays=self.holidays, day=now.date())
+        engine = PaperEngine(max(opening, 0.01), holidays=self.holidays, day=now.date(),
+                             **({"square_off": self.square_off} if self.square_off else {}))
         orders = self.store.orders(acc, day)
         engine.restore(orders, self.store.trades(acc, day))
         self.tags = {o["id"]: o.get("setup", "") for o in orders}
@@ -143,7 +146,7 @@ class AlgoBroker:
 
     def on_time(self, now):
         self.ensure_day(now)
-        self._save(self.engine.on_time(now), "Square-off 15:15")
+        self._save(self.engine.on_time(now), f"Square-off {self.engine.square_off_at:%H:%M}")
 
     def day_pnl(self):
         f = self.engine.funds()
