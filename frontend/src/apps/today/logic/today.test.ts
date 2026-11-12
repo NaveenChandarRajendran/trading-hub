@@ -38,6 +38,15 @@ describe('today', () => {
     expect([c.price, c.pnl, c.pnlPct, c.afterCharges]).toEqual([172, 900, 22.86, true]);
   });
 
+  it('prices the Fear + Calendar futures lot from its book after the close (owner 13-Nov-2026)', () => {
+    const fut = { ...base, id: 'FUT20261111-1', day: '2026-11-11', source: 'auto', strategy: 'Fear + Calendar', account: 'App · Fear + Calendar',
+      side: 'FUT', instrument: 'NIFTY NOV FUT', entryTime: '15:21:03', entryPrice: 25211.1, securityId: 61471 } as unknown as JTrade;
+    const [r] = buildRows([fut], [], [], {}, {}, [], { id: 'FUT20261111-1', ltp: 25314, priceAt: '2026-11-12T15:29:59+05:30' });
+    expect([r.open, r.price, r.pnl, r.priceAt, r.capital]).toEqual([true, 25314, 6688.5, '15:29', 196646.58]);
+    const [live] = buildRows([fut], [], [], { 61471: 25300 }, {}, [], { id: 'FUT20261111-1', ltp: 25314, priceAt: null });
+    expect(live.price).toBe(25300);
+  });
+
   it('adds booked and running P&L per account', () => {
     const s = summarize(buildRows([manualOpen, ruleClosed, ruleOpen], auto, pos, { 52175: 55.1 }));
     expect([s.total, s.booked, s.running, s.open, s.closed, s.won, s.lost]).toEqual([961.75, 900, 61.75, 2, 1, 1, 0]);

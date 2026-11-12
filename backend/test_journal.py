@@ -98,3 +98,15 @@ def test_a_selling_leg_held_over_days_shows_once_and_stays_on_today_while_open()
     rows = j.trades("2026-10-01", "2026-11-30")
     assert [(t["id"], t["status"], t["day"]) for t in rows] == [("SL1", "closed", "2026-11-02")]  # one row, booked on exit day
     assert j.trades("2026-11-03", "2026-11-03") == []
+
+
+def test_a_futures_lot_held_over_days_stays_on_today_while_open():
+    # owner 13-Nov-2026: the Fear + Calendar lot bought on 11 Nov was missing from Today on 12 Nov
+    from datetime import datetime
+    j = jr.Journal(tempfile.mkdtemp())
+    lot = {"id": "FUT20261111-1", "account": "futures", "slot": "fearCalendar", "symbol": "NIFTY", "side": "FUT",
+           "instrument": {"name": "NIFTY NOV FUT", "securityId": 61471}, "qty": 65, "entryDay": "2026-11-11",
+           "entryTime": "15:21:03", "entryPrice": 25211.1, "status": "open", "entryOrderId": "FUT20261111-1-B"}
+    j.record(lot, "entry", datetime(2026, 11, 11, 15, 21, 3))
+    today = j.trades("2026-11-12", "2026-11-12")
+    assert [(t["id"], t["status"], t["side"]) for t in today] == [("FUT20261111-1", "open", "FUT")]

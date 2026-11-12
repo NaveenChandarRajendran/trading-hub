@@ -86,7 +86,8 @@ export function manualSecurityId(id: string): number | null {
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Position[], ticks: Record<number, number>,
-  spots: Record<string, number | null | undefined> = {}, sold: SellLeg[] = []): TodayRow[] {
+  spots: Record<string, number | null | undefined> = {}, sold: SellLeg[] = [],
+  fut: { id: string; ltp: number | null; priceAt: string | null } | null = null): TodayRow[] {
   // the selling book's own price for its legs: live, or the last saved one after the close (owner 29-Oct-2026)
   const soldById = new Map(sold.map((l) => [l.id, l]));
   const autoById = new Map(auto.map((t) => [t.id, t]));
@@ -111,8 +112,11 @@ export function buildRows(trades: JTrade[], auto: AutoTrade[], positions: Positi
       if (manual && pos && pos.open_qty > 0) qty = pos.open_qty;
       const live = sid != null ? ticks[sid] : undefined;
       const leg = short ? soldById.get(t.id) : undefined;
-      price = live ?? a?.ltp ?? pos?.ltp ?? leg?.ltp ?? null;
+      // the futures book's own price for its lot (Fear + Calendar, owner 13-Nov-2026), live or the last saved one
+      const f = fut && fut.id === t.id ? fut : undefined;
+      price = live ?? a?.ltp ?? pos?.ltp ?? leg?.ltp ?? f?.ltp ?? null;
       if (live == null && leg?.ltp != null && leg.priceAt) priceAt = leg.priceAt.slice(11, 16);
+      if (live == null && f?.ltp != null && f.priceAt) priceAt = f.priceAt.length > 5 ? f.priceAt.slice(11, 16) : f.priceAt;
       pnl = price != null && t.entryPrice != null ? r2(sign * (price - t.entryPrice) * qty) : a?.pnl ?? null;
     }
     const pnlPct = price != null && t.entryPrice ? r2(sign * (price / t.entryPrice - 1) * 100) : null;

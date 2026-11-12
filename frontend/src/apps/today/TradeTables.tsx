@@ -45,7 +45,7 @@ function OptionName({ r }: { r: TodayRow }) {
     // two lines (owner 29-Oct-2026: the open table was wider than the page): the option, then SOLD / BOUGHT and CALL / PUT
     <span className="td-level td-opt">
       <span>{r.option}</span>
-      <span><span className={`td-dir ${r.short ? 'sold' : 'bought'}`}>{r.short ? 'SOLD' : 'BOUGHT'}</span><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : 'PUT'}</span></span>
+      <span><span className={`td-dir ${r.short ? 'sold' : 'bought'}`}>{r.short ? 'SOLD' : 'BOUGHT'}</span><span className={`td-side ${r.side}`}>{r.side === 'CE' ? 'CALL' : (r.side as string) === 'FUT' ? 'FUTURES' : 'PUT'}</span></span>
     </span>
   );
 }
@@ -64,7 +64,7 @@ function StopCell({ r }: { r: TodayRow }) {
 
 function TargetCell({ r }: { r: TodayRow }) {
   if (r.indexTarget != null) return <span className="td-level"><span className="num">Index {inr(2)(r.indexTarget)}</span><span className="td-pct">2× the box</span></span>;
-  const none = r.manual ? (r.stop != null ? 'Rides SuperTrend' : 'Not set') : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.short ? 'Buy back 3:14' : '–';
+  const none = r.manual ? (r.stop != null ? 'Rides SuperTrend' : 'Not set') : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.who === 'Fear + Calendar' ? 'Rule exit 3:20' : r.short ? 'Buy back 3:14' : '–';
   return <Level v={r.target} entry={r.entryPrice} none={none} />;
 }
 
@@ -179,7 +179,8 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                           title={mode === 'new' ? 'Set a stop (and a target) on this option' : 'Change the stop or the target'}
                           onClick={() => setEditing(editing === r.id ? null : r.id)}>{mode === 'new' ? 'Stop / target' : 'Edit stop / target'}</button>
                       )}
-                      {(r.manual ? r.securityId != null : true) && (
+                      {/* the futures lot leaves by its rule at 3:20 PM (fear.py has no exit button) */}
+                      {(r.manual ? r.securityId != null : (r.side as string) !== 'FUT') && (
                         <ConfirmButton label={r.short ? 'Buy back' : 'Exit'} ask={r.short ? 'Buy back now' : 'Exit now'} busy={data.busy}
                           onConfirm={() => void data.exitRow(r)} />
                       )}

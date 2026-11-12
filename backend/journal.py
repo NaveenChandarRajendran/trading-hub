@@ -203,7 +203,8 @@ class Journal:
             for t in self._read(day)["trades"].values():
                 latest[t["id"]] = t
         for t in latest.values():
-            if from_day <= t["day"] <= to_day or (t.get("short") and t["status"] == "open"):
+            # a futures lot (Fear + Calendar) is held over days too (owner 13-Nov-2026: it was missing from Today)
+            if from_day <= t["day"] <= to_day or ((t.get("short") or t.get("side") == "FUT") and t["status"] == "open"):
                 out.append(t)
         return [renamed(t) for t in out]
 
