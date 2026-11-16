@@ -7,6 +7,7 @@ import { inr } from '../../shared/grid';
 import { price, signedRupees, toneOf } from '../paper-trade/format';
 import { WHO_ORDER, movePct, whoInfo, type TodayRow } from './logic/today';
 import type { TodayData } from './useToday';
+import { strategyByWho } from '../strategies/catalog';
 
 const hm = (t: string | null) => (t ? t.slice(0, 5) : '–');
 const mood = (v: number | null) => (!v ? '' : v > 0 ? 'gain' : 'loss');
@@ -66,6 +67,27 @@ function TargetCell({ r }: { r: TodayRow }) {
   if (r.indexTarget != null) return <span className="td-level"><span className="num">Index {inr(2)(r.indexTarget)}</span><span className="td-pct">2× the box</span></span>;
   const none = r.manual ? (r.stop != null ? 'Rides SuperTrend' : 'Not set') : r.who === 'SuperTrend Ladder' ? 'Ladder +20/+50%' : r.who === '2-month Strangle (sell)' ? 'Roll at 70%' : r.who === 'Fear + Calendar' ? 'Rule exit 3:20' : r.short ? 'Buy back 3:14' : '–';
   return <Level v={r.target} entry={r.entryPrice} none={none} />;
+}
+
+const lakhsShort = (v: number) => (v >= 100000 ? `₹${(v / 100000).toLocaleString('en-IN', { maximumFractionDigits: 2 })}L` : `₹${inr(0)(v)}`);
+
+/** Return on the strategy book's capital (owner 16-Nov-2026): P&L ÷ the money set aside for that strategy, so a sold
+ * option's "+87%" of premium and a futures lot's "+0.2%" of Nifty can be compared. Manual trades have no book: "–". */
+export function bookPct(r: Pick<TodayRow, 'who' | 'pnl'>): { pct: number; capital: number } | null {
+  const capital = strategyByWho(r.who)?.capital;
+  if (!capital || r.pnl == null) return null;
+  return { pct: (r.pnl / capital) * 100, capital };
+}
+
+function BookCell({ r }: { r: TodayRow }) {
+  const b = bookPct(r);
+  if (!b) return <span className="td-none">–</span>;
+  return (
+    <span className="td-level" title={`P&L ÷ the ${lakhsShort(b.capital)} set aside for this strategy`}>
+      <span className={`num ${toneOf(b.pct)}`}>{`${b.pct > 0 ? '+' : ''}${b.pct.toFixed(2)}%`}</span>
+      <span className="td-pct">of {lakhsShort(b.capital)}</span>
+    </span>
+  );
 }
 
 function CapitalCell({ r }: { r: TodayRow }) {
@@ -133,7 +155,7 @@ function LevelEditor({ r, mode, stopPct, targetPct, busy, onSave, onClose }: {
   );
 }
 
-const OPEN_COLS = 10;
+const OPEN_COLS = 11;
 
 export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: TodayRow[]; data: TodayData; loading: boolean; showNewTrade?: boolean }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -147,7 +169,7 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
         <thead>
           <tr>
             <th className="txt">Strategy</th><th className="txt">Option</th><th>Qty</th><th>Entry</th><th>Now</th>
-            <th>Stop</th><th>Target</th><th>P&amp;L</th><th>Capital used</th><th className="txt">Actions</th>
+            <th>Stop</th><th>Target</th><th>P&amp;L</th><th title="P&amp;L ÷ the money set aside for this strategy">On capital</th><th>Capital used</th><th className="txt">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -171,6 +193,7 @@ export function OpenTable({ rows, data, loading, showNewTrade = true }: { rows: 
                   <td><StopCell r={r} /></td>
                   <td><TargetCell r={r} /></td>
                   <td><span className="td-level"><Money v={r.pnl} /><span className={`td-pct ${toneOf(r.pnlPct)}`}>{pctText(r.pnlPct)}</span></span></td>
+                  <td><BookCell r={r} /></td>
                   <td><CapitalCell r={r} /></td>
                   <td className="txt">
                     <span className="td-actions">
@@ -214,7 +237,7 @@ export function ClosedTable({ rows, loading }: { rows: TodayRow[]; loading: bool
         <thead>
           <tr>
             <th className="txt">Strategy</th><th className="txt">Option</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Stop</th><th>Target</th>
-            <th>P&amp;L</th><th>Capital used</th><th className="txt">Why it closed</th>
+            <th>P&amp;L</th><th title="P&amp;L ÷ the money set aside for this strategy">On capital</th><th>Capital used</th><th className="txt">Why it closed</th>
           </tr>
         </thead>
         <tbody>
@@ -228,6 +251,7 @@ export function ClosedTable({ rows, loading }: { rows: TodayRow[]; loading: bool
               <td><StopCell r={r} /></td>
               <td><TargetCell r={r} /></td>
               <td><span className="td-level"><Money v={r.pnl} /><span className={`td-pct ${toneOf(r.pnlPct)}`}>{pctText(r.pnlPct)}</span></span></td>
+              <td><BookCell r={r} /></td>
               <td><CapitalCell r={r} /></td>
               <td className="txt">{r.exitReason ?? '–'}</td>
             </tr>

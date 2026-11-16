@@ -2,6 +2,12 @@
 
 _Last updated: 2026-10-30 evening (uniform pages + capital per strategy, on top of the Sat 31 Oct release: one OI build-up verdict, R1/Bollinger fixes, order-flow 5-min table, manual entry texts, Box Pullback 5/1 removed; on `Diwakar_OptionBuy_Backtest`)_
 
+## "On capital" column (owner 16-Nov-2026)
+Open now and Closed today tables (Today and every strategy page, `today/TradeTables.tsx`) show "On capital" next to
+P&L: P&L ÷ the strategy's capital from `strategies/catalog.ts` (e.g. weekly strangle ₹4L, Fear + Calendar ₹2.5L), with
+"of ₹4L" under it. The % under P&L stays the move in the trade's own price (premium, or Nifty for futures). Manual
+trades have no book: "–". Display only, no rule change.
+
 ## Owner's 2-Nov-2026 asks, shipped 3-Nov-2026 evening
 - **Momentum 20 live prices (display only)**: `momentum_book.refresh_live` reads Yahoo's 1-minute chart
   (`regularMarketPrice`) for the held stocks every 60 s, 09:15-15:35 on trading days (`autopaper.json momentum.live` /
