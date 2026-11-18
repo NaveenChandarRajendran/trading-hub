@@ -262,9 +262,9 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   MegaBull Grade A only. Shadow logging (record only): after every exit to 15:30 (trade log columns, rewritten at
   15:31) and skipped setups (`shadow_skips.csv`). Paper section: MEGABULL ACCOUNT and TRADING HUB ACCOUNT cards, today's
   trades for both accounts with day P&L, order book lists (`GET /api/autopaper/orders`), shadow line.
-  `Start_Trading_Day.bat` (+ `scripts/start_trading_day.ps1`): hidden Dhan prompts, MegaBull key only when missing or
-  older than 25 days (`%USERPROFILE%\TradingHubKeys`), starts both windows, checks Dhan (`/api/expiries`) and MegaBull
-  (`GET /api/autopaper/check`, read-only), opens the dashboard. 30-minute chart interval.
+  `Start_Trading_Day.bat` (+ `scripts/start_trading_day.ps1`): hidden Dhan prompts only (owner 18-Nov-2026: MegaBull
+  key no longer asked, `megabull.enabled` false, no key-age alert), starts both windows, checks Dhan (`/api/expiries`),
+  opens the dashboard. 30-minute chart interval.
 - Known limits / open: MegaBull is off until the owner confirms the ⚠ numbers in `megabull.md` and the API check has run
   (instrument file confirmed 23-Oct: a downloadUrl to a 3-column CSV, names parsed, lot size taken from Dhan; order
   fields and bulk-cancel body are unverified; two pending SELLs not yet tested). India
@@ -279,7 +279,7 @@ PAPER ONLY. Owner's brief 23-Oct-2026. Rules: `docs/strategies/trading-hub-trend
   today's 5-min reading.
 - Start_Trading_Day.bat (owner, 23-Oct-2026): asks the Dhan client ID once and the token only when the saved one is
   older than 23 hours or Dhan rejects it; both in `%USERPROFILE%\TradingHubKeys\dhan.json` (token DPAPI-encrypted,
-  this Windows user only). MegaBull key asked only when missing or older than 25 days.
+  this Windows user only). Nothing else is asked (MegaBull removed from start-up 18-Nov-2026).
 - Charts (dashboard + Order Flow): the mouse wheel scrolls the page until the chart is clicked; then it zooms the chart
   until the mouse leaves it (`src/shared/chartWheel.ts`, owner 23-Oct-2026). Dragging works either way.
 - Sensibull-style views (Sensibull OI Change Live page, dashboard "OI views side by side"): change in OI now counts

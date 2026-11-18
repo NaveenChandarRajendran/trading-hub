@@ -5,7 +5,7 @@
   "keyMaxAgeDays": 25,
   "limits": {"maxTradesPerDay": 6, "maxLossPerDay": 10000},
   "tradingHub": {"enabled": true, "lots": 1, "stopPct": 15, "targetPct": 20, "_note": "Trend rule: the app's own Rs 1 lakh paper account (strategy book 'trend')."},
-  "megabull": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2},
+  "megabull": {"enabled": false, "lots": 1, "stopPct": 10, "targetPct": 20, "slLimitBufferPct": 2, "_note": "OFF (owner 18-Nov-2026): MegaBull is no longer used (its two rules are watch-only, every paper book runs on Dhan). The start file no longer asks for its key and no key-age alert is raised."},
   "dharani": {"lots": 1, "stopPct": 10, "targetPct": 20, "_note": "The app's own Rs 1 lakh paper account for the Dharani rule (strategy book). stopPct = safety stop; exit at targetPct (+20 %, owner 2-Nov-2026, from 3-Nov) or the SuperTrend close, whichever comes first. NIFTY only from 3-Nov (dharaniV2.symbols)."},
   "manual": {"lots": 1, "stopPct": 15, "targetPct": 20},
   "orbPullback": {"enabled": true, "lots": 1, "stopPct": 10, "targetPct": 20, "_note": "Box Pullback 15/5 (docs/strategies/box-pullback.md): NIFTY + BANKNIFTY, 15-min box, 5-min close outside, buy ATM on the pullback; stop -10 %, target +20 % (owner 29-Oct-2026), else 15:14. Own Rs 1 lakh 'orb' paper account (owner 29-Oct-2026)."},

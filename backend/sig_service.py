@@ -860,7 +860,7 @@ class SignalService:
 
     def check_key_age(self):
         acc = self.trader.accounts.get("megabull") if self.trader else None
-        if not acc:
+        if not acc or not acc.enabled:  # owner 18-Nov-2026: MegaBull is off, so its key is not needed and never nagged about
             return
         try:
             age = acc.client.key_age_days()
